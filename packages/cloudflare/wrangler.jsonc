@@ -8,9 +8,6 @@
     "enabled": true,
     "head_sampling_rate": 1
   },
-  "vars": {
-    "DAEMON_API_KEY": "dev-machine-key"
-  },
   "durable_objects": {
     "bindings": [
       {
