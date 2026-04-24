@@ -3,7 +3,7 @@ import { nanoid } from 'nanoid';
 import { getStore } from '../db.js';
 import { daemonRegistry } from '../daemonRegistry.js';
 import { eventBus } from '../events.js';
-import type { AgentDelivery } from '@mini-slock/shared';
+import { toAgentDelivery, toRuntimeConfig } from '@mini-slock/hub-core';
 
 export async function messageRoutes(app: FastifyInstance) {
   app.post<{
@@ -30,28 +30,13 @@ export async function messageRoutes(app: FastifyInstance) {
     if (agentId) {
       const agent = await store.getAgent(agentId);
       if (agent?.machineId && agent.status !== 'inactive') {
-        const delivery: AgentDelivery = {
-          id: message.id,
-          channelId: channel.id,
-          channelName: channel.name,
-          senderName,
-          content,
-          createdAt: message.createdAt,
-        };
         daemonRegistry.send(agent.machineId, {
           type: 'agent:deliver',
           agentId,
           seq: Date.now(),
-          message: delivery,
+          message: toAgentDelivery(message, channel),
           channelId: channel.id,
-          config: {
-            runtime: agent.runtime,
-            model: agent.model,
-            name: agent.name,
-            displayName: agent.displayName,
-            description: agent.description,
-            systemPrompt: agent.systemPrompt,
-          },
+          config: toRuntimeConfig(agent),
         });
       }
     }

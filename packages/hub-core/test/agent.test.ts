@@ -1,0 +1,87 @@
+import { describe, expect, it } from 'vitest';
+import type { Agent, Machine } from '@mini-slock/shared';
+import { resetAgentStatusForRestart, resolveStartMachineId, toRuntimeConfig } from '../src/agent.js';
+
+const agent: Agent = {
+  id: 'agent-1',
+  name: 'bot',
+  displayName: 'Bot',
+  description: 'Helpful bot',
+  runtime: 'claude',
+  model: 'sonnet',
+  systemPrompt: 'Be concise',
+  machineId: 'machine-1',
+  status: 'inactive',
+  createdAt: '2026-01-01T00:00:00.000Z',
+};
+
+const machines: Machine[] = [
+  {
+    id: 'machine-1',
+    hostname: 'host-1',
+    os: 'linux',
+    daemonVersion: '0.1.0',
+    runtimes: ['claude'],
+    runtimeVersions: { claude: '1.0' },
+    status: 'online',
+    connectedAt: '2026-01-01T00:00:00.000Z',
+  },
+  {
+    id: 'machine-2',
+    hostname: 'host-2',
+    os: 'darwin',
+    daemonVersion: '0.1.0',
+    runtimes: ['codex', 'gemini'],
+    runtimeVersions: { codex: '1.0', gemini: '1.0' },
+    status: 'online',
+    connectedAt: '2026-01-01T00:00:01.000Z',
+  },
+];
+
+describe('toRuntimeConfig', () => {
+  it('maps persisted agent fields to daemon runtime config', () => {
+    expect(toRuntimeConfig(agent)).toEqual({
+      runtime: 'claude',
+      model: 'sonnet',
+      name: 'bot',
+      displayName: 'Bot',
+      description: 'Helpful bot',
+      systemPrompt: 'Be concise',
+    });
+  });
+});
+
+describe('resolveStartMachineId', () => {
+  it('prefers the agent bound machine when it is connected', () => {
+    expect(resolveStartMachineId({ agent, machines, connectedMachineIds: new Set(['machine-1', 'machine-2']) })).toBe('machine-1');
+  });
+
+  it('falls back to the first connected compatible machine', () => {
+    expect(resolveStartMachineId({ agent, machines, connectedMachineIds: new Set(['machine-2']) })).toBeUndefined();
+    expect(
+      resolveStartMachineId({
+        agent: { ...agent, machineId: 'missing', runtime: 'codex' },
+        machines,
+        connectedMachineIds: new Set(['machine-2']),
+      })
+    ).toBe('machine-2');
+  });
+
+  it('returns undefined when no compatible connected machine exists', () => {
+    expect(resolveStartMachineId({ agent, machines, connectedMachineIds: new Set() })).toBeUndefined();
+  });
+});
+
+describe('resetAgentStatusForRestart', () => {
+  it('resets volatile statuses to inactive', () => {
+    expect(resetAgentStatusForRestart('starting')).toBe('inactive');
+    expect(resetAgentStatusForRestart('running')).toBe('inactive');
+    expect(resetAgentStatusForRestart('working')).toBe('inactive');
+    expect(resetAgentStatusForRestart('idle')).toBe('inactive');
+  });
+
+  it('keeps stable statuses unchanged', () => {
+    expect(resetAgentStatusForRestart('inactive')).toBe('inactive');
+    expect(resetAgentStatusForRestart('error')).toBe('error');
+  });
+});

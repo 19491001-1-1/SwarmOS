@@ -1,0 +1,26 @@
+{
+  "name": "@mini-slock/hub-core",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "pnpm --filter @mini-slock/shared build && tsc",
+    "typecheck": "pnpm --filter @mini-slock/shared build && tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@mini-slock/shared": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^20.12.0",
+    "typescript": "^5.4.5",
+    "vitest": "^1.6.0"
+  }
+}

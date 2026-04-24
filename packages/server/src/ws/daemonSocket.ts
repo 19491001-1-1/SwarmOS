@@ -6,6 +6,7 @@ import { DaemonToServerSchema } from '@mini-slock/shared';
 import { getStore } from '../db.js';
 import { daemonRegistry } from '../daemonRegistry.js';
 import { eventBus } from '../events.js';
+import { findDuplicateMachineIds, findExistingMachineId } from '@mini-slock/hub-core';
 
 const VALID_KEYS = new Set(['dev-machine-key']);
 
@@ -39,10 +40,12 @@ export async function daemonSocketHandler(app: FastifyInstance) {
         const store = getStore();
 
         if (msg.type === 'ready') {
-          machineId = msg.machineId ?? (await findExistingMachineId(msg.hostname, msg.os)) ?? nanoid();
-          await mergeDuplicateMachines(machineId, msg.hostname, msg.os);
+          const currentMachines = await store.listMachines();
+          const readyMachineId = msg.machineId ?? findExistingMachineId({ machines: currentMachines, hostname: msg.hostname, os: msg.os }) ?? nanoid();
+          machineId = readyMachineId;
+          await mergeDuplicateMachines(readyMachineId, msg.hostname, msg.os);
           const machine = await store.upsertMachine({
-            id: machineId,
+            id: readyMachineId,
             hostname: msg.hostname,
             os: msg.os,
             daemonVersion: msg.daemonVersion,
@@ -51,7 +54,7 @@ export async function daemonSocketHandler(app: FastifyInstance) {
             status: 'online',
             connectedAt: new Date().toISOString(),
           });
-          daemonRegistry.register(machineId, connection.socket);
+          daemonRegistry.register(readyMachineId, connection.socket);
           eventBus.emit({ type: 'machine:update', machine });
           return;
         }
@@ -111,15 +114,13 @@ export async function daemonSocketHandler(app: FastifyInstance) {
   );
 }
 
-async function findExistingMachineId(hostname: string, os: string): Promise<string | undefined> {
-  const machines = await getStore().listMachines();
-  return machines.find((machine) => machine.hostname === hostname && machine.os === os)?.id;
-}
-
 async function mergeDuplicateMachines(targetMachineId: string, hostname: string, os: string): Promise<void> {
   const store = getStore();
-  const duplicateIds = (await store.listMachines())
-    .filter((machine) => machine.id !== targetMachineId && machine.hostname === hostname && machine.os === os)
-    .map((machine) => machine.id);
+  const duplicateIds = findDuplicateMachineIds({
+    machines: await store.listMachines(),
+    targetMachineId,
+    hostname,
+    os,
+  });
   await store.mergeMachines(targetMachineId, duplicateIds);
 }

@@ -4,11 +4,12 @@
   "type": "module",
   "private": true,
   "scripts": {
-    "dev": "wrangler dev",
-    "deploy": "wrangler deploy",
-    "typecheck": "tsc --noEmit"
+    "dev": "pnpm --filter @mini-slock/hub-core build && wrangler dev",
+    "deploy": "pnpm --filter @mini-slock/hub-core build && wrangler deploy",
+    "typecheck": "pnpm --filter @mini-slock/hub-core build && tsc --noEmit"
   },
   "dependencies": {
+    "@mini-slock/hub-core": "workspace:*",
     "@mini-slock/shared": "workspace:*"
   },
   "devDependencies": {

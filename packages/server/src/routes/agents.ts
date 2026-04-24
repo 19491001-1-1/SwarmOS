@@ -3,7 +3,8 @@ import { nanoid } from 'nanoid';
 import { getStore } from '../db.js';
 import { daemonRegistry } from '../daemonRegistry.js';
 import { eventBus } from '../events.js';
-import type { Agent, RuntimeId } from '@mini-slock/shared';
+import type { RuntimeId } from '@mini-slock/shared';
+import { resolveStartMachineId, toRuntimeConfig } from '@mini-slock/hub-core';
 
 export async function agentRoutes(app: FastifyInstance) {
   app.get('/api/agents', async () => {
@@ -55,21 +56,18 @@ export async function agentRoutes(app: FastifyInstance) {
     const store = getStore();
     const agent = await store.getAgent(req.params.id);
     if (!agent) return reply.status(404).send({ error: 'Agent not found' });
-    const machineId = await resolveStartMachineId(agent);
+    const machineId = resolveStartMachineId({
+      agent,
+      machines: await store.listMachines(),
+      connectedMachineIds: new Set(daemonRegistry.listConnectedMachineIds()),
+    });
     if (!machineId) return reply.status(503).send({ error: 'No connected machine available for agent runtime' });
 
     const launchId = nanoid();
     const sent = daemonRegistry.send(machineId, {
       type: 'agent:start',
       agentId: agent.id,
-      config: {
-        runtime: agent.runtime,
-        model: agent.model,
-        name: agent.name,
-        displayName: agent.displayName,
-        description: agent.description,
-        systemPrompt: agent.systemPrompt,
-      },
+      config: toRuntimeConfig(agent),
       launchId,
     });
 
@@ -91,18 +89,4 @@ export async function agentRoutes(app: FastifyInstance) {
     eventBus.emit({ type: 'agent:update', agent: updated });
     return updated;
   });
-}
-
-async function resolveStartMachineId(agent: Agent): Promise<string | undefined> {
-  if (agent.machineId && daemonRegistry.getByMachineId(agent.machineId)) {
-    return agent.machineId;
-  }
-
-  const connectedIds = new Set(daemonRegistry.listConnectedMachineIds());
-  const machines = await getStore().listMachines();
-  const compatible = machines.find(
-    (machine) => connectedIds.has(machine.id) && machine.runtimes.includes(agent.runtime)
-  );
-
-  return compatible?.id;
 }

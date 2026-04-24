@@ -1,8 +1,6 @@
 import { DurableObject } from 'cloudflare:workers';
 import type {
   Agent,
-  AgentDelivery,
-  AgentRuntimeConfig,
   BrowserEvent,
   Channel,
   DaemonToServer,
@@ -11,6 +9,7 @@ import type {
   RuntimeId,
   ServerToDaemon,
 } from '@mini-slock/shared';
+import { findDuplicateMachineIds, resolveStartMachineId, toAgentDelivery, toRuntimeConfig } from '@mini-slock/hub-core';
 
 type SocketAttachment =
   | { kind: 'browser' }
@@ -114,9 +113,12 @@ export class XoxiangHub extends DurableObject<Env> {
     if (data.type === 'ready') {
       const machineId = data.machineId || attachment.machineId;
       ws.serializeAttachment({ kind: 'daemon', machineId } satisfies SocketAttachment);
-      const duplicateIds = this.listMachines()
-        .filter((machine) => machine.id !== machineId && machine.hostname === data.hostname && machine.os === data.os)
-        .map((machine) => machine.id);
+      const duplicateIds = findDuplicateMachineIds({
+        machines: this.listMachines(),
+        targetMachineId: machineId,
+        hostname: data.hostname,
+        os: data.os,
+      });
       this.mergeMachines(machineId, duplicateIds);
       const machine = this.upsertMachine({
         id: machineId,
@@ -261,9 +263,9 @@ export class XoxiangHub extends DurableObject<Env> {
           type: 'agent:deliver',
           agentId: agent.id,
           seq: Date.now(),
-          message: this.toDelivery(message, channel),
+          message: toAgentDelivery(message, channel),
           channelId: channel.id,
-          config: this.toRuntimeConfig(agent),
+          config: toRuntimeConfig(agent),
         });
       }
     }
@@ -322,7 +324,7 @@ export class XoxiangHub extends DurableObject<Env> {
     const sent = this.sendToDaemon(machineId, {
       type: 'agent:start',
       agentId,
-      config: this.toRuntimeConfig(agent),
+      config: toRuntimeConfig(agent),
       launchId: crypto.randomUUID(),
     });
     if (!sent) return json({ error: 'Machine not connected' }, 503);
@@ -446,15 +448,20 @@ export class XoxiangHub extends DurableObject<Env> {
   }
 
   private resolveStartMachineId(agent: Agent): string | undefined {
-    if (agent.machineId && this.isMachineConnected(agent.machineId)) return agent.machineId;
-    return this.listMachines().find((machine) => machine.status === 'online' && machine.runtimes.includes(agent.runtime))?.id;
+    return resolveStartMachineId({
+      agent,
+      machines: this.listMachines(),
+      connectedMachineIds: this.connectedMachineIds(),
+    });
   }
 
-  private isMachineConnected(machineId: string): boolean {
-    return this.ctx.getWebSockets().some((ws) => {
+  private connectedMachineIds(): Set<string> {
+    const ids = new Set<string>();
+    for (const ws of this.ctx.getWebSockets()) {
       const attachment = ws.deserializeAttachment() as SocketAttachment | undefined;
-      return attachment?.kind === 'daemon' && attachment.machineId === machineId;
-    });
+      if (attachment?.kind === 'daemon') ids.add(attachment.machineId);
+    }
+    return ids;
   }
 
   private sendToDaemon(machineId: string, message: ServerToDaemon): boolean {
@@ -475,27 +482,6 @@ export class XoxiangHub extends DurableObject<Env> {
     }
   }
 
-  private toDelivery(message: Message, channel: Channel): AgentDelivery {
-    return {
-      id: message.id,
-      channelId: channel.id,
-      channelName: channel.name,
-      senderName: message.senderName,
-      content: message.content,
-      createdAt: message.createdAt,
-    };
-  }
-
-  private toRuntimeConfig(agent: Agent): AgentRuntimeConfig {
-    return {
-      runtime: agent.runtime,
-      model: agent.model,
-      name: agent.name,
-      displayName: agent.displayName,
-      description: agent.description,
-      systemPrompt: agent.systemPrompt,
-    };
-  }
 }
 
 function json(data: unknown, status = 200): Response {
