@@ -29,6 +29,13 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Check required secrets
+        run: |
+          if [ -z "$CLOUDFLARE_API_TOKEN" ]; then
+            echo "::error::CLOUDFLARE_API_TOKEN secret is not set. Please add it in repo Settings > Secrets."
+            exit 1
+          fi
+
       - name: Build web UI
         run: pnpm --filter @mini-slock/web build
         env:
