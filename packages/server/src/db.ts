@@ -3,7 +3,7 @@ import { dirname, join } from 'node:path';
 import { homedir } from 'node:os';
 import { drizzle, type LibSQLDatabase } from 'drizzle-orm/libsql';
 import { createClient, type Client } from '@libsql/client';
-import { asc, eq } from 'drizzle-orm';
+import { asc, eq, inArray } from 'drizzle-orm';
 import type { Channel, Message, Machine, Agent, RuntimeId, AgentStatus } from '@mini-slock/shared';
 import { agents, channels, machines, messages } from './schema.js';
 
@@ -97,6 +97,7 @@ export async function initDb(): Promise<void> {
       .insert(channels)
       .values({ id: 'general', name: 'general', createdAt: new Date().toISOString() })
       .onConflictDoNothing();
+    await resetVolatileState();
 
     initialized = true;
   })();
@@ -106,6 +107,15 @@ export async function initDb(): Promise<void> {
   } finally {
     initialization = null;
   }
+}
+
+export async function resetVolatileState(): Promise<void> {
+  const database = getDb();
+  await database.update(machines).set({ status: 'offline' });
+  await database
+    .update(agents)
+    .set({ status: 'inactive' })
+    .where(inArray(agents.status, ['starting', 'running', 'working', 'idle']));
 }
 
 function toAgent(row: typeof agents.$inferSelect): Agent {

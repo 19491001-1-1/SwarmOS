@@ -32,6 +32,15 @@ function sendAndWait(ws: WebSocket, msg: unknown, ms = 80): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
 }
 
+function waitForDaemonMessage(ws: WebSocket, type: string): Promise<any> {
+  return new Promise((resolve) => {
+    ws.on('message', (raw) => {
+      const msg = JSON.parse(raw.toString());
+      if (msg.type === type) resolve(msg);
+    });
+  });
+}
+
 describe('daemon WebSocket', () => {
   it('accepts connection with valid key', async () => {
     const ws = await connectDaemon('dev-machine-key');
@@ -133,5 +142,56 @@ describe('daemon WebSocket', () => {
 
     expect((await store.getAgent('agent-1'))?.status).toBe('running');
     ws.close();
+  });
+
+  it('reuses machine id after daemon reconnect and can start a bound agent', async () => {
+    const first = await connectDaemon('dev-machine-key');
+    await sendAndWait(first, {
+      type: 'ready',
+      hostname: 'same-host',
+      os: 'linux',
+      daemonVersion: '0.1.0',
+      runtimes: ['claude'],
+      runtimeVersions: { claude: '1.0' },
+      runningAgents: [],
+      capabilities: [],
+    });
+
+    const [machine] = await getStore().listMachines();
+    const originalMachineId = machine.id;
+    first.close();
+    await new Promise((resolve) => setTimeout(resolve, 80));
+
+    const second = await connectDaemon('dev-machine-key');
+    await sendAndWait(second, {
+      type: 'ready',
+      hostname: 'same-host',
+      os: 'linux',
+      daemonVersion: '0.1.0',
+      runtimes: ['claude'],
+      runtimeVersions: { claude: '1.0' },
+      runningAgents: [],
+      capabilities: [],
+    });
+
+    const machines = await getStore().listMachines();
+    expect(machines).toHaveLength(1);
+    expect(machines[0].id).toBe(originalMachineId);
+    expect(machines[0].status).toBe('online');
+
+    await getStore().createAgent({
+      id: 'agent-1',
+      name: 'bot',
+      runtime: 'claude',
+      status: 'inactive',
+      machineId: originalMachineId,
+      createdAt: new Date().toISOString(),
+    });
+
+    const startMessage = waitForDaemonMessage(second, 'agent:start');
+    const res = await app.inject({ method: 'POST', url: '/api/agents/agent-1/start' });
+    expect(res.statusCode).toBe(200);
+    expect((await startMessage).agentId).toBe('agent-1');
+    second.close();
   });
 });

@@ -39,7 +39,7 @@ export async function daemonSocketHandler(app: FastifyInstance) {
         const store = getStore();
 
         if (msg.type === 'ready') {
-          machineId = msg.machineId ?? nanoid();
+          machineId = msg.machineId ?? (await findExistingMachineId(msg.hostname, msg.os)) ?? nanoid();
           const machine = await store.upsertMachine({
             id: machineId,
             hostname: msg.hostname,
@@ -108,4 +108,9 @@ export async function daemonSocketHandler(app: FastifyInstance) {
       connection.socket.on('close', () => clearInterval(pingInterval));
     }
   );
+}
+
+async function findExistingMachineId(hostname: string, os: string): Promise<string | undefined> {
+  const machines = await getStore().listMachines();
+  return machines.find((machine) => machine.hostname === hostname && machine.os === os)?.id;
 }

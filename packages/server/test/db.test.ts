@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { getStore, resetStore } from '../src/db.js';
+import { getStore, resetStore, resetVolatileState } from '../src/db.js';
 
 const store = getStore();
 
@@ -138,5 +138,33 @@ describe('machines', () => {
     });
     await store.setMachineOffline('machine-1');
     expect((await store.getMachine('machine-1'))?.status).toBe('offline');
+  });
+});
+
+describe('volatile restart state', () => {
+  it('marks machines offline and running agents inactive', async () => {
+    await store.upsertMachine({
+      id: 'machine-1',
+      hostname: 'h',
+      os: 'linux',
+      daemonVersion: '0.1.0',
+      runtimes: [],
+      runtimeVersions: {},
+      status: 'online',
+      connectedAt: new Date().toISOString(),
+    });
+    await store.createAgent({
+      id: 'agent-1',
+      name: 'bot',
+      runtime: 'claude',
+      status: 'running',
+      machineId: 'machine-1',
+      createdAt: new Date().toISOString(),
+    });
+
+    await resetVolatileState();
+
+    expect((await store.getMachine('machine-1'))?.status).toBe('offline');
+    expect((await store.getAgent('agent-1'))?.status).toBe('inactive');
   });
 });
