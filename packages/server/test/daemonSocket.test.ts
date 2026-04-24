@@ -194,4 +194,46 @@ describe('daemon WebSocket', () => {
     expect((await startMessage).agentId).toBe('agent-1');
     second.close();
   });
+
+  it('rebinds a persisted agent to a currently connected compatible machine on start', async () => {
+    const store = getStore();
+    await store.upsertMachine({
+      id: 'stale-machine',
+      hostname: 'old-host',
+      os: 'linux',
+      daemonVersion: '0.1.0',
+      runtimes: ['claude'],
+      runtimeVersions: { claude: '1.0' },
+      status: 'offline',
+      connectedAt: new Date().toISOString(),
+    });
+    await store.createAgent({
+      id: 'agent-1',
+      name: 'bot',
+      runtime: 'claude',
+      status: 'inactive',
+      machineId: 'stale-machine',
+      createdAt: new Date().toISOString(),
+    });
+
+    const ws = await connectDaemon('dev-machine-key');
+    await sendAndWait(ws, {
+      type: 'ready',
+      machineId: 'fresh-machine',
+      hostname: 'fresh-host',
+      os: 'linux',
+      daemonVersion: '0.1.0',
+      runtimes: ['claude'],
+      runtimeVersions: { claude: '1.0' },
+      runningAgents: [],
+      capabilities: [],
+    });
+
+    const startMessage = waitForDaemonMessage(ws, 'agent:start');
+    const res = await app.inject({ method: 'POST', url: '/api/agents/agent-1/start' });
+    expect(res.statusCode).toBe(200);
+    expect((await startMessage).agentId).toBe('agent-1');
+    expect((await store.getAgent('agent-1'))?.machineId).toBe('fresh-machine');
+    ws.close();
+  });
 });
