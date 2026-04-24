@@ -8,7 +8,7 @@ let app: FastifyInstance;
 let port: number;
 
 beforeEach(async () => {
-  resetStore();
+  await resetStore();
   app = await buildApp();
   await app.listen({ port: 0, host: '127.0.0.1' });
   const address = app.server.address();
@@ -62,7 +62,7 @@ describe('daemon WebSocket', () => {
       runningAgents: [],
       capabilities: [],
     });
-    const machine = getStore().getMachine('test-machine');
+    const machine = await getStore().getMachine('test-machine');
     expect(machine?.hostname).toBe('testhost');
     expect(machine?.status).toBe('online');
     ws.close();
@@ -83,7 +83,7 @@ describe('daemon WebSocket', () => {
     });
 
     const store = getStore();
-    store.createAgent({
+    await store.createAgent({
       id: 'agent-1',
       name: 'bot',
       runtime: 'claude',
@@ -99,7 +99,7 @@ describe('daemon WebSocket', () => {
       content: 'Hello from agent',
     });
 
-    const messages = store.listMessages('general');
+    const messages = await store.listMessages('general');
     expect(messages).toHaveLength(1);
     expect(messages[0].content).toBe('Hello from agent');
     ws.close();
@@ -120,7 +120,7 @@ describe('daemon WebSocket', () => {
     });
 
     const store = getStore();
-    store.createAgent({
+    await store.createAgent({
       id: 'agent-1',
       name: 'bot',
       runtime: 'claude',
@@ -131,7 +131,7 @@ describe('daemon WebSocket', () => {
 
     await sendAndWait(ws, { type: 'agent:status', agentId: 'agent-1', status: 'running' });
 
-    expect(store.getAgent('agent-1')?.status).toBe('running');
+    expect((await store.getAgent('agent-1'))?.status).toBe('running');
     ws.close();
   });
 });

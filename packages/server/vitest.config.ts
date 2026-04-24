@@ -5,6 +5,9 @@ export default defineConfig({
   test: {
     environment: 'node',
     isolate: false,
+    env: {
+      XOXIANG_DB_PATH: ':memory:',
+    },
   },
   resolve: {
     alias: {

@@ -24,7 +24,7 @@ export async function daemonSocketHandler(app: FastifyInstance) {
 
       let machineId: string | null = null;
 
-      connection.socket.on('message', (raw) => {
+      connection.socket.on('message', async (raw) => {
         let data: unknown;
         try {
           data = JSON.parse(raw.toString());
@@ -40,7 +40,7 @@ export async function daemonSocketHandler(app: FastifyInstance) {
 
         if (msg.type === 'ready') {
           machineId = msg.machineId ?? nanoid();
-          const machine = store.upsertMachine({
+          const machine = await store.upsertMachine({
             id: machineId,
             hostname: msg.hostname,
             os: msg.os,
@@ -60,16 +60,16 @@ export async function daemonSocketHandler(app: FastifyInstance) {
         if (msg.type === 'pong') return;
 
         if (msg.type === 'agent:status') {
-          const agent = store.updateAgentStatus(msg.agentId, msg.status);
+          const agent = await store.updateAgentStatus(msg.agentId, msg.status);
           if (agent) eventBus.emit({ type: 'agent:update', agent });
           return;
         }
 
         if (msg.type === 'agent:message') {
-          const channel = store.getChannel(msg.channelId);
+          const channel = await store.getChannel(msg.channelId);
           if (!channel) return;
-          const agent = store.getAgent(msg.agentId);
-          const message = store.createMessage({
+          const agent = await store.getAgent(msg.agentId);
+          const message = await store.createMessage({
             id: nanoid(),
             channelId: msg.channelId,
             agentId: msg.agentId,
@@ -89,12 +89,12 @@ export async function daemonSocketHandler(app: FastifyInstance) {
         }
       });
 
-      connection.socket.on('close', () => {
+      connection.socket.on('close', async () => {
         if (machineId) {
           daemonRegistry.unregister(machineId);
           const store = getStore();
-          store.setMachineOffline(machineId);
-          const machine = store.getMachine(machineId);
+          await store.setMachineOffline(machineId);
+          const machine = await store.getMachine(machineId);
           if (machine) eventBus.emit({ type: 'machine:update', machine });
         }
       });

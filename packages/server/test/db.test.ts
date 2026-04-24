@@ -1,71 +1,86 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { InMemoryStore } from '../src/db.js';
+import { getStore, resetStore } from '../src/db.js';
 
-let store: InMemoryStore;
+const store = getStore();
 
-beforeEach(() => {
-  store = new InMemoryStore();
+beforeEach(async () => {
+  await resetStore();
 });
 
 describe('channels', () => {
-  it('creates default general channel', () => {
-    const channels = store.listChannels();
+  it('creates default general channel', async () => {
+    const channels = await store.listChannels();
     expect(channels).toHaveLength(1);
     expect(channels[0].name).toBe('general');
   });
 
-  it('can create additional channels', () => {
-    store.createChannel('random', 'random');
-    expect(store.listChannels()).toHaveLength(2);
+  it('creates a channel and lists it', async () => {
+    await store.createChannel('random', 'random');
+    const channels = await store.listChannels();
+    expect(channels.map((channel) => channel.id)).toContain('random');
   });
 });
 
 describe('messages', () => {
-  it('inserts and lists messages', () => {
-    store.createMessage({ id: 'msg-1', channelId: 'general', senderName: 'user', content: 'Hello' });
-    store.createMessage({ id: 'msg-2', channelId: 'general', senderName: 'user', content: 'World' });
-    const msgs = store.listMessages('general');
-    expect(msgs).toHaveLength(2);
-    expect(msgs[0].content).toBe('Hello');
+  it('adds and lists messages sorted by createdAt', async () => {
+    await store.createMessage({ id: 'msg-2', channelId: 'general', senderName: 'user', content: 'World' });
+    await new Promise((resolve) => setTimeout(resolve, 2));
+    await store.createMessage({ id: 'msg-1', channelId: 'general', senderName: 'user', content: 'Hello' });
+
+    const messages = await store.listMessages('general');
+    expect(messages).toHaveLength(2);
+    expect(messages.map((message) => message.content)).toEqual(['World', 'Hello']);
   });
 
-  it('filters by channelId', () => {
-    store.createChannel('other', 'other');
-    store.createMessage({ id: 'msg-1', channelId: 'general', senderName: 'user', content: 'A' });
-    store.createMessage({ id: 'msg-2', channelId: 'other', senderName: 'user', content: 'B' });
-    expect(store.listMessages('general')).toHaveLength(1);
-    expect(store.listMessages('other')).toHaveLength(1);
+  it('filters by channelId', async () => {
+    await store.createChannel('other', 'other');
+    await store.createMessage({ id: 'msg-1', channelId: 'general', senderName: 'user', content: 'A' });
+    await store.createMessage({ id: 'msg-2', channelId: 'other', senderName: 'user', content: 'B' });
+    expect(await store.listMessages('general')).toHaveLength(1);
+    expect(await store.listMessages('other')).toHaveLength(1);
   });
 });
 
 describe('agents', () => {
-  it('creates and lists agents', () => {
-    store.createAgent({
+  it('returns the created agent from getAgent', async () => {
+    await store.createAgent({
       id: 'agent-1',
       name: 'my-agent',
+      displayName: 'My Agent',
       runtime: 'claude',
+      model: 'sonnet',
+      systemPrompt: 'Be concise',
       status: 'inactive',
       createdAt: new Date().toISOString(),
     });
-    expect(store.listAgents()).toHaveLength(1);
-    expect(store.getAgent('agent-1')?.name).toBe('my-agent');
+
+    const agent = await store.getAgent('agent-1');
+    expect(agent).toMatchObject({
+      id: 'agent-1',
+      name: 'my-agent',
+      displayName: 'My Agent',
+      runtime: 'claude',
+      model: 'sonnet',
+      systemPrompt: 'Be concise',
+      status: 'inactive',
+    });
   });
 
-  it('updates agent status', () => {
-    store.createAgent({
+  it('updates agent status', async () => {
+    await store.createAgent({
       id: 'agent-1',
       name: 'my-agent',
       runtime: 'claude',
       status: 'inactive',
       createdAt: new Date().toISOString(),
     });
-    store.updateAgentStatus('agent-1', 'running');
-    expect(store.getAgent('agent-1')?.status).toBe('running');
+    await store.updateAgentStatus('agent-1', 'running');
+    expect((await store.getAgent('agent-1'))?.status).toBe('running');
   });
 });
 
 describe('machines', () => {
-  it('upserts machine from daemon ready', () => {
+  it('returns the upserted machine from getMachine', async () => {
     const machine = {
       id: 'machine-1',
       hostname: 'my-host',
@@ -76,13 +91,42 @@ describe('machines', () => {
       status: 'online' as const,
       connectedAt: new Date().toISOString(),
     };
-    store.upsertMachine(machine);
-    expect(store.getMachine('machine-1')?.hostname).toBe('my-host');
-    expect(store.listMachines()).toHaveLength(1);
+
+    await store.upsertMachine(machine);
+
+    expect(await store.getMachine('machine-1')).toEqual(machine);
   });
 
-  it('sets machine offline', () => {
-    store.upsertMachine({
+  it('updates an existing machine on repeated upsert', async () => {
+    await store.upsertMachine({
+      id: 'machine-1',
+      hostname: 'old-host',
+      os: 'linux',
+      daemonVersion: '0.1.0',
+      runtimes: [],
+      runtimeVersions: {},
+      status: 'online',
+      connectedAt: new Date().toISOString(),
+    });
+    await store.upsertMachine({
+      id: 'machine-1',
+      hostname: 'new-host',
+      os: 'darwin',
+      daemonVersion: '0.2.0',
+      runtimes: ['codex'],
+      runtimeVersions: { codex: '2.0' },
+      status: 'online',
+      connectedAt: new Date().toISOString(),
+    });
+
+    const machines = await store.listMachines();
+    expect(machines).toHaveLength(1);
+    expect(machines[0].hostname).toBe('new-host');
+    expect(machines[0].runtimes).toEqual(['codex']);
+  });
+
+  it('sets machine offline', async () => {
+    await store.upsertMachine({
       id: 'machine-1',
       hostname: 'h',
       os: 'linux',
@@ -92,7 +136,7 @@ describe('machines', () => {
       status: 'online',
       connectedAt: new Date().toISOString(),
     });
-    store.setMachineOffline('machine-1');
-    expect(store.getMachine('machine-1')?.status).toBe('offline');
+    await store.setMachineOffline('machine-1');
+    expect((await store.getMachine('machine-1'))?.status).toBe('offline');
   });
 });

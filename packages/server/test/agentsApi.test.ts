@@ -2,7 +2,9 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { buildApp } from '../src/app.js';
 import { resetStore } from '../src/db.js';
 
-beforeEach(() => resetStore());
+beforeEach(async () => {
+  await resetStore();
+});
 
 describe('GET /api/channels', () => {
   it('returns default general channel', async () => {

@@ -1,0 +1,40 @@
+import { sqliteTable, text } from 'drizzle-orm/sqlite-core';
+
+export const channels = sqliteTable('channels', {
+  id: text('id').primaryKey(),
+  name: text('name').notNull(),
+  createdAt: text('created_at').notNull(),
+});
+
+export const messages = sqliteTable('messages', {
+  id: text('id').primaryKey(),
+  channelId: text('channel_id').notNull(),
+  senderName: text('sender_name').notNull(),
+  content: text('content').notNull(),
+  agentId: text('agent_id'),
+  createdAt: text('created_at').notNull(),
+});
+
+export const agents = sqliteTable('agents', {
+  id: text('id').primaryKey(),
+  name: text('name').notNull(),
+  displayName: text('display_name'),
+  description: text('description'),
+  runtime: text('runtime').notNull(),
+  model: text('model'),
+  systemPrompt: text('system_prompt'),
+  machineId: text('machine_id'),
+  status: text('status').notNull(),
+  createdAt: text('created_at').notNull(),
+});
+
+export const machines = sqliteTable('machines', {
+  id: text('id').primaryKey(),
+  hostname: text('hostname').notNull(),
+  os: text('os').notNull(),
+  daemonVersion: text('daemon_version').notNull(),
+  runtimes: text('runtimes').notNull(),
+  runtimeVersions: text('runtime_versions').notNull(),
+  status: text('status').notNull(),
+  connectedAt: text('connected_at').notNull(),
+});

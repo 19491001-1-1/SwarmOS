@@ -7,8 +7,11 @@ import { agentRoutes } from './routes/agents.js';
 import { machineRoutes } from './routes/machines.js';
 import { daemonSocketHandler } from './ws/daemonSocket.js';
 import { browserSocketHandler } from './ws/browserSocket.js';
+import { initDb } from './db.js';
 
 export async function buildApp(opts: { logger?: boolean } = {}) {
+  await initDb();
+
   const app = Fastify({ logger: opts.logger ?? false });
 
   await app.register(fastifyCors, { origin: true });

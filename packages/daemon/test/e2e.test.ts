@@ -22,7 +22,7 @@ describe('E2E: fake runtime agent loop', () => {
     const { buildApp } = await import('../../server/src/app.js');
     const { resetStore, getStore } = await import('../../server/src/db.js');
 
-    resetStore();
+    await resetStore();
     serverApp = await buildApp();
     await serverApp.listen({ port: 0, host: '127.0.0.1' });
     const address = serverApp.server.address();
@@ -77,7 +77,7 @@ describe('E2E: fake runtime agent loop', () => {
   it('server sends agent:start to daemon when agent is started', async () => {
     // The daemon should have received agent:start — verify agent status was updated
     const { getStore } = await import('../../server/src/db.js');
-    const agent = getStore().getAgent(agentId);
+    const agent = await getStore().getAgent(agentId);
     // Status should be 'starting' (we sent start but daemon hasn't acked yet)
     expect(['starting', 'running', 'idle']).toContain(agent?.status);
   });
@@ -104,8 +104,8 @@ describe('E2E: fake runtime agent loop', () => {
       });
 
       // Also watch for the message to appear in the store
-      const interval = setInterval(() => {
-        const msgs = getStore().listMessages('general');
+      const interval = setInterval(async () => {
+        const msgs = await getStore().listMessages('general');
         const echo = msgs.find((m) => m.content.startsWith('Echo:'));
         if (echo) {
           clearInterval(interval);

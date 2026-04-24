@@ -24,7 +24,7 @@ export async function agentRoutes(app: FastifyInstance) {
     const { name, displayName, description, runtime, model, systemPrompt, machineId } = req.body;
     if (!name || !runtime) return reply.status(400).send({ error: 'name and runtime required' });
 
-    const agent = getStore().createAgent({
+    const agent = await getStore().createAgent({
       id: nanoid(),
       name,
       displayName,
@@ -44,16 +44,16 @@ export async function agentRoutes(app: FastifyInstance) {
     Body: { machineId?: string; displayName?: string; model?: string; systemPrompt?: string };
   }>('/api/agents/:id', async (req, reply) => {
     const store = getStore();
-    const agent = store.getAgent(req.params.id);
+    const agent = await store.getAgent(req.params.id);
     if (!agent) return reply.status(404).send({ error: 'Agent not found' });
-    const updated = store.updateAgent(agent.id, req.body);
+    const updated = await store.updateAgent(agent.id, req.body);
     if (updated) eventBus.emit({ type: 'agent:update', agent: updated });
     return updated;
   });
 
   app.post<{ Params: { id: string } }>('/api/agents/:id/start', async (req, reply) => {
     const store = getStore();
-    const agent = store.getAgent(req.params.id);
+    const agent = await store.getAgent(req.params.id);
     if (!agent) return reply.status(404).send({ error: 'Agent not found' });
     if (!agent.machineId) return reply.status(400).send({ error: 'Agent has no machine assigned' });
 
@@ -74,19 +74,19 @@ export async function agentRoutes(app: FastifyInstance) {
 
     if (!sent) return reply.status(503).send({ error: 'Machine not connected' });
 
-    const updated = store.updateAgentStatus(agent.id, 'starting')!;
+    const updated = (await store.updateAgentStatus(agent.id, 'starting'))!;
     eventBus.emit({ type: 'agent:update', agent: updated });
     return updated;
   });
 
   app.post<{ Params: { id: string } }>('/api/agents/:id/stop', async (req, reply) => {
     const store = getStore();
-    const agent = store.getAgent(req.params.id);
+    const agent = await store.getAgent(req.params.id);
     if (!agent) return reply.status(404).send({ error: 'Agent not found' });
     if (!agent.machineId) return reply.status(400).send({ error: 'Agent has no machine assigned' });
 
     daemonRegistry.send(agent.machineId, { type: 'agent:stop', agentId: agent.id });
-    const updated = store.updateAgentStatus(agent.id, 'inactive')!;
+    const updated = (await store.updateAgentStatus(agent.id, 'inactive'))!;
     eventBus.emit({ type: 'agent:update', agent: updated });
     return updated;
   });
