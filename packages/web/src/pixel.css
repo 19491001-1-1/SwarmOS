@@ -1,0 +1,49 @@
+/* Pixel style global tokens */
+* { box-sizing: border-box; }
+
+:root {
+  --yellow: #FFD700;
+  --yellow-dark: #e6c200;
+  --pink: #FF4D8D;
+  --black: #000;
+  --white: #fff;
+  --bg: #f5f0e8;
+  --border: 2px solid #000;
+  --font: 'Courier New', 'Courier', monospace;
+}
+
+body {
+  font-family: var(--font);
+  background: var(--bg);
+  color: var(--black);
+}
+
+/* Pixel button */
+.px-btn {
+  font-family: var(--font);
+  font-weight: 700;
+  border: var(--border);
+  border-radius: 0;
+  cursor: pointer;
+  box-shadow: 3px 3px 0 #000;
+  transition: box-shadow 0.05s, transform 0.05s;
+  user-select: none;
+}
+.px-btn:active {
+  box-shadow: 0 0 0 #000;
+  transform: translate(2px, 2px);
+}
+
+/* Pixel input */
+.px-input {
+  font-family: var(--font);
+  border: var(--border);
+  border-radius: 0;
+  outline: none;
+  background: var(--white);
+  color: var(--black);
+}
+.px-input:focus {
+  outline: 2px solid var(--pink);
+  outline-offset: -2px;
+}

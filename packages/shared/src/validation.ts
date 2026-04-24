@@ -1,0 +1,103 @@
+import { z } from 'zod';
+
+export const RuntimeIdSchema = z.enum(['claude', 'codex', 'gemini']);
+
+export const AgentStatusSchema = z.enum(['inactive', 'starting', 'running', 'working', 'idle', 'error']);
+
+export const AgentRuntimeConfigSchema = z.object({
+  runtime: RuntimeIdSchema,
+  model: z.string().optional(),
+  name: z.string(),
+  displayName: z.string().optional(),
+  description: z.string().optional(),
+  systemPrompt: z.string().optional(),
+  envVars: z.record(z.string()).optional(),
+});
+
+export const AgentDeliverySchema = z.object({
+  id: z.string(),
+  channelId: z.string(),
+  channelName: z.string(),
+  senderName: z.string(),
+  content: z.string(),
+  createdAt: z.string(),
+});
+
+export const DaemonToServerSchema = z.discriminatedUnion('type', [
+  z.object({
+    type: z.literal('ready'),
+    machineId: z.string().optional(),
+    hostname: z.string(),
+    os: z.string(),
+    daemonVersion: z.string(),
+    runtimes: z.array(RuntimeIdSchema),
+    runtimeVersions: z.record(z.string()),
+    runningAgents: z.array(z.string()),
+    capabilities: z.array(z.string()),
+  }),
+  z.object({ type: z.literal('pong') }),
+  z.object({
+    type: z.literal('agent:status'),
+    agentId: z.string(),
+    status: AgentStatusSchema,
+    launchId: z.string().optional(),
+  }),
+  z.object({
+    type: z.literal('agent:activity'),
+    agentId: z.string(),
+    activity: z.string(),
+    detail: z.string().optional(),
+    launchId: z.string().optional(),
+  }),
+  z.object({
+    type: z.literal('agent:session'),
+    agentId: z.string(),
+    sessionId: z.string(),
+    launchId: z.string().optional(),
+  }),
+  z.object({
+    type: z.literal('agent:message'),
+    agentId: z.string(),
+    channelId: z.string(),
+    content: z.string(),
+    inReplyToMessageId: z.string().optional(),
+  }),
+  z.object({
+    type: z.literal('agent:deliver:ack'),
+    agentId: z.string(),
+    seq: z.number(),
+  }),
+  z.object({
+    type: z.literal('machine:runtime_models:result'),
+    requestId: z.string(),
+    models: z.array(z.string()).optional(),
+    default: z.string().optional(),
+    error: z.string().optional(),
+  }),
+]);
+
+export const ServerToDaemonSchema = z.discriminatedUnion('type', [
+  z.object({ type: z.literal('ping') }),
+  z.object({
+    type: z.literal('agent:start'),
+    agentId: z.string(),
+    config: AgentRuntimeConfigSchema,
+    launchId: z.string(),
+    wakeMessage: AgentDeliverySchema.optional(),
+  }),
+  z.object({ type: z.literal('agent:stop'), agentId: z.string() }),
+  z.object({
+    type: z.literal('agent:deliver'),
+    agentId: z.string(),
+    seq: z.number(),
+    message: AgentDeliverySchema,
+    config: AgentRuntimeConfigSchema.optional(),
+    channelId: z.string().optional(),
+  }),
+  z.object({ type: z.literal('agent:reset-workspace'), agentId: z.string() }),
+  z.object({
+    type: z.literal('machine:runtime_models:detect'),
+    runtime: RuntimeIdSchema,
+    requestId: z.string(),
+  }),
+]);

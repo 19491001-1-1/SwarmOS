@@ -1,0 +1,19 @@
+{
+  "name": "agent-workspace",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "start": "bash start.sh",
+    "dev": "pnpm --parallel --filter @mini-slock/server --filter @mini-slock/web dev",
+    "daemon": "pnpm --filter @mini-slock/daemon start",
+    "test": "pnpm -r test",
+    "typecheck": "pnpm -r typecheck",
+    "verify": "pnpm typecheck && pnpm test"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.5",
+    "tsx": "^4.11.0",
+    "vitest": "^1.6.0",
+    "@types/node": "^20.12.0"
+  }
+}
