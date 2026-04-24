@@ -9,7 +9,7 @@
   "scripts": {
     "start": "tsx src/cli.ts",
     "build": "tsc",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "pnpm --filter @mini-slock/shared build && tsc --noEmit",
     "test": "vitest run"
   },
   "dependencies": {
