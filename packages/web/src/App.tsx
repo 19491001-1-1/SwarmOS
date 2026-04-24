@@ -4,7 +4,7 @@ import { ChannelView } from './components/ChannelView.js';
 import { Composer } from './components/Composer.js';
 import { AgentPanel } from './components/AgentPanel.js';
 import type { Channel, Message, Agent, Machine } from './api.js';
-import { getChannels, getMessages, sendMessage, getAgents, getMachines } from './api.js';
+import { API_BASE, getChannels, getMessages, sendMessage, getAgents, getMachines } from './api.js';
 
 export function App() {
   const [channels, setChannels] = useState<Channel[]>([]);
@@ -46,7 +46,10 @@ export function App() {
 
   // WebSocket for real-time updates
   useEffect(() => {
-    const wsUrl = `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/ws`;
+    const wsBase = API_BASE
+      ? API_BASE.replace(/^https:/, 'wss:').replace(/^http:/, 'ws:')
+      : `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}`;
+    const wsUrl = `${wsBase}/ws`;
     const ws = new WebSocket(wsUrl);
     wsRef.current = ws;
 

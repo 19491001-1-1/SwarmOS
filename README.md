@@ -48,6 +48,24 @@ Or directly:
 pnpm --filter @mini-slock/daemon start -- --server-url http://localhost:3000 --api-key dev-machine-key
 ```
 
+### Cloudflare central hub
+
+To run Xoxiang with a public centralized server, deploy `packages/cloudflare`:
+
+```bash
+pnpm --filter @mini-slock/cloudflare exec wrangler login
+pnpm --filter @mini-slock/cloudflare deploy
+```
+
+Then point daemons and the web UI at the Worker URL:
+
+```bash
+pnpm --filter @mini-slock/daemon start -- --server-url https://xoxiang-hub.<account>.workers.dev --api-key dev-machine-key
+VITE_API_BASE=https://xoxiang-hub.<account>.workers.dev pnpm --filter @mini-slock/web dev
+```
+
+See `docs/cloudflare-central-hub.md` for the full workflow and production notes.
+
 ## Verify (typecheck + tests)
 
 ```bash

@@ -1,0 +1,28 @@
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "xoxiang-hub",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-04-24",
+  "compatibility_flags": ["nodejs_compat"],
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1
+  },
+  "vars": {
+    "DAEMON_API_KEY": "dev-machine-key"
+  },
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "HUB",
+        "class_name": "XoxiangHub"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["XoxiangHub"]
+    }
+  ]
+}
