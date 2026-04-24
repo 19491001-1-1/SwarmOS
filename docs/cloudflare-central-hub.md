@@ -173,6 +173,52 @@ Full repo verification:
 pnpm verify
 ```
 
+## CI/CD
+
+GitHub Actions workflows are in `.github/workflows/`. Push to `main` triggers automatic CI and deployment.
+
+### Required GitHub Secrets
+
+Configure in repo **Settings → Secrets and variables → Actions**:
+
+| Secret | Purpose |
+|--------|---------|
+| `CLOUDFLARE_API_TOKEN` | Wrangler auth — needs Workers Scripts Edit + Cloudflare Pages Edit + Durable Objects Edit |
+| `CLOUDFLARE_ACCOUNT_ID` | Your Cloudflare account ID |
+| `DAEMON_API_KEY` | Uploaded to the deployed Worker as a Cloudflare secret |
+
+### Workflows
+
+| File | Trigger | What it does |
+|------|---------|-------------|
+| `ci.yml` | PRs + push to `main` | typecheck, test, Worker dry-run (no secrets needed) |
+| `deploy-cloudflare-hub.yml` | push to `main` + manual | verify, upload `DAEMON_API_KEY`, deploy Worker |
+| `deploy-cloudflare-pages.yml` | push to `main` + manual | build web, deploy to Cloudflare Pages |
+
+### Manual Trigger
+
+```bash
+gh workflow run deploy-cloudflare-hub.yml
+gh workflow run deploy-cloudflare-pages.yml
+```
+
+### Check Recent Runs
+
+```bash
+gh run list --limit 10
+gh run watch <run-id>
+```
+
+### Local Deployment (still works)
+
+```bash
+# Deploy Worker
+pnpm --filter @mini-slock/cloudflare run deploy
+
+# Deploy Pages
+pnpm deploy:web:pages
+```
+
 ## Connect Daemons
 
 After deployment, start each machine's daemon against the Worker URL:

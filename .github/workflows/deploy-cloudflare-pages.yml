@@ -1,0 +1,53 @@
+name: Deploy Cloudflare Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  VITE_API_BASE: https://xoxiang-hub.xingke0.workers.dev
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build web UI
+        run: pnpm --filter @mini-slock/web build
+        env:
+          VITE_API_BASE: ${{ env.VITE_API_BASE }}
+
+      - name: Deploy to Cloudflare Pages
+        id: pages_deploy
+        run: |
+          output=$(pnpm --filter @mini-slock/cloudflare exec wrangler pages deploy packages/web/dist \
+            --project-name xoxiang-web \
+            --branch main \
+            --commit-dirty=true 2>&1)
+          echo "$output"
+          url=$(echo "$output" | grep -oE 'https://[^ ]+\.pages\.dev[^ ]*' | tail -1)
+          if [ -n "$url" ]; then
+            echo "pages_url=$url" >> "$GITHUB_OUTPUT"
+            echo "::notice::Pages deployed: $url"
+          fi
+
+      - name: Report Pages URL
+        if: steps.pages_deploy.outputs.pages_url != ''
+        run: echo "Deployed to ${{ steps.pages_deploy.outputs.pages_url }}"

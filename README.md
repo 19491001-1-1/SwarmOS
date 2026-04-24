@@ -54,7 +54,7 @@ To run Xoxiang with a public centralized server, deploy `packages/cloudflare`:
 
 ```bash
 pnpm --filter @mini-slock/cloudflare exec wrangler login
-pnpm --filter @mini-slock/cloudflare deploy
+pnpm --filter @mini-slock/cloudflare run deploy
 ```
 
 Then point daemons and the web UI at the Worker URL:
@@ -62,6 +62,23 @@ Then point daemons and the web UI at the Worker URL:
 ```bash
 pnpm --filter @mini-slock/daemon start -- --server-url https://xoxiang-hub.<account>.workers.dev --api-key dev-machine-key
 VITE_API_BASE=https://xoxiang-hub.<account>.workers.dev pnpm --filter @mini-slock/web dev
+```
+
+#### CI/CD (recommended)
+
+Push to `main` automatically deploys via GitHub Actions. Required secrets in repo Settings:
+
+| Secret | Purpose |
+|--------|---------|
+| `CLOUDFLARE_API_TOKEN` | Wrangler auth |
+| `CLOUDFLARE_ACCOUNT_ID` | Your account |
+| `DAEMON_API_KEY` | Worker secret |
+
+To trigger manually:
+
+```bash
+gh workflow run deploy-cloudflare-hub.yml
+gh workflow run deploy-cloudflare-pages.yml
 ```
 
 See `docs/cloudflare-central-hub.md` for the full workflow and production notes.
