@@ -6,6 +6,7 @@
     "start": "bash start.sh",
     "dev": "pnpm --parallel --filter @mini-slock/server --filter @mini-slock/web dev",
     "daemon": "pnpm --filter @mini-slock/daemon start",
+    "deploy:web:pages": "bash scripts/deploy-cloudflare-pages.sh",
     "test": "pnpm -r test",
     "typecheck": "pnpm -r typecheck",
     "verify": "pnpm typecheck && pnpm test"

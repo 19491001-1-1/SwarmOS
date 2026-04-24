@@ -204,6 +204,44 @@ The web app will use:
 - `VITE_API_BASE/api/*` for REST
 - `VITE_API_BASE/ws` for realtime browser events
 
+### Deploy Static Web To Cloudflare Pages
+
+Use the standalone deploy script:
+
+```bash
+pnpm deploy:web:pages
+```
+
+The script runs:
+
+1. `wrangler whoami` to verify Cloudflare authentication.
+2. `VITE_API_BASE=<hub-url> pnpm --filter @mini-slock/web build`.
+3. `wrangler pages deploy packages/web/dist`.
+4. If the Pages project does not exist yet, `wrangler pages project create` creates it and the deploy is retried.
+
+Defaults:
+
+```text
+CLOUDFLARE_PAGES_PROJECT=xoxiang-web
+CLOUDFLARE_PAGES_BRANCH=main
+VITE_API_BASE=https://xoxiang-hub.xingke0.workers.dev
+```
+
+Override when needed:
+
+```bash
+CLOUDFLARE_PAGES_PROJECT=my-xoxiang-web \
+CLOUDFLARE_PAGES_BRANCH=production \
+VITE_API_BASE=https://xoxiang-hub.xingke0.workers.dev \
+pnpm deploy:web:pages
+```
+
+Direct script path:
+
+```bash
+scripts/deploy-cloudflare-pages.sh
+```
+
 ## API Surface Implemented
 
 The Worker currently mirrors the local server endpoints needed by the existing web and daemon:
