@@ -238,6 +238,15 @@ export class SqliteStore {
     return machine;
   }
 
+  async mergeMachines(targetMachineId: string, duplicateMachineIds: string[]): Promise<void> {
+    await initDb();
+    const duplicates = duplicateMachineIds.filter((id) => id !== targetMachineId);
+    if (duplicates.length === 0) return;
+
+    await getDb().update(agents).set({ machineId: targetMachineId }).where(inArray(agents.machineId, duplicates));
+    await getDb().delete(machines).where(inArray(machines.id, duplicates));
+  }
+
   async setMachineOffline(id: string): Promise<void> {
     await initDb();
     await getDb().update(machines).set({ status: 'offline' }).where(eq(machines.id, id));

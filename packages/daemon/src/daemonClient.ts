@@ -5,6 +5,7 @@ import type { DaemonToServer, ServerToDaemon } from '@mini-slock/shared';
 import { ServerToDaemonSchema } from '@mini-slock/shared';
 import { detectRuntimes } from './runtimeDetector.js';
 import { AgentProcessManager } from './agentProcessManager.js';
+import { getMachineId } from './machineIdentity.js';
 
 const DAEMON_VERSION = '0.1.0';
 
@@ -85,6 +86,7 @@ export class DaemonClient {
 
     this.sendMessage({
       type: 'ready',
+      machineId: await getMachineId(),
       hostname: os.hostname(),
       os: process.platform,
       daemonVersion: DAEMON_VERSION,

@@ -40,6 +40,7 @@ export async function daemonSocketHandler(app: FastifyInstance) {
 
         if (msg.type === 'ready') {
           machineId = msg.machineId ?? (await findExistingMachineId(msg.hostname, msg.os)) ?? nanoid();
+          await mergeDuplicateMachines(machineId, msg.hostname, msg.os);
           const machine = await store.upsertMachine({
             id: machineId,
             hostname: msg.hostname,
@@ -113,4 +114,12 @@ export async function daemonSocketHandler(app: FastifyInstance) {
 async function findExistingMachineId(hostname: string, os: string): Promise<string | undefined> {
   const machines = await getStore().listMachines();
   return machines.find((machine) => machine.hostname === hostname && machine.os === os)?.id;
+}
+
+async function mergeDuplicateMachines(targetMachineId: string, hostname: string, os: string): Promise<void> {
+  const store = getStore();
+  const duplicateIds = (await store.listMachines())
+    .filter((machine) => machine.id !== targetMachineId && machine.hostname === hostname && machine.os === os)
+    .map((machine) => machine.id);
+  await store.mergeMachines(targetMachineId, duplicateIds);
 }

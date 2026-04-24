@@ -236,4 +236,55 @@ describe('daemon WebSocket', () => {
     expect((await store.getAgent('agent-1'))?.machineId).toBe('fresh-machine');
     ws.close();
   });
+
+  it('merges duplicate machines when daemon reports a stable machine id', async () => {
+    const store = getStore();
+    await store.upsertMachine({
+      id: 'generated-machine-1',
+      hostname: 'same-host',
+      os: 'linux',
+      daemonVersion: '0.1.0',
+      runtimes: ['claude'],
+      runtimeVersions: { claude: '1.0' },
+      status: 'offline',
+      connectedAt: new Date().toISOString(),
+    });
+    await store.upsertMachine({
+      id: 'generated-machine-2',
+      hostname: 'same-host',
+      os: 'linux',
+      daemonVersion: '0.1.0',
+      runtimes: ['claude'],
+      runtimeVersions: { claude: '1.0' },
+      status: 'offline',
+      connectedAt: new Date().toISOString(),
+    });
+    await store.createAgent({
+      id: 'agent-1',
+      name: 'bot',
+      runtime: 'claude',
+      status: 'inactive',
+      machineId: 'generated-machine-1',
+      createdAt: new Date().toISOString(),
+    });
+
+    const ws = await connectDaemon('dev-machine-key');
+    await sendAndWait(ws, {
+      type: 'ready',
+      machineId: 'stable-machine',
+      hostname: 'same-host',
+      os: 'linux',
+      daemonVersion: '0.1.0',
+      runtimes: ['claude'],
+      runtimeVersions: { claude: '1.0' },
+      runningAgents: [],
+      capabilities: [],
+    });
+
+    const machines = await store.listMachines();
+    expect(machines).toHaveLength(1);
+    expect(machines[0].id).toBe('stable-machine');
+    expect((await store.getAgent('agent-1'))?.machineId).toBe('stable-machine');
+    ws.close();
+  });
 });
