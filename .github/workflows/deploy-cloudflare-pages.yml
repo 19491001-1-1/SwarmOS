@@ -44,16 +44,20 @@ jobs:
       - name: Deploy to Cloudflare Pages
         id: pages_deploy
         run: |
-          output=$(pnpm --filter @mini-slock/cloudflare exec wrangler pages deploy packages/web/dist \
+          set +e
+          pnpm --filter @mini-slock/cloudflare exec wrangler pages deploy packages/web/dist \
             --project-name xoxiang-web \
             --branch main \
-            --commit-dirty=true 2>&1)
-          echo "$output"
-          url=$(echo "$output" | grep -oE 'https://[^ ]+\.pages\.dev[^ ]*' | tail -1)
+            --commit-dirty=true 2>&1 | tee /tmp/wrangler-pages-deploy.log
+          status=${PIPESTATUS[0]}
+          set -e
+
+          url=$(grep -oE 'https://[^ ]+\.pages\.dev[^ ]*' /tmp/wrangler-pages-deploy.log | tail -1)
           if [ -n "$url" ]; then
             echo "pages_url=$url" >> "$GITHUB_OUTPUT"
             echo "::notice::Pages deployed: $url"
           fi
+          exit "$status"
 
       - name: Report Pages URL
         if: steps.pages_deploy.outputs.pages_url != ''
