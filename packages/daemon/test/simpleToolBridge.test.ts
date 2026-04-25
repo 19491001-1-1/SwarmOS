@@ -3,11 +3,16 @@ import {
   parseBridgeLine,
   parseDmLine,
   parseDelegateLine,
+  parseCreateTaskLine,
+  parseUpdateTaskLine,
   BRIDGE_MARKER,
   DM_BRIDGE_MARKER,
   DELEGATE_BRIDGE_MARKER,
+  CREATE_TASK_BRIDGE_MARKER,
+  UPDATE_TASK_BRIDGE_MARKER,
   buildDmInstruction,
   buildDelegateInstruction,
+  buildTaskInstruction,
 } from '../src/bridge/simpleToolBridge.js';
 
 describe('parseBridgeLine', () => {
@@ -93,5 +98,28 @@ describe('parseDmLine', () => {
 
   it('includes the DM marker in the generated instruction', () => {
     expect(buildDmInstruction()).toContain(DM_BRIDGE_MARKER);
+  });
+});
+
+describe('task bridge lines', () => {
+  it('extracts task creation fields', () => {
+    const result = parseCreateTaskLine(`${CREATE_TASK_BRIDGE_MARKER} {"title":"Fix daemon handoff","assignee":"codex","channel":"general"}`);
+    expect(result).toEqual({ title: 'Fix daemon handoff', assignee: 'codex', channel: 'general' });
+  });
+
+  it('extracts task status updates', () => {
+    const result = parseUpdateTaskLine(`${UPDATE_TASK_BRIDGE_MARKER} {"taskId":"task-1","status":"in_progress"}`);
+    expect(result).toEqual({ taskId: 'task-1', status: 'in_progress' });
+  });
+
+  it('rejects invalid task bridge lines', () => {
+    expect(parseCreateTaskLine(`${CREATE_TASK_BRIDGE_MARKER} {"title":""}`)).toBeNull();
+    expect(parseUpdateTaskLine(`${UPDATE_TASK_BRIDGE_MARKER} {"taskId":"task-1","status":"blocked"}`)).toBeNull();
+  });
+
+  it('includes task markers in generated instructions', () => {
+    const instruction = buildTaskInstruction();
+    expect(instruction).toContain(CREATE_TASK_BRIDGE_MARKER);
+    expect(instruction).toContain(UPDATE_TASK_BRIDGE_MARKER);
   });
 });

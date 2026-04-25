@@ -4,8 +4,8 @@ import { homedir } from 'node:os';
 import { drizzle, type LibSQLDatabase } from 'drizzle-orm/libsql';
 import { createClient, type Client } from '@libsql/client';
 import { asc, desc, eq, inArray, or } from 'drizzle-orm';
-import type { Channel, Message, Machine, Agent, RuntimeId, AgentStatus, AgentActivity, DirectMessage, DirectMessageThread, AgentDelegation, AgentTokenInfo } from '@mini-slock/shared';
-import { activities, agentDelegations, agentTokens, agents, channels, directMessages, machines, messages } from './schema.js';
+import type { Channel, Message, Machine, Agent, RuntimeId, AgentStatus, AgentActivity, DirectMessage, DirectMessageThread, AgentDelegation, AgentTokenInfo, Task, TaskStatus } from '@mini-slock/shared';
+import { activities, agentDelegations, agentTokens, agents, channels, directMessages, machines, messages, tasks } from './schema.js';
 
 type Database = LibSQLDatabase<typeof import('./schema.js')>;
 
@@ -32,7 +32,7 @@ async function ensureDbDirectory(path: string): Promise<void> {
 function createDatabase(): Database {
   const path = getDbPath();
   client = createClient({ url: getDbUrl(path) });
-  db = drizzle(client, { schema: { activities, agentDelegations, agentTokens, agents, channels, directMessages, machines, messages } });
+  db = drizzle(client, { schema: { activities, agentDelegations, agentTokens, agents, channels, directMessages, machines, messages, tasks } });
   return db;
 }
 
@@ -100,6 +100,19 @@ export async function initDb(): Promise<void> {
         agent_id TEXT PRIMARY KEY,
         token TEXT NOT NULL,
         created_at TEXT NOT NULL
+      )
+    `);
+    await database.run(`
+      CREATE TABLE IF NOT EXISTS tasks (
+        id TEXT PRIMARY KEY,
+        channel_id TEXT NOT NULL,
+        message_id TEXT,
+        title TEXT NOT NULL,
+        status TEXT NOT NULL,
+        creator_name TEXT NOT NULL,
+        assignee_id TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
       )
     `);
     await database.run(`
@@ -218,6 +231,20 @@ function toAgentDelegation(row: typeof agentDelegations.$inferSelect): AgentDele
     status: row.status as AgentDelegation['status'],
     error: row.error ?? undefined,
     createdAt: row.createdAt,
+  };
+}
+
+function toTask(row: typeof tasks.$inferSelect): Task {
+  return {
+    id: row.id,
+    channelId: row.channelId,
+    messageId: row.messageId ?? undefined,
+    title: row.title,
+    status: row.status as TaskStatus,
+    creatorName: row.creatorName,
+    assigneeId: row.assigneeId ?? undefined,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
   };
 }
 
@@ -365,6 +392,56 @@ export class SqliteStore {
       .where(or(eq(agentDelegations.fromAgentId, agentId), eq(agentDelegations.toAgentId, agentId)))
       .orderBy(desc(agentDelegations.createdAt));
     return rows.map(toAgentDelegation);
+  }
+
+  async listTasks(filter: { channelId?: string; status?: TaskStatus } = {}): Promise<Task[]> {
+    await initDb();
+    const rows = await getDb().select().from(tasks).orderBy(asc(tasks.createdAt));
+    return rows
+      .map(toTask)
+      .filter((task) => (!filter.channelId || task.channelId === filter.channelId) && (!filter.status || task.status === filter.status));
+  }
+
+  async getTask(id: string): Promise<Task | undefined> {
+    await initDb();
+    const [task] = await getDb().select().from(tasks).where(eq(tasks.id, id)).limit(1);
+    return task ? toTask(task) : undefined;
+  }
+
+  async createTask(task: Omit<Task, 'createdAt' | 'updatedAt'>): Promise<Task> {
+    await initDb();
+    const now = new Date().toISOString();
+    const created: Task = { ...task, title: task.title.slice(0, 200), createdAt: now, updatedAt: now };
+    await getDb().insert(tasks).values({
+      ...created,
+      messageId: created.messageId ?? null,
+      assigneeId: created.assigneeId ?? null,
+    });
+    return created;
+  }
+
+  async updateTask(id: string, patch: Partial<Pick<Task, 'status' | 'assigneeId'>>): Promise<Task | undefined> {
+    await initDb();
+    const existing = await this.getTask(id);
+    if (!existing) return undefined;
+    const updated: Task = { ...existing, ...patch, updatedAt: new Date().toISOString() };
+    await getDb()
+      .update(tasks)
+      .set({
+        status: updated.status,
+        assigneeId: updated.assigneeId ?? null,
+        updatedAt: updated.updatedAt,
+      })
+      .where(eq(tasks.id, id));
+    return updated;
+  }
+
+  async deleteTask(id: string): Promise<boolean> {
+    await initDb();
+    const existing = await this.getTask(id);
+    if (!existing) return false;
+    await getDb().delete(tasks).where(eq(tasks.id, id));
+    return true;
   }
 
   async listDirectMessages(agentId: string, otherId: string): Promise<DirectMessage[]> {
@@ -557,6 +634,7 @@ export async function resetStore(): Promise<void> {
   await database.delete(directMessages);
   await database.delete(agentDelegations);
   await database.delete(agentTokens);
+  await database.delete(tasks);
   await database.delete(agents);
   await database.delete(machines);
   await database.delete(channels);

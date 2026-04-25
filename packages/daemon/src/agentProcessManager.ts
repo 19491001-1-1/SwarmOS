@@ -3,7 +3,7 @@ import { existsSync } from 'fs';
 import { delimiter, dirname, isAbsolute, join, normalize, sep } from 'path';
 import { fileURLToPath } from 'url';
 import { spawn, type ChildProcess } from 'child_process';
-import type { AgentRuntimeConfig, AgentDelivery, AgentActivity, WorkspaceEntry, WorkspaceError } from '@mini-slock/shared';
+import type { AgentRuntimeConfig, AgentDelivery, AgentActivity, WorkspaceEntry, WorkspaceError, TaskStatus } from '@mini-slock/shared';
 import type { RuntimeDriver } from './drivers/types.js';
 import { claudeDriver } from './drivers/claude.js';
 import { codexDriver } from './drivers/codex.js';
@@ -44,6 +44,8 @@ export type AgentStatusCallback = (agentId: string, status: string) => void;
 export type AgentActivityCallback = (agentId: string, type: AgentActivity['type'], detail?: string) => void;
 export type AgentDmCallback = (fromAgentId: string, toAgentId: string, content: string) => void;
 export type AgentDelegateCallback = (fromAgentId: string, toAgentId: string, content: string, startIfInactive?: boolean) => void;
+export type AgentCreateTaskCallback = (agentId: string, title: string, channelId?: string, assigneeId?: string) => void;
+export type AgentUpdateTaskCallback = (agentId: string, taskId: string, status: TaskStatus) => void;
 
 interface AgentEntry {
   agentId: string;
@@ -63,6 +65,8 @@ export class AgentProcessManager {
   private onActivity: AgentActivityCallback;
   private onDm: AgentDmCallback;
   private onDelegate: AgentDelegateCallback;
+  private onCreateTask: AgentCreateTaskCallback;
+  private onUpdateTask: AgentUpdateTaskCallback;
   private serverUrl: string;
 
   constructor(
@@ -72,6 +76,8 @@ export class AgentProcessManager {
     onActivity: AgentActivityCallback = () => {},
     onDm: AgentDmCallback = () => {},
     onDelegate: AgentDelegateCallback = () => {},
+    onCreateTask: AgentCreateTaskCallback = () => {},
+    onUpdateTask: AgentUpdateTaskCallback = () => {},
     serverUrl = 'http://localhost:3000'
   ) {
     this.workspaceBase = workspaceBase;
@@ -80,6 +86,8 @@ export class AgentProcessManager {
     this.onActivity = onActivity;
     this.onDm = onDm;
     this.onDelegate = onDelegate;
+    this.onCreateTask = onCreateTask;
+    this.onUpdateTask = onUpdateTask;
     this.serverUrl = serverUrl;
   }
 
@@ -231,6 +239,20 @@ export class AgentProcessManager {
       this.appendTranscriptLater(entry, `${this.agentTranscriptName(entry)} -> delegate:${parsed.toAgentId}`, parsed.content);
       this.onDelegate(entry.agentId, parsed.toAgentId, parsed.content, parsed.startIfInactive);
       this.onActivity(entry.agentId, 'sending', `delegating to ${parsed.toAgentId}`);
+      return true;
+    }
+    if (parsed?.type === 'create_task') {
+      console.log(`[daemon] agent ${entry.agentId} create task: ${parsed.title}`);
+      this.appendTranscriptLater(entry, `${this.agentTranscriptName(entry)} -> task:create`, parsed.title);
+      this.onCreateTask(entry.agentId, parsed.title, parsed.channelId, parsed.assigneeId);
+      this.onActivity(entry.agentId, 'sending', 'creating task');
+      return true;
+    }
+    if (parsed?.type === 'update_task') {
+      console.log(`[daemon] agent ${entry.agentId} update task ${parsed.taskId}: ${parsed.status}`);
+      this.appendTranscriptLater(entry, `${this.agentTranscriptName(entry)} -> task:${parsed.taskId}`, parsed.status);
+      this.onUpdateTask(entry.agentId, parsed.taskId, parsed.status);
+      this.onActivity(entry.agentId, 'sending', `task:${parsed.taskId}`);
       return true;
     }
     return false;

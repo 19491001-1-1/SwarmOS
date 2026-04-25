@@ -25,7 +25,7 @@ describe('GET /api/version', () => {
     expect(res.statusCode).toBe(200);
     const body = res.json();
     expect(body.component).toBe('server');
-    expect(body.version).toBe(process.env.XOXIANG_VERSION || '0.1.0');
+    expect(body.version).toBe(process.env.XOXIANG_VERSION || '0.6.0');
     expect(body.version).toBeTruthy();
     await app.close();
   });

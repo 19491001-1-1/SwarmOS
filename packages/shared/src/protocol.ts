@@ -46,6 +46,20 @@ export type AgentDelegation = {
   createdAt: string;
 };
 
+export type TaskStatus = 'todo' | 'in_progress' | 'in_review' | 'done';
+
+export type Task = {
+  id: string;
+  channelId: string;
+  messageId?: string;
+  title: string;
+  status: TaskStatus;
+  creatorName: string;
+  assigneeId?: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type AgentTokenInfo = {
   agentId: string;
   token: string;
@@ -112,6 +126,8 @@ export type DaemonToServer =
   | { type: 'agent:session'; agentId: string; sessionId: string; launchId?: string }
   | { type: 'agent:dm'; fromAgentId: string; toAgentId: string; content: string }
   | { type: 'agent:delegate'; fromAgentId: string; toAgentId: string; content: string; startIfInactive?: boolean }
+  | { type: 'agent:create_task'; agentId: string; title: string; channelId?: string; assigneeId?: string }
+  | { type: 'agent:update_task'; agentId: string; taskId: string; status: TaskStatus }
   | { type: 'agent:message'; agentId: string; channelId: string; content: string; inReplyToMessageId?: string }
   | { type: 'agent:deliver:ack'; agentId: string; seq: number }
   | { type: 'workspace:result'; requestId: string; result: WorkspaceEntry | WorkspaceError }
@@ -174,4 +190,5 @@ export type BrowserEvent =
   | { type: 'agent:activity'; agentId: string; activity: AgentActivity }
   | { type: 'dm:new'; dm: DirectMessage }
   | { type: 'agent:delegation'; delegation: AgentDelegation }
+  | { type: 'task:update'; task: Task }
   | { type: 'machine:update'; machine: Machine };
