@@ -235,21 +235,27 @@ body {
 }
 
 .presence-avatar-active::before {
-  content: none;
+  content: '';
+  position: absolute;
+  inset: -5px;
+  border: 2px solid rgba(124, 58, 237, 0.55);
+  border-radius: 8px;
+  animation: avatar-breathing-ring 1.8s ease-in-out infinite;
+  pointer-events: none;
 }
 
-.presence-status-dot-active {
-  animation: terminal-cursor-blink 1s steps(1, end) infinite;
-}
-
-@keyframes terminal-cursor-blink {
-  0%,
-  49% {
-    opacity: 1;
+@keyframes avatar-breathing-ring {
+  0% {
+    opacity: 0.35;
+    transform: scale(0.94);
   }
-  50%,
+  50% {
+    opacity: 0.9;
+    transform: scale(1.08);
+  }
   100% {
-    opacity: 0;
+    opacity: 0.35;
+    transform: scale(0.94);
   }
 }
 
