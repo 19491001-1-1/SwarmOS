@@ -99,7 +99,7 @@ export function ChannelView({
   };
 
   return (
-    <div style={{
+    <div className="channel-view" style={{
       flex: 1,
       display: 'flex',
       flexDirection: 'column',
@@ -108,7 +108,7 @@ export function ChannelView({
       fontFamily: "'Courier New', monospace",
     }}>
       {/* Channel header */}
-      <div style={{
+      <div className="channel-header" style={{
         height: 48,
         padding: '0 16px',
         borderBottom: '2px solid #000',
@@ -172,7 +172,7 @@ export function ChannelView({
       </div>
 
       {/* Messages */}
-      <div ref={scrollRef} onScroll={handleScroll} style={{
+      <div ref={scrollRef} onScroll={handleScroll} className="message-list" style={{
         flex: 1,
         overflowY: 'auto',
         padding: '12px 16px',
@@ -201,7 +201,7 @@ export function ChannelView({
           const latestActivity = msg.agentId ? activitiesByAgent[msg.agentId]?.[0] : undefined;
 
           return (
-            <div key={msg.id} data-message-id={msg.id} className="message-row" style={{
+            <div key={msg.id} data-message-id={msg.id} className={`message-row${grouped ? ' message-row-grouped' : ''}`} style={{
               display: 'flex',
               gap: 10,
               padding: grouped ? '1px 0 1px 46px' : '8px 0 2px',

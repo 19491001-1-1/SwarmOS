@@ -48,7 +48,7 @@ export function ThreadPanel({
   }, [replies, targetMessageId, onTargetMessageSettled]);
 
   return (
-    <aside style={{
+    <aside className="right-panel right-panel-thread" style={{
       width: 340,
       maxWidth: '42vw',
       borderLeft: '1px solid #d7d7ca',

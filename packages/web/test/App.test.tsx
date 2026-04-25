@@ -25,11 +25,19 @@ describe('App', () => {
 
     expect(screen.queryByText('+ NEW')).toBeNull();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Open agents' }));
+    fireEvent.click(screen.getAllByRole('button', { name: 'Open agents' })[0]);
 
     await waitFor(() => {
       expect(screen.getByText('+ NEW')).toBeTruthy();
     });
+  });
+
+  it('opens the mobile navigation drawer from the top bar', async () => {
+    const { container } = render(<App />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open navigation' }));
+
+    expect(container.querySelector('.sidebar-mobile-open')).toBeTruthy();
   });
 });
 
