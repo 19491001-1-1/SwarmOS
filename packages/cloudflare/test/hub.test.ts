@@ -386,6 +386,56 @@ describe('input validation', () => {
     expect((await read.json()) as { tasks: Array<{ title: string }> }).toMatchObject({ tasks: [expect.objectContaining({ title: 'write v1 goal plan' })] });
   });
 
+  it('supports chat-native goal alignment and confirmation', async () => {
+    const pmCreated = await SELF.fetch('https://hub.test/api/agents', {
+      method: 'POST',
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({
+        name: `pm-${crypto.randomUUID()}`,
+        runtime: 'claude',
+        organization: { roles: ['Product Manager'], capabilities: ['requirements planning'] },
+      }),
+    });
+    const qaCreated = await SELF.fetch('https://hub.test/api/agents', {
+      method: 'POST',
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({
+        name: `qa-${crypto.randomUUID()}`,
+        runtime: 'claude',
+        organization: { roles: ['QA'], capabilities: ['quality review'] },
+      }),
+    });
+    const pm = (await pmCreated.json()) as { id: string };
+    const qa = (await qaCreated.json()) as { id: string };
+    const message = await SELF.fetch('https://hub.test/api/channels/general/messages', {
+      method: 'POST',
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ senderName: 'user', content: `帮我做一个 Mac 全局语音输入法，从需求到技术方案都安排一下 ${crypto.randomUUID()}` }),
+    });
+    const msg = (await message.json()) as { id: string; content: string };
+    const started = await SELF.fetch(`https://hub.test/api/messages/${msg.id}/start-goal-alignment`, {
+      method: 'POST',
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ requesterName: 'user' }),
+    });
+    expect(started.status).toBe(201);
+    const alignment = (await started.json()) as { id: string; recommendedAgentIds: string[]; reviewerAgentIds: string[] };
+    expect(alignment.recommendedAgentIds).toContain(pm.id);
+    expect(alignment.reviewerAgentIds).toContain(qa.id);
+
+    const confirmed = await SELF.fetch(`https://hub.test/api/goal-alignments/${alignment.id}/confirm`, {
+      method: 'POST',
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ requesterName: 'user' }),
+    });
+    expect(confirmed.status).toBe(201);
+    const confirmedBody = (await confirmed.json()) as { goal: { objective: string; status: string }; tasks: Array<{ context?: { goalObjective?: string } }> };
+    expect(confirmedBody.goal).toMatchObject({ objective: msg.content, status: 'confirmed' });
+    expect(confirmedBody.tasks).toEqual(expect.arrayContaining([
+      expect.objectContaining({ context: expect.objectContaining({ goalObjective: msg.content }) }),
+    ]));
+  });
+
   it('updates profile fields and stores direct messages', async () => {
     const created = await SELF.fetch('https://hub.test/api/agents', {
       method: 'POST',

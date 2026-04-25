@@ -23,9 +23,13 @@ export type Machine = { id: string; hostname: string; os: string; runtimes: stri
 export type VersionInfo = { component: string; version: string; commit?: string; build?: string };
 export type TaskStatus = 'todo' | 'in_progress' | 'in_review' | 'done';
 export type GoalBriefStatus = 'draft' | 'confirmed' | 'cancelled' | 'completed';
+export type GoalAlignmentStatus = 'needs_clarification' | 'awaiting_confirmation' | 'confirmed' | 'cancelled';
+export type GoalAlignmentRiskLevel = 'low' | 'medium' | 'high';
 export type TaskContext = { goalId?: string; goalObjective?: string; goal?: string; background?: string; acceptanceCriteria?: string[]; constraints?: string[]; assumptions?: string[]; risks?: string[]; dependencies?: string[]; sourceMessageIds?: string[]; artifacts?: string[]; requesterAgentId?: string; previousAgentId?: string; handoffNotes?: string[]; privateNotes?: string[] };
 export type Task = { id: string; channelId: string; messageId?: string; title: string; status: TaskStatus; creatorName: string; assigneeId?: string; context?: TaskContext; createdAt: string; updatedAt: string };
 export type GoalBrief = { id: string; channelId: string; sourceMessageId?: string; requesterName: string; objective: string; background: string[]; successCriteria: string[]; constraints: string[]; assumptions: string[]; risks: string[]; status: GoalBriefStatus; createdAt: string; updatedAt: string };
+export type GoalAlignmentTaskDraft = { title: string; assigneeId?: string; dependencies?: string[]; acceptanceCriteria?: string[]; artifacts?: string[]; role?: 'owner' | 'reviewer' | 'support' };
+export type GoalAlignment = { id: string; channelId: string; threadRootId: string; sourceMessageId: string; goalId?: string; status: GoalAlignmentStatus; objective: string; questions: string[]; answers: string[]; successCriteria: string[]; constraints: string[]; planSummary?: string; taskDrafts: GoalAlignmentTaskDraft[]; recommendedAgentIds: string[]; reviewerAgentIds: string[]; recommendationReasons: Record<string, string>; gaps: string[]; riskLevel: GoalAlignmentRiskLevel; createdAt: string; updatedAt: string };
 export type ReminderStatus = 'pending' | 'triggered' | 'cancelled';
 export type Reminder = { id: string; agentId: string; channelId: string; message: string; triggerAt: string; status: ReminderStatus; createdAt: string };
 export type AuthWhoami = { authenticated: boolean; mode: 'token' | 'anonymous' };
@@ -284,6 +288,36 @@ export async function createGoalTasks(goalId: string, data: { creatorName?: stri
     body: JSON.stringify(data),
   });
   if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error ?? 'Create goal tasks failed');
+  return r.json();
+}
+
+export async function startGoalAlignment(messageId: string, data: { requesterName?: string; objective?: string } = {}): Promise<GoalAlignment> {
+  const r = await apiFetch(`${API_BASE}/api/messages/${messageId}/start-goal-alignment`, {
+    method: 'POST',
+    headers: authHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(data),
+  });
+  if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error ?? 'Start goal alignment failed');
+  return r.json();
+}
+
+export async function patchGoalAlignment(alignmentId: string, data: Partial<Pick<GoalAlignment, 'status' | 'objective' | 'questions' | 'answers' | 'successCriteria' | 'constraints' | 'planSummary' | 'taskDrafts' | 'recommendedAgentIds' | 'reviewerAgentIds' | 'recommendationReasons' | 'gaps' | 'riskLevel'>>): Promise<GoalAlignment> {
+  const r = await apiFetch(`${API_BASE}/api/goal-alignments/${alignmentId}`, {
+    method: 'PATCH',
+    headers: authHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(data),
+  });
+  if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error ?? 'Update goal alignment failed');
+  return r.json();
+}
+
+export async function confirmGoalAlignment(alignmentId: string, data: { requesterName?: string } = {}): Promise<{ alignment: GoalAlignment; goal: GoalBrief; tasks: Task[] }> {
+  const r = await apiFetch(`${API_BASE}/api/goal-alignments/${alignmentId}/confirm`, {
+    method: 'POST',
+    headers: authHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(data),
+  });
+  if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error ?? 'Confirm goal alignment failed');
   return r.json();
 }
 

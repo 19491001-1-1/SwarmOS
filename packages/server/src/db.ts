@@ -4,9 +4,9 @@ import { homedir } from 'node:os';
 import { drizzle, type LibSQLDatabase } from 'drizzle-orm/libsql';
 import { createClient, type Client } from '@libsql/client';
 import { asc, desc, eq, inArray, or } from 'drizzle-orm';
-import type { Channel, Message, MessageThread, Machine, Agent, RuntimeId, AgentStatus, AgentActivity, DirectMessage, DirectMessageThread, AgentDelegation, AgentTokenInfo, Task, TaskStatus, GoalBrief, GoalBriefStatus, Reminder, ReminderStatus, SearchMessageResult } from '@mini-slock/shared';
+import type { Channel, Message, MessageThread, Machine, Agent, RuntimeId, AgentStatus, AgentActivity, DirectMessage, DirectMessageThread, AgentDelegation, AgentTokenInfo, Task, TaskStatus, GoalBrief, GoalBriefStatus, GoalAlignment, GoalAlignmentStatus, Reminder, ReminderStatus, SearchMessageResult } from '@mini-slock/shared';
 import { resolveAgentReference } from '@mini-slock/hub-core';
-import { activities, agentDelegations, agentTokens, agents, channels, directMessages, goals, machines, messages, reminders, tasks } from './schema.js';
+import { activities, agentDelegations, agentTokens, agents, channels, directMessages, goalAlignments, goals, machines, messages, reminders, tasks } from './schema.js';
 
 type Database = LibSQLDatabase<typeof import('./schema.js')>;
 
@@ -33,7 +33,7 @@ async function ensureDbDirectory(path: string): Promise<void> {
 function createDatabase(): Database {
   const path = getDbPath();
   client = createClient({ url: getDbUrl(path) });
-  db = drizzle(client, { schema: { activities, agentDelegations, agentTokens, agents, channels, directMessages, goals, machines, messages, reminders, tasks } });
+  db = drizzle(client, { schema: { activities, agentDelegations, agentTokens, agents, channels, directMessages, goalAlignments, goals, machines, messages, reminders, tasks } });
   return db;
 }
 
@@ -134,6 +134,30 @@ export async function initDb(): Promise<void> {
         assumptions TEXT NOT NULL,
         risks TEXT NOT NULL,
         status TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      )
+    `);
+    await database.run(`
+      CREATE TABLE IF NOT EXISTS goal_alignments (
+        id TEXT PRIMARY KEY,
+        channel_id TEXT NOT NULL,
+        thread_root_id TEXT NOT NULL,
+        source_message_id TEXT NOT NULL,
+        goal_id TEXT,
+        status TEXT NOT NULL,
+        objective TEXT NOT NULL,
+        questions TEXT NOT NULL,
+        answers TEXT NOT NULL,
+        success_criteria TEXT NOT NULL,
+        constraints TEXT NOT NULL,
+        plan_summary TEXT,
+        task_drafts TEXT NOT NULL,
+        recommended_agent_ids TEXT NOT NULL,
+        reviewer_agent_ids TEXT NOT NULL,
+        recommendation_reasons TEXT NOT NULL,
+        gaps TEXT NOT NULL,
+        risk_level TEXT NOT NULL,
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL
       )
@@ -317,6 +341,31 @@ function toGoal(row: typeof goals.$inferSelect): GoalBrief {
   };
 }
 
+function toGoalAlignment(row: typeof goalAlignments.$inferSelect): GoalAlignment {
+  return {
+    id: row.id,
+    channelId: row.channelId,
+    threadRootId: row.threadRootId,
+    sourceMessageId: row.sourceMessageId,
+    goalId: row.goalId ?? undefined,
+    status: row.status as GoalAlignmentStatus,
+    objective: row.objective,
+    questions: JSON.parse(row.questions) as string[],
+    answers: JSON.parse(row.answers) as string[],
+    successCriteria: JSON.parse(row.successCriteria) as string[],
+    constraints: JSON.parse(row.constraints) as string[],
+    planSummary: row.planSummary ?? undefined,
+    taskDrafts: JSON.parse(row.taskDrafts) as GoalAlignment['taskDrafts'],
+    recommendedAgentIds: JSON.parse(row.recommendedAgentIds) as string[],
+    reviewerAgentIds: JSON.parse(row.reviewerAgentIds) as string[],
+    recommendationReasons: JSON.parse(row.recommendationReasons) as Record<string, string>,
+    gaps: JSON.parse(row.gaps) as string[],
+    riskLevel: row.riskLevel as GoalAlignment['riskLevel'],
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+  };
+}
+
 function toReminder(row: typeof reminders.$inferSelect): Reminder {
   return {
     id: row.id,
@@ -368,6 +417,7 @@ export class SqliteStore {
     await getDb().delete(messages).where(eq(messages.channelId, id));
     await getDb().delete(tasks).where(eq(tasks.channelId, id));
     await getDb().delete(goals).where(eq(goals.channelId, id));
+    await getDb().delete(goalAlignments).where(eq(goalAlignments.channelId, id));
     await getDb().delete(reminders).where(eq(reminders.channelId, id));
     await getDb().delete(channels).where(eq(channels.id, id));
     return true;
@@ -634,6 +684,72 @@ export class SqliteStore {
     return updated;
   }
 
+  async listGoalAlignments(filter: { channelId?: string; status?: GoalAlignmentStatus } = {}): Promise<GoalAlignment[]> {
+    await initDb();
+    const rows = await getDb().select().from(goalAlignments).orderBy(asc(goalAlignments.createdAt));
+    return rows
+      .map(toGoalAlignment)
+      .filter((alignment) =>
+        (!filter.channelId || alignment.channelId === filter.channelId) &&
+        (!filter.status || alignment.status === filter.status)
+      );
+  }
+
+  async getGoalAlignment(id: string): Promise<GoalAlignment | undefined> {
+    await initDb();
+    const [alignment] = await getDb().select().from(goalAlignments).where(eq(goalAlignments.id, id)).limit(1);
+    return alignment ? toGoalAlignment(alignment) : undefined;
+  }
+
+  async createGoalAlignment(alignment: Omit<GoalAlignment, 'createdAt' | 'updatedAt'>): Promise<GoalAlignment> {
+    await initDb();
+    const now = new Date().toISOString();
+    const created: GoalAlignment = { ...alignment, createdAt: now, updatedAt: now };
+    await getDb().insert(goalAlignments).values({
+      ...created,
+      goalId: created.goalId ?? null,
+      questions: JSON.stringify(created.questions),
+      answers: JSON.stringify(created.answers),
+      successCriteria: JSON.stringify(created.successCriteria),
+      constraints: JSON.stringify(created.constraints),
+      planSummary: created.planSummary ?? null,
+      taskDrafts: JSON.stringify(created.taskDrafts),
+      recommendedAgentIds: JSON.stringify(created.recommendedAgentIds),
+      reviewerAgentIds: JSON.stringify(created.reviewerAgentIds),
+      recommendationReasons: JSON.stringify(created.recommendationReasons),
+      gaps: JSON.stringify(created.gaps),
+    });
+    return created;
+  }
+
+  async updateGoalAlignment(id: string, patch: Partial<Omit<GoalAlignment, 'id' | 'channelId' | 'threadRootId' | 'sourceMessageId' | 'createdAt' | 'updatedAt'>>): Promise<GoalAlignment | undefined> {
+    await initDb();
+    const existing = await this.getGoalAlignment(id);
+    if (!existing) return undefined;
+    const updated: GoalAlignment = { ...existing, ...patch, updatedAt: new Date().toISOString() };
+    await getDb()
+      .update(goalAlignments)
+      .set({
+        goalId: updated.goalId ?? null,
+        status: updated.status,
+        objective: updated.objective,
+        questions: JSON.stringify(updated.questions),
+        answers: JSON.stringify(updated.answers),
+        successCriteria: JSON.stringify(updated.successCriteria),
+        constraints: JSON.stringify(updated.constraints),
+        planSummary: updated.planSummary ?? null,
+        taskDrafts: JSON.stringify(updated.taskDrafts),
+        recommendedAgentIds: JSON.stringify(updated.recommendedAgentIds),
+        reviewerAgentIds: JSON.stringify(updated.reviewerAgentIds),
+        recommendationReasons: JSON.stringify(updated.recommendationReasons),
+        gaps: JSON.stringify(updated.gaps),
+        riskLevel: updated.riskLevel,
+        updatedAt: updated.updatedAt,
+      })
+      .where(eq(goalAlignments.id, id));
+    return updated;
+  }
+
   async listReminders(agentId?: string): Promise<Reminder[]> {
     await initDb();
     const rows = await getDb().select().from(reminders).orderBy(asc(reminders.triggerAt));
@@ -860,6 +976,7 @@ export async function resetStore(): Promise<void> {
   await database.delete(agentTokens);
   await database.delete(tasks);
   await database.delete(goals);
+  await database.delete(goalAlignments);
   await database.delete(reminders);
   await database.delete(agents);
   await database.delete(machines);

@@ -12,7 +12,9 @@ import {
   CreateTaskRequestSchema,
   CreateGoalBriefRequestSchema,
   CreateGoalTasksRequestSchema,
+  GoalAlignmentSchema,
   GoalBriefSchema,
+  PatchGoalAlignmentRequestSchema,
   InternalAgentResolveRequestSchema,
   InternalAgentDelegateRequestSchema,
   InternalDmSendRequestSchema,
@@ -28,6 +30,7 @@ import {
   MessageToTaskRequestSchema,
   PatchGoalBriefRequestSchema,
   PatchTaskRequestSchema,
+  StartGoalAlignmentRequestSchema,
   TaskSchema,
 } from '../src/validation.js';
 import { APP_VERSION, createVersionInfo } from '../src/version.js';
@@ -382,6 +385,32 @@ describe('Goal schemas', () => {
     expect(CreateGoalBriefRequestSchema.safeParse({ objective: '' }).success).toBe(false);
     expect(PatchGoalBriefRequestSchema.safeParse({}).success).toBe(false);
     expect(CreateGoalTasksRequestSchema.safeParse({ tasks: [] }).success).toBe(false);
+  });
+
+  it('accepts goal alignment objects and request bodies', () => {
+    const now = new Date().toISOString();
+    expect(StartGoalAlignmentRequestSchema.parse({}).requesterName).toBe('user');
+    expect(PatchGoalAlignmentRequestSchema.parse({ answers: ['Ship MVP first'] }).answers).toEqual(['Ship MVP first']);
+    expect(GoalAlignmentSchema.parse({
+      id: 'align-1',
+      channelId: 'general',
+      threadRootId: 'msg-1',
+      sourceMessageId: 'msg-1',
+      status: 'awaiting_confirmation',
+      objective: 'Ship v1.2',
+      questions: [],
+      answers: [],
+      successCriteria: ['Plan is actionable'],
+      constraints: [],
+      taskDrafts: [{ title: 'Draft product plan', role: 'owner' }],
+      recommendedAgentIds: ['pm'],
+      reviewerAgentIds: ['qa'],
+      recommendationReasons: { pm: 'Matches product planning.' },
+      gaps: [],
+      riskLevel: 'low',
+      createdAt: now,
+      updatedAt: now,
+    }).taskDrafts[0].role).toBe('owner');
   });
 });
 

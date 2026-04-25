@@ -7,6 +7,8 @@ export const AgentStatusSchema = z.enum(['inactive', 'starting', 'running', 'wor
 export const AgentActivityTypeSchema = z.enum(['thinking', 'working', 'output', 'idle', 'sending', 'error']);
 export const TaskStatusSchema = z.enum(['todo', 'in_progress', 'in_review', 'done']);
 export const GoalBriefStatusSchema = z.enum(['draft', 'confirmed', 'cancelled', 'completed']);
+export const GoalAlignmentStatusSchema = z.enum(['needs_clarification', 'awaiting_confirmation', 'confirmed', 'cancelled']);
+export const GoalAlignmentRiskLevelSchema = z.enum(['low', 'medium', 'high']);
 export const ReminderStatusSchema = z.enum(['pending', 'triggered', 'cancelled']);
 
 export const MentionSchema = z.object({
@@ -371,9 +373,65 @@ export const GoalTaskDraftSchema = z.object({
   artifacts: z.array(z.string().min(1)).default([]),
 });
 
+export const GoalAlignmentTaskDraftSchema = GoalTaskDraftSchema.extend({
+  role: z.enum(['owner', 'reviewer', 'support']).optional(),
+});
+
+export const GoalAlignmentSchema = z.object({
+  id: z.string(),
+  channelId: z.string(),
+  threadRootId: z.string(),
+  sourceMessageId: z.string(),
+  goalId: z.string().optional(),
+  status: GoalAlignmentStatusSchema,
+  objective: z.string(),
+  questions: z.array(z.string()),
+  answers: z.array(z.string()),
+  successCriteria: z.array(z.string()),
+  constraints: z.array(z.string()),
+  planSummary: z.string().optional(),
+  taskDrafts: z.array(GoalAlignmentTaskDraftSchema),
+  recommendedAgentIds: z.array(z.string()),
+  reviewerAgentIds: z.array(z.string()),
+  recommendationReasons: z.record(z.string()),
+  gaps: z.array(z.string()),
+  riskLevel: GoalAlignmentRiskLevelSchema,
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+
 export const CreateGoalTasksRequestSchema = z.object({
   creatorName: z.string().min(1).default('user'),
   tasks: z.array(GoalTaskDraftSchema).min(1),
+});
+
+export const StartGoalAlignmentRequestSchema = z.object({
+  requesterName: z.string().min(1).default('user'),
+  objective: z.string().min(1).optional(),
+});
+
+export const PatchGoalAlignmentRequestSchema = z
+  .object({
+    status: GoalAlignmentStatusSchema.optional(),
+    objective: z.string().min(1).optional(),
+    questions: z.array(z.string().min(1)).optional(),
+    answers: z.array(z.string().min(1)).optional(),
+    successCriteria: z.array(z.string().min(1)).optional(),
+    constraints: z.array(z.string().min(1)).optional(),
+    planSummary: z.string().min(1).optional(),
+    taskDrafts: z.array(GoalAlignmentTaskDraftSchema).optional(),
+    recommendedAgentIds: z.array(z.string()).optional(),
+    reviewerAgentIds: z.array(z.string()).optional(),
+    recommendationReasons: z.record(z.string()).optional(),
+    gaps: z.array(z.string()).optional(),
+    riskLevel: GoalAlignmentRiskLevelSchema.optional(),
+  })
+  .refine((val) => Object.values(val).some((value) => value !== undefined), {
+    message: 'At least one field must be provided',
+  });
+
+export const ConfirmGoalAlignmentRequestSchema = z.object({
+  requesterName: z.string().min(1).default('user'),
 });
 
 export const InternalMessageSendRequestSchema = z.object({
@@ -446,6 +504,8 @@ export const InternalGoalCreateRequestSchema = z.object({
 });
 
 export const InternalGoalCreateTasksRequestSchema = CreateGoalTasksRequestSchema;
+export const InternalGoalAlignRequestSchema = StartGoalAlignmentRequestSchema;
+export const InternalGoalAlignmentPatchRequestSchema = PatchGoalAlignmentRequestSchema;
 
 export type CreateAgentRequest = z.infer<typeof CreateAgentRequestSchema>;
 export type PatchAgentRequest = z.infer<typeof PatchAgentRequestSchema>;
@@ -459,6 +519,9 @@ export type CreateGoalBriefRequest = z.infer<typeof CreateGoalBriefRequestSchema
 export type PatchGoalBriefRequest = z.infer<typeof PatchGoalBriefRequestSchema>;
 export type MessageToGoalBriefRequest = z.infer<typeof MessageToGoalBriefRequestSchema>;
 export type CreateGoalTasksRequest = z.infer<typeof CreateGoalTasksRequestSchema>;
+export type StartGoalAlignmentRequest = z.infer<typeof StartGoalAlignmentRequestSchema>;
+export type PatchGoalAlignmentRequest = z.infer<typeof PatchGoalAlignmentRequestSchema>;
+export type ConfirmGoalAlignmentRequest = z.infer<typeof ConfirmGoalAlignmentRequestSchema>;
 export type TaskContextRequest = z.infer<typeof TaskContextSchema>;
 export type InternalMessageSendRequest = z.infer<typeof InternalMessageSendRequestSchema>;
 export type InternalMessageReadRequest = z.infer<typeof InternalMessageReadRequestSchema>;
@@ -471,6 +534,8 @@ export type InternalTaskHandoffRequest = z.infer<typeof InternalTaskHandoffReque
 export type InternalGoalListRequest = z.infer<typeof InternalGoalListRequestSchema>;
 export type InternalGoalCreateRequest = z.infer<typeof InternalGoalCreateRequestSchema>;
 export type InternalGoalCreateTasksRequest = z.infer<typeof InternalGoalCreateTasksRequestSchema>;
+export type InternalGoalAlignRequest = z.infer<typeof InternalGoalAlignRequestSchema>;
+export type InternalGoalAlignmentPatchRequest = z.infer<typeof InternalGoalAlignmentPatchRequestSchema>;
 
 export const ServerToDaemonSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('ping') }),

@@ -78,6 +78,29 @@ export const goals = sqliteTable('goals', {
   updatedAt: text('updated_at').notNull(),
 });
 
+export const goalAlignments = sqliteTable('goal_alignments', {
+  id: text('id').primaryKey(),
+  channelId: text('channel_id').notNull(),
+  threadRootId: text('thread_root_id').notNull(),
+  sourceMessageId: text('source_message_id').notNull(),
+  goalId: text('goal_id'),
+  status: text('status').notNull(),
+  objective: text('objective').notNull(),
+  questions: text('questions').notNull(),
+  answers: text('answers').notNull(),
+  successCriteria: text('success_criteria').notNull(),
+  constraints: text('constraints').notNull(),
+  planSummary: text('plan_summary'),
+  taskDrafts: text('task_drafts').notNull(),
+  recommendedAgentIds: text('recommended_agent_ids').notNull(),
+  reviewerAgentIds: text('reviewer_agent_ids').notNull(),
+  recommendationReasons: text('recommendation_reasons').notNull(),
+  gaps: text('gaps').notNull(),
+  riskLevel: text('risk_level').notNull(),
+  createdAt: text('created_at').notNull(),
+  updatedAt: text('updated_at').notNull(),
+});
+
 export const reminders = sqliteTable('reminders', {
   id: text('id').primaryKey(),
   agentId: text('agent_id').notNull(),

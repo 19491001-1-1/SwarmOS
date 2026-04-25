@@ -8,6 +8,8 @@ import type {
   DaemonToServer,
   DirectMessage,
   DirectMessageThread,
+  GoalAlignment,
+  GoalAlignmentStatus,
   GoalBrief,
   GoalBriefStatus,
   Machine,
@@ -30,15 +32,19 @@ import {
   CreateDirectMessageRequestSchema,
   CreateGoalBriefRequestSchema,
   CreateGoalTasksRequestSchema,
+  ConfirmGoalAlignmentRequestSchema,
   CreateReminderRequestSchema,
   CreateTaskRequestSchema,
   GoalBriefStatusSchema,
+  GoalAlignmentStatusSchema,
   InternalAgentDelegateRequestSchema,
   InternalAgentResolveRequestSchema,
   InternalDmSendRequestSchema,
   InternalGoalCreateRequestSchema,
   InternalGoalCreateTasksRequestSchema,
   InternalGoalListRequestSchema,
+  InternalGoalAlignRequestSchema,
+  InternalGoalAlignmentPatchRequestSchema,
   InternalMessageReadRequestSchema,
   InternalMessageSendRequestSchema,
   InternalTaskHandoffRequestSchema,
@@ -48,13 +54,15 @@ import {
   MessageToGoalBriefRequestSchema,
   MessageToTaskRequestSchema,
   PatchGoalBriefRequestSchema,
+  PatchGoalAlignmentRequestSchema,
   PatchAgentRequestSchema,
   PatchReminderRequestSchema,
   PatchTaskRequestSchema,
   SearchRequestSchema,
+  StartGoalAlignmentRequestSchema,
   TaskStatusSchema,
 } from '@mini-slock/shared';
-import { findDuplicateMachineIds, resolveAgentReference, resolveStartMachineId, toAgentDelivery, toRuntimeConfig } from '@mini-slock/hub-core';
+import { buildClarifyingQuestions, findDuplicateMachineIds, inferGoalRiskLevel, recommendAgentsForGoal, resolveAgentReference, resolveStartMachineId, toAgentDelivery, toRuntimeConfig } from '@mini-slock/hub-core';
 
 type SocketAttachment =
   | { kind: 'browser' }
@@ -222,6 +230,42 @@ export class XoxiangHub extends DurableObject<Env> {
       const messageGoalMatch = url.pathname.match(/^\/api\/messages\/([^/]+)\/to-goal$/);
       if (messageGoalMatch && request.method === 'POST') {
         return this.createGoalFromMessage(decodeURIComponent(messageGoalMatch[1]), await request.json().catch(() => ({})));
+      }
+
+      if (request.method === 'GET' && url.pathname === '/api/goal-alignments') {
+        const statusValue = url.searchParams.get('status') ?? undefined;
+        const status = statusValue === undefined ? undefined : GoalAlignmentStatusSchema.safeParse(statusValue);
+        if (status && !status.success) return json({ error: 'Invalid status' }, 400);
+        return json(this.listGoalAlignments({
+          channelId: url.searchParams.get('channelId') ?? undefined,
+          status: status?.success ? status.data : undefined,
+        }));
+      }
+
+      const messageAlignmentMatch = url.pathname.match(/^\/api\/messages\/([^/]+)\/start-goal-alignment$/);
+      if (messageAlignmentMatch && request.method === 'POST') {
+        return this.startGoalAlignment(decodeURIComponent(messageAlignmentMatch[1]), await request.json().catch(() => ({})));
+      }
+
+      const goalAlignmentMatch = url.pathname.match(/^\/api\/goal-alignments\/([^/]+)$/);
+      if (goalAlignmentMatch && request.method === 'GET') {
+        const alignment = this.getGoalAlignment(decodeURIComponent(goalAlignmentMatch[1]));
+        if (!alignment) return json({ error: 'Goal alignment not found' }, 404);
+        return json(alignment);
+      }
+
+      if (goalAlignmentMatch && request.method === 'PATCH') {
+        return this.patchGoalAlignment(decodeURIComponent(goalAlignmentMatch[1]), await request.json());
+      }
+
+      const goalAlignmentConfirmMatch = url.pathname.match(/^\/api\/goal-alignments\/([^/]+)\/confirm$/);
+      if (goalAlignmentConfirmMatch && request.method === 'POST') {
+        return this.confirmGoalAlignment(decodeURIComponent(goalAlignmentConfirmMatch[1]), await request.json().catch(() => ({})));
+      }
+
+      const goalAlignmentCancelMatch = url.pathname.match(/^\/api\/goal-alignments\/([^/]+)\/cancel$/);
+      if (goalAlignmentCancelMatch && request.method === 'POST') {
+        return this.cancelGoalAlignment(decodeURIComponent(goalAlignmentCancelMatch[1]));
       }
 
       if (request.method === 'GET' && url.pathname === '/api/agents') {
@@ -579,6 +623,30 @@ export class XoxiangHub extends DurableObject<Env> {
         assumptions TEXT NOT NULL,
         risks TEXT NOT NULL,
         status TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      )
+    `);
+    this.ctx.storage.sql.exec(`
+      CREATE TABLE IF NOT EXISTS goal_alignments (
+        id TEXT PRIMARY KEY,
+        channel_id TEXT NOT NULL,
+        thread_root_id TEXT NOT NULL,
+        source_message_id TEXT NOT NULL,
+        goal_id TEXT,
+        status TEXT NOT NULL,
+        objective TEXT NOT NULL,
+        questions TEXT NOT NULL,
+        answers TEXT NOT NULL,
+        success_criteria TEXT NOT NULL,
+        constraints TEXT NOT NULL,
+        plan_summary TEXT,
+        task_drafts TEXT NOT NULL,
+        recommended_agent_ids TEXT NOT NULL,
+        reviewer_agent_ids TEXT NOT NULL,
+        recommendation_reasons TEXT NOT NULL,
+        gaps TEXT NOT NULL,
+        risk_level TEXT NOT NULL,
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL
       )
@@ -945,6 +1013,131 @@ export class XoxiangHub extends DurableObject<Env> {
     return json({ tasks }, 201);
   }
 
+  private startGoalAlignment(messageId: string, body: unknown): Response {
+    const message = this.getMessage(messageId);
+    if (!message) return json({ error: 'Message not found' }, 404);
+    const parsed = StartGoalAlignmentRequestSchema.safeParse(body);
+    if (!parsed.success) return json({ error: 'Invalid request body', issues: parsed.error.issues }, 400);
+    const objective = parsed.data.objective ?? message.content.slice(0, 240);
+    const recommendation = recommendAgentsForGoal(objective, this.listAgents());
+    const questions = buildClarifyingQuestions(message);
+    const riskLevel = inferGoalRiskLevel(message);
+    const alignment = this.createGoalAlignment({
+      id: crypto.randomUUID(),
+      channelId: message.channelId,
+      threadRootId: message.threadRootId ?? message.id,
+      sourceMessageId: message.id,
+      status: questions.length > 0 || riskLevel !== 'low' ? 'needs_clarification' : 'awaiting_confirmation',
+      objective,
+      questions,
+      answers: [],
+      successCriteria: ['A confirmed plan exists with clear task owners and acceptance criteria.'],
+      constraints: riskLevel === 'high' ? ['Wait for explicit user confirmation before execution.'] : [],
+      planSummary: buildPlanSummary(objective, recommendation, riskLevel),
+      taskDrafts: buildTaskDrafts(objective, recommendation),
+      recommendedAgentIds: recommendation.ownerAgentIds,
+      reviewerAgentIds: recommendation.reviewerAgentIds,
+      recommendationReasons: recommendation.reasons,
+      gaps: recommendation.gaps,
+      riskLevel,
+    });
+    this.broadcast({ type: 'goal-alignment:update', alignment });
+    this.createMessage({
+      id: crypto.randomUUID(),
+      channelId: alignment.channelId,
+      senderName: 'system',
+      content: [
+        `Goal alignment started by ${parsed.data.requesterName}: ${alignment.objective}`,
+        alignment.planSummary,
+        alignment.questions.length > 0 ? `Clarifying questions:\n${alignment.questions.map((question) => `- ${question}`).join('\n')}` : 'Plan is ready for confirmation.',
+      ].filter(Boolean).join('\n\n'),
+      threadRootId: alignment.threadRootId,
+    });
+    return json(alignment, 201);
+  }
+
+  private patchGoalAlignment(id: string, body: unknown): Response {
+    const parsed = PatchGoalAlignmentRequestSchema.safeParse(body);
+    if (!parsed.success) return json({ error: 'Invalid request body', issues: parsed.error.issues }, 400);
+    const alignment = this.updateGoalAlignment(id, parsed.data);
+    if (!alignment) return json({ error: 'Goal alignment not found' }, 404);
+    this.broadcast({ type: 'goal-alignment:update', alignment });
+    return json(alignment);
+  }
+
+  private cancelGoalAlignment(id: string): Response {
+    const alignment = this.updateGoalAlignment(id, { status: 'cancelled' });
+    if (!alignment) return json({ error: 'Goal alignment not found' }, 404);
+    this.broadcast({ type: 'goal-alignment:update', alignment });
+    return json(alignment);
+  }
+
+  private confirmGoalAlignment(id: string, body: unknown): Response {
+    const parsed = ConfirmGoalAlignmentRequestSchema.safeParse(body);
+    if (!parsed.success) return json({ error: 'Invalid request body', issues: parsed.error.issues }, 400);
+    const alignment = this.getGoalAlignment(id);
+    if (!alignment) return json({ error: 'Goal alignment not found' }, 404);
+    if (alignment.status === 'cancelled') return json({ error: 'Goal alignment is cancelled' }, 409);
+    const goal = alignment.goalId
+      ? this.updateGoal(alignment.goalId, {
+          objective: alignment.objective,
+          successCriteria: alignment.successCriteria,
+          constraints: alignment.constraints,
+          status: 'confirmed',
+        })
+      : this.createGoal({
+          id: crypto.randomUUID(),
+          channelId: alignment.channelId,
+          sourceMessageId: alignment.sourceMessageId,
+          requesterName: parsed.data.requesterName,
+          objective: alignment.objective,
+          background: alignment.answers,
+          successCriteria: alignment.successCriteria,
+          constraints: alignment.constraints,
+          assumptions: alignment.gaps,
+          risks: alignment.riskLevel === 'low' ? [] : [`${alignment.riskLevel} risk plan; keep user confirmation explicit.`],
+          status: 'confirmed',
+        });
+    if (!goal) return json({ error: 'Goal not found' }, 404);
+    this.broadcast({ type: 'goal:update', goal });
+    const tasks = alignment.taskDrafts.map((draft) => {
+      const task = this.createTask({
+        id: crypto.randomUUID(),
+        channelId: alignment.channelId,
+        messageId: alignment.sourceMessageId,
+        title: draft.title,
+        status: 'todo',
+        creatorName: parsed.data.requesterName,
+        assigneeId: draft.assigneeId,
+        context: {
+          goalId: goal.id,
+          goalObjective: goal.objective,
+          goal: goal.objective,
+          background: alignment.planSummary,
+          acceptanceCriteria: (draft.acceptanceCriteria?.length ?? 0) > 0 ? draft.acceptanceCriteria : alignment.successCriteria,
+          constraints: alignment.constraints,
+          assumptions: alignment.gaps,
+          dependencies: draft.dependencies,
+          artifacts: draft.artifacts,
+          sourceMessageIds: [alignment.sourceMessageId],
+        },
+      });
+      this.broadcast({ type: 'task:update', task });
+      this.notifyTaskAssignee(task);
+      return task;
+    });
+    const updated = this.updateGoalAlignment(alignment.id, { status: 'confirmed', goalId: goal.id });
+    if (updated) this.broadcast({ type: 'goal-alignment:update', alignment: updated });
+    this.createMessage({
+      id: crypto.randomUUID(),
+      channelId: alignment.channelId,
+      senderName: 'system',
+      content: `Goal plan confirmed: ${goal.objective}\nTasks created: ${tasks.map((task) => `#${task.id.slice(0, 6)} ${task.title}`).join('; ')}`,
+      threadRootId: alignment.threadRootId,
+    });
+    return json({ alignment: updated ?? alignment, goal, tasks }, 201);
+  }
+
   private async handleInternalAgentRequest(request: Request, url: URL): Promise<Response> {
     const match = url.pathname.match(/^\/internal\/agent\/([^/]+)(\/.*)$/);
     if (!match) return json({ error: 'Not found' }, 404);
@@ -1031,6 +1224,14 @@ export class XoxiangHub extends DurableObject<Env> {
       return json(this.listGoals({ channelId: channel?.id, status: parsed.data.status }));
     }
 
+    if (request.method === 'POST' && path === '/goals/align') {
+      const parsed = InternalGoalAlignRequestSchema.safeParse(await request.json());
+      if (!parsed.success) return json({ error: 'Invalid request body', issues: parsed.error.issues }, 400);
+      const sourceMessageId = url.searchParams.get('messageId') ?? '';
+      if (!sourceMessageId) return json({ error: 'Missing messageId' }, 400);
+      return this.startGoalAlignment(sourceMessageId, { ...parsed.data, requesterName: agent.displayName ?? agent.name });
+    }
+
     if (request.method === 'POST' && path === '/goals') {
       const parsed = InternalGoalCreateRequestSchema.safeParse(await request.json());
       if (!parsed.success) return json({ error: 'Invalid request body', issues: parsed.error.issues }, 400);
@@ -1093,6 +1294,27 @@ export class XoxiangHub extends DurableObject<Env> {
         return task;
       });
       return json({ tasks }, 201);
+    }
+
+    const alignmentMatch = path.match(/^\/goal-alignments\/([^/]+)$/);
+    if (request.method === 'GET' && alignmentMatch) {
+      const alignment = this.getGoalAlignment(decodeURIComponent(alignmentMatch[1]));
+      if (!alignment) return json({ error: 'Goal alignment not found' }, 404);
+      return json(alignment);
+    }
+
+    if (request.method === 'POST' && alignmentMatch) {
+      const parsed = InternalGoalAlignmentPatchRequestSchema.safeParse(await request.json());
+      if (!parsed.success) return json({ error: 'Invalid request body', issues: parsed.error.issues }, 400);
+      const alignment = this.updateGoalAlignment(decodeURIComponent(alignmentMatch[1]), parsed.data);
+      if (!alignment) return json({ error: 'Goal alignment not found' }, 404);
+      this.broadcast({ type: 'goal-alignment:update', alignment });
+      return json(alignment);
+    }
+
+    const alignmentConfirmMatch = path.match(/^\/goal-alignments\/([^/]+)\/confirm$/);
+    if (request.method === 'POST' && alignmentConfirmMatch) {
+      return this.confirmGoalAlignment(decodeURIComponent(alignmentConfirmMatch[1]), { requesterName: agent.displayName ?? agent.name });
     }
 
     if (request.method === 'GET' && path === '/reminders') {
@@ -1388,6 +1610,7 @@ export class XoxiangHub extends DurableObject<Env> {
     this.ctx.storage.sql.exec('DELETE FROM messages WHERE channel_id = ?', id);
     this.ctx.storage.sql.exec('DELETE FROM tasks WHERE channel_id = ?', id);
     this.ctx.storage.sql.exec('DELETE FROM goals WHERE channel_id = ?', id);
+    this.ctx.storage.sql.exec('DELETE FROM goal_alignments WHERE channel_id = ?', id);
     this.ctx.storage.sql.exec('DELETE FROM reminders WHERE channel_id = ?', id);
     this.ctx.storage.sql.exec('DELETE FROM channels WHERE id = ?', id);
   }
@@ -1495,6 +1718,22 @@ export class XoxiangHub extends DurableObject<Env> {
     return row ? toGoal(row) : undefined;
   }
 
+  private listGoalAlignments(filter: { channelId?: string; status?: GoalAlignmentStatus } = {}): GoalAlignment[] {
+    return this.ctx.storage.sql
+      .exec<Row>('SELECT * FROM goal_alignments ORDER BY created_at')
+      .toArray()
+      .map(toGoalAlignment)
+      .filter((alignment) =>
+        (!filter.channelId || alignment.channelId === filter.channelId) &&
+        (!filter.status || alignment.status === filter.status)
+      );
+  }
+
+  private getGoalAlignment(id: string): GoalAlignment | undefined {
+    const row = this.ctx.storage.sql.exec<Row>('SELECT * FROM goal_alignments WHERE id = ? LIMIT 1', id).toArray()[0];
+    return row ? toGoalAlignment(row) : undefined;
+  }
+
   private listReminders(agentId?: string): Reminder[] {
     const rows = this.ctx.storage.sql.exec<Row>('SELECT * FROM reminders ORDER BY trigger_at').toArray().map(toReminder);
     return rows.filter((reminder) => !agentId || reminder.agentId === agentId);
@@ -1580,6 +1819,36 @@ export class XoxiangHub extends DurableObject<Env> {
     return created;
   }
 
+  private createGoalAlignment(alignment: Omit<GoalAlignment, 'createdAt' | 'updatedAt'>): GoalAlignment {
+    const now = new Date().toISOString();
+    const created: GoalAlignment = { ...alignment, createdAt: now, updatedAt: now };
+    this.ctx.storage.sql.exec(
+      `INSERT INTO goal_alignments (id, channel_id, thread_root_id, source_message_id, goal_id, status, objective, questions, answers, success_criteria, constraints, plan_summary, task_drafts, recommended_agent_ids, reviewer_agent_ids, recommendation_reasons, gaps, risk_level, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      created.id,
+      created.channelId,
+      created.threadRootId,
+      created.sourceMessageId,
+      created.goalId ?? null,
+      created.status,
+      created.objective,
+      JSON.stringify(created.questions),
+      JSON.stringify(created.answers),
+      JSON.stringify(created.successCriteria),
+      JSON.stringify(created.constraints),
+      created.planSummary ?? null,
+      JSON.stringify(created.taskDrafts),
+      JSON.stringify(created.recommendedAgentIds),
+      JSON.stringify(created.reviewerAgentIds),
+      JSON.stringify(created.recommendationReasons),
+      JSON.stringify(created.gaps),
+      created.riskLevel,
+      created.createdAt,
+      created.updatedAt
+    );
+    return created;
+  }
+
   private createReminder(reminder: Omit<Reminder, 'createdAt'>): Reminder {
     const created: Reminder = { ...reminder, createdAt: new Date().toISOString() };
     this.ctx.storage.sql.exec(
@@ -1653,6 +1922,34 @@ export class XoxiangHub extends DurableObject<Env> {
       JSON.stringify(updated.assumptions),
       JSON.stringify(updated.risks),
       updated.status,
+      updated.updatedAt,
+      id,
+    );
+    return updated;
+  }
+
+  private updateGoalAlignment(id: string, patch: Partial<Omit<GoalAlignment, 'id' | 'channelId' | 'threadRootId' | 'sourceMessageId' | 'createdAt' | 'updatedAt'>>): GoalAlignment | undefined {
+    const existing = this.getGoalAlignment(id);
+    if (!existing) return undefined;
+    const updated: GoalAlignment = { ...existing, ...patch, updatedAt: new Date().toISOString() };
+    this.ctx.storage.sql.exec(
+      `UPDATE goal_alignments
+       SET goal_id = ?, status = ?, objective = ?, questions = ?, answers = ?, success_criteria = ?, constraints = ?, plan_summary = ?, task_drafts = ?, recommended_agent_ids = ?, reviewer_agent_ids = ?, recommendation_reasons = ?, gaps = ?, risk_level = ?, updated_at = ?
+       WHERE id = ?`,
+      updated.goalId ?? null,
+      updated.status,
+      updated.objective,
+      JSON.stringify(updated.questions),
+      JSON.stringify(updated.answers),
+      JSON.stringify(updated.successCriteria),
+      JSON.stringify(updated.constraints),
+      updated.planSummary ?? null,
+      JSON.stringify(updated.taskDrafts),
+      JSON.stringify(updated.recommendedAgentIds),
+      JSON.stringify(updated.reviewerAgentIds),
+      JSON.stringify(updated.recommendationReasons),
+      JSON.stringify(updated.gaps),
+      updated.riskLevel,
       updated.updatedAt,
       id,
     );
@@ -2275,6 +2572,57 @@ function toGoal(row: Row): GoalBrief {
     createdAt: String(row.created_at),
     updatedAt: String(row.updated_at),
   };
+}
+
+function toGoalAlignment(row: Row): GoalAlignment {
+  return {
+    id: String(row.id),
+    channelId: String(row.channel_id),
+    threadRootId: String(row.thread_root_id),
+    sourceMessageId: String(row.source_message_id),
+    goalId: row.goal_id ? String(row.goal_id) : undefined,
+    status: String(row.status) as GoalAlignmentStatus,
+    objective: String(row.objective),
+    questions: JSON.parse(String(row.questions)) as string[],
+    answers: JSON.parse(String(row.answers)) as string[],
+    successCriteria: JSON.parse(String(row.success_criteria)) as string[],
+    constraints: JSON.parse(String(row.constraints)) as string[],
+    planSummary: row.plan_summary ? String(row.plan_summary) : undefined,
+    taskDrafts: JSON.parse(String(row.task_drafts)) as GoalAlignment['taskDrafts'],
+    recommendedAgentIds: JSON.parse(String(row.recommended_agent_ids)) as string[],
+    reviewerAgentIds: JSON.parse(String(row.reviewer_agent_ids)) as string[],
+    recommendationReasons: JSON.parse(String(row.recommendation_reasons)) as Record<string, string>,
+    gaps: JSON.parse(String(row.gaps)) as string[],
+    riskLevel: String(row.risk_level) as GoalAlignment['riskLevel'],
+    createdAt: String(row.created_at),
+    updatedAt: String(row.updated_at),
+  };
+}
+
+function buildTaskDrafts(objective: string, recommendation: ReturnType<typeof recommendAgentsForGoal>): GoalAlignment['taskDrafts'] {
+  const owner = recommendation.ownerAgentIds[0];
+  const reviewer = recommendation.reviewerAgentIds[0];
+  return [
+    {
+      title: `Plan: ${objective}`.slice(0, 200),
+      assigneeId: owner,
+      role: 'owner',
+      acceptanceCriteria: ['Scope, milestones, and handoff points are clear.'],
+    },
+    {
+      title: `Review acceptance for: ${objective}`.slice(0, 200),
+      assigneeId: reviewer,
+      role: 'reviewer',
+      dependencies: owner ? [`Owner plan from ${owner}`] : [],
+      acceptanceCriteria: ['Review notes and acceptance risks are documented.'],
+    },
+  ];
+}
+
+function buildPlanSummary(objective: string, recommendation: ReturnType<typeof recommendAgentsForGoal>, riskLevel: GoalAlignment['riskLevel']): string {
+  const owners = recommendation.ownerAgentIds.length > 0 ? recommendation.ownerAgentIds.join(', ') : 'No owner match';
+  const reviewers = recommendation.reviewerAgentIds.length > 0 ? recommendation.reviewerAgentIds.join(', ') : 'No reviewer match';
+  return `Draft plan for "${objective}". Owners: ${owners}. Reviewers: ${reviewers}. Risk: ${riskLevel}.`;
 }
 
 function toReminder(row: Row): Reminder {

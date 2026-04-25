@@ -2,10 +2,13 @@ import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { nanoid } from 'nanoid';
 import {
   createVersionInfo,
+  ConfirmGoalAlignmentRequestSchema,
   CreateReminderRequestSchema,
   InternalGoalCreateRequestSchema,
   InternalGoalCreateTasksRequestSchema,
   InternalGoalListRequestSchema,
+  InternalGoalAlignRequestSchema,
+  InternalGoalAlignmentPatchRequestSchema,
   InternalAgentDelegateRequestSchema,
   InternalAgentResolveRequestSchema,
   InternalDmSendRequestSchema,
@@ -15,10 +18,11 @@ import {
   InternalTaskListRequestSchema,
   InternalTaskUpdateRequestSchema,
   PatchReminderRequestSchema,
+  type GoalAlignment,
   type Agent,
   type DirectMessage,
 } from '@mini-slock/shared';
-import { toRuntimeConfig } from '@mini-slock/hub-core';
+import { buildClarifyingQuestions, inferGoalRiskLevel, recommendAgentsForGoal, toRuntimeConfig } from '@mini-slock/hub-core';
 import { getStore } from '../db.js';
 import { eventBus } from '../events.js';
 import { daemonRegistry } from '../daemonRegistry.js';
@@ -263,6 +267,139 @@ export async function internalAgentRoutes(app: FastifyInstance) {
     return reply.status(201).send({ tasks });
   });
 
+  app.post<{ Params: { agentId: string }; Querystring: { messageId?: string } }>('/internal/agent/:agentId/goals/align', async (req, reply) => {
+    const store = getStore();
+    const agent = await store.getAgent(req.params.agentId);
+    if (!agent) return reply.status(404).send({ error: 'Agent not found' });
+    if (!req.query.messageId) return reply.status(400).send({ error: 'Missing messageId' });
+    const parsed = InternalGoalAlignRequestSchema.safeParse(req.body ?? {});
+    if (!parsed.success) return reply.status(400).send({ error: 'Invalid request body', issues: parsed.error.issues });
+    const message = await store.getMessage(req.query.messageId);
+    if (!message) return reply.status(404).send({ error: 'Message not found' });
+
+    const objective = parsed.data.objective ?? message.content.slice(0, 240);
+    const recommendation = recommendAgentsForGoal(objective, await store.listAgents());
+    const questions = buildClarifyingQuestions(message);
+    const riskLevel = inferGoalRiskLevel(message);
+    const alignment = await store.createGoalAlignment({
+      id: nanoid(),
+      channelId: message.channelId,
+      threadRootId: message.threadRootId ?? message.id,
+      sourceMessageId: message.id,
+      status: questions.length > 0 || riskLevel !== 'low' ? 'needs_clarification' : 'awaiting_confirmation',
+      objective,
+      questions,
+      answers: [],
+      successCriteria: ['A confirmed plan exists with clear task owners and acceptance criteria.'],
+      constraints: riskLevel === 'high' ? ['Wait for explicit user confirmation before execution.'] : [],
+      planSummary: buildPlanSummary(objective, recommendation, riskLevel),
+      taskDrafts: buildTaskDrafts(objective, recommendation),
+      recommendedAgentIds: recommendation.ownerAgentIds,
+      reviewerAgentIds: recommendation.reviewerAgentIds,
+      recommendationReasons: recommendation.reasons,
+      gaps: recommendation.gaps,
+      riskLevel,
+    });
+    eventBus.emit({ type: 'goal-alignment:update', alignment });
+    await store.createMessage({
+      id: nanoid(),
+      channelId: alignment.channelId,
+      senderName: agent.displayName ?? agent.name,
+      agentId: agent.id,
+      content: [
+        `Goal alignment started: ${alignment.objective}`,
+        alignment.planSummary,
+        alignment.questions.length > 0 ? `Clarifying questions:\n${alignment.questions.map((question) => `- ${question}`).join('\n')}` : 'Plan is ready for confirmation.',
+      ].filter(Boolean).join('\n\n'),
+      threadRootId: alignment.threadRootId,
+    });
+    return reply.status(201).send(alignment);
+  });
+
+  app.get<{ Params: { agentId: string; alignmentId: string } }>('/internal/agent/:agentId/goal-alignments/:alignmentId', async (req, reply) => {
+    const store = getStore();
+    const agent = await store.getAgent(req.params.agentId);
+    if (!agent) return reply.status(404).send({ error: 'Agent not found' });
+    const alignment = await store.getGoalAlignment(req.params.alignmentId);
+    if (!alignment) return reply.status(404).send({ error: 'Goal alignment not found' });
+    return alignment;
+  });
+
+  app.post<{ Params: { agentId: string; alignmentId: string } }>('/internal/agent/:agentId/goal-alignments/:alignmentId', async (req, reply) => {
+    const store = getStore();
+    const agent = await store.getAgent(req.params.agentId);
+    if (!agent) return reply.status(404).send({ error: 'Agent not found' });
+    const parsed = InternalGoalAlignmentPatchRequestSchema.safeParse(req.body);
+    if (!parsed.success) return reply.status(400).send({ error: 'Invalid request body', issues: parsed.error.issues });
+    const alignment = await store.updateGoalAlignment(req.params.alignmentId, parsed.data);
+    if (!alignment) return reply.status(404).send({ error: 'Goal alignment not found' });
+    eventBus.emit({ type: 'goal-alignment:update', alignment });
+    return alignment;
+  });
+
+  app.post<{ Params: { agentId: string; alignmentId: string } }>('/internal/agent/:agentId/goal-alignments/:alignmentId/confirm', async (req, reply) => {
+    const store = getStore();
+    const agent = await store.getAgent(req.params.agentId);
+    if (!agent) return reply.status(404).send({ error: 'Agent not found' });
+    const parsed = ConfirmGoalAlignmentRequestSchema.safeParse({ requesterName: agent.displayName ?? agent.name });
+    if (!parsed.success) return reply.status(400).send({ error: 'Invalid request body', issues: parsed.error.issues });
+    const alignment = await store.getGoalAlignment(req.params.alignmentId);
+    if (!alignment) return reply.status(404).send({ error: 'Goal alignment not found' });
+    if (alignment.status === 'cancelled') return reply.status(409).send({ error: 'Goal alignment is cancelled' });
+    const goal = alignment.goalId
+      ? await store.updateGoal(alignment.goalId, {
+          objective: alignment.objective,
+          successCriteria: alignment.successCriteria,
+          constraints: alignment.constraints,
+          status: 'confirmed',
+        })
+      : await store.createGoal({
+          id: nanoid(),
+          channelId: alignment.channelId,
+          sourceMessageId: alignment.sourceMessageId,
+          requesterName: parsed.data.requesterName,
+          objective: alignment.objective,
+          background: alignment.answers,
+          successCriteria: alignment.successCriteria,
+          constraints: alignment.constraints,
+          assumptions: alignment.gaps,
+          risks: alignment.riskLevel === 'low' ? [] : [`${alignment.riskLevel} risk plan; keep user confirmation explicit.`],
+          status: 'confirmed',
+        });
+    if (!goal) return reply.status(404).send({ error: 'Goal not found' });
+    eventBus.emit({ type: 'goal:update', goal });
+    const tasks = [];
+    for (const draft of alignment.taskDrafts) {
+      const task = await store.createTask({
+        id: nanoid(),
+        channelId: alignment.channelId,
+        messageId: alignment.sourceMessageId,
+        title: draft.title,
+        status: 'todo',
+        creatorName: parsed.data.requesterName,
+        assigneeId: draft.assigneeId,
+        context: {
+          goalId: goal.id,
+          goalObjective: goal.objective,
+          goal: goal.objective,
+          background: alignment.planSummary,
+          acceptanceCriteria: (draft.acceptanceCriteria?.length ?? 0) > 0 ? draft.acceptanceCriteria : alignment.successCriteria,
+          constraints: alignment.constraints,
+          assumptions: alignment.gaps,
+          dependencies: draft.dependencies,
+          artifacts: draft.artifacts,
+          sourceMessageIds: [alignment.sourceMessageId],
+        },
+      });
+      eventBus.emit({ type: 'task:update', task });
+      await notifyTaskAssignee(task);
+      tasks.push(task);
+    }
+    const updated = await store.updateGoalAlignment(alignment.id, { status: 'confirmed', goalId: goal.id });
+    if (updated) eventBus.emit({ type: 'goal-alignment:update', alignment: updated });
+    return reply.status(201).send({ alignment: updated ?? alignment, goal, tasks });
+  });
+
   app.get<{ Params: { agentId: string } }>('/internal/agent/:agentId/reminders', async (req, reply) => {
     const store = getStore();
     const agent = await store.getAgent(req.params.agentId);
@@ -370,6 +507,32 @@ async function findChannel(value: string) {
   const byId = await store.getChannel(value);
   if (byId) return byId;
   return (await store.listChannels()).find((channel) => channel.name === value);
+}
+
+function buildTaskDrafts(objective: string, recommendation: ReturnType<typeof recommendAgentsForGoal>): GoalAlignment['taskDrafts'] {
+  const owner = recommendation.ownerAgentIds[0];
+  const reviewer = recommendation.reviewerAgentIds[0];
+  return [
+    {
+      title: `Plan: ${objective}`.slice(0, 200),
+      assigneeId: owner,
+      role: 'owner',
+      acceptanceCriteria: ['Scope, milestones, and handoff points are clear.'],
+    },
+    {
+      title: `Review acceptance for: ${objective}`.slice(0, 200),
+      assigneeId: reviewer,
+      role: 'reviewer',
+      dependencies: owner ? [`Owner plan from ${owner}`] : [],
+      acceptanceCriteria: ['Review notes and acceptance risks are documented.'],
+    },
+  ];
+}
+
+function buildPlanSummary(objective: string, recommendation: ReturnType<typeof recommendAgentsForGoal>, riskLevel: GoalAlignment['riskLevel']): string {
+  const owners = recommendation.ownerAgentIds.length > 0 ? recommendation.ownerAgentIds.join(', ') : 'No owner match';
+  const reviewers = recommendation.reviewerAgentIds.length > 0 ? recommendation.reviewerAgentIds.join(', ') : 'No reviewer match';
+  return `Draft plan for "${objective}". Owners: ${owners}. Reviewers: ${reviewers}. Risk: ${riskLevel}.`;
 }
 
 function deliverDirectMessage(target: Agent, dm: DirectMessage): void {
