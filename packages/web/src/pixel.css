@@ -47,3 +47,17 @@ body {
   outline: 2px solid var(--pink);
   outline-offset: -2px;
 }
+
+.message-row:hover .message-actions {
+  opacity: 1 !important;
+}
+
+.message-row p {
+  margin: 0 0 8px;
+}
+
+.message-row p:last-child,
+.message-row ul:last-child,
+.message-row ol:last-child {
+  margin-bottom: 0;
+}

@@ -3,7 +3,7 @@ import { nanoid } from 'nanoid';
 import { getStore } from '../db.js';
 import { daemonRegistry } from '../daemonRegistry.js';
 import { eventBus } from '../events.js';
-import { CreateMessageRequestSchema } from '@mini-slock/shared';
+import { CreateMessageRequestSchema, type Agent, type Mention } from '@mini-slock/shared';
 import { toAgentDelivery, toRuntimeConfig } from '@mini-slock/hub-core';
 
 export async function messageRoutes(app: FastifyInstance) {
@@ -16,7 +16,14 @@ export async function messageRoutes(app: FastifyInstance) {
     if (!parsed.success) {
       return reply.status(400).send({ error: 'Invalid request body', issues: parsed.error.issues });
     }
-    const { senderName, content, agentId } = parsed.data;
+    const { senderName, content, agentId, threadRootId } = parsed.data;
+    let normalizedThreadRootId = threadRootId;
+    if (threadRootId) {
+      const thread = await store.getThread(threadRootId);
+      if (!thread) return reply.status(404).send({ error: 'Thread root not found' });
+      if (thread.root.channelId !== req.params.id) return reply.status(400).send({ error: 'Thread root belongs to another channel' });
+      normalizedThreadRootId = thread.root.id;
+    }
 
     const message = await store.createMessage({
       id: nanoid(),
@@ -24,9 +31,16 @@ export async function messageRoutes(app: FastifyInstance) {
       senderName,
       content,
       agentId,
+      threadRootId: normalizedThreadRootId,
+      mentions: parseMentions(content, await store.listAgents()),
     });
 
-    eventBus.emit({ type: 'message:new', message });
+    if (message.threadRootId) {
+      const thread = await store.getThread(message.threadRootId);
+      if (thread) eventBus.emit({ type: 'thread:message:new', root: thread.root, message });
+    } else {
+      eventBus.emit({ type: 'message:new', message });
+    }
 
     if (agentId) {
       const agent = await store.getAgent(agentId);
@@ -44,4 +58,25 @@ export async function messageRoutes(app: FastifyInstance) {
 
     return reply.status(201).send(message);
   });
+
+  app.get<{ Params: { id: string } }>('/api/messages/:id/thread', async (req, reply) => {
+    const thread = await getStore().getThread(req.params.id);
+    if (!thread) return reply.status(404).send({ error: 'Message not found' });
+    return thread;
+  });
+}
+
+function parseMentions(content: string, agents: Agent[]): Mention[] | undefined {
+  const mentions = new Map<string, Mention>();
+  if (/@user\b/.test(content)) mentions.set('user:user', { type: 'user', id: 'user', label: 'user' });
+  for (const agent of agents) {
+    const labels = [agent.displayName, agent.name].filter(Boolean) as string[];
+    for (const label of labels) {
+      if (content.includes(`@${label}`)) {
+        mentions.set(`agent:${agent.id}`, { type: 'agent', id: agent.id, label });
+        break;
+      }
+    }
+  }
+  return mentions.size ? [...mentions.values()] : undefined;
 }

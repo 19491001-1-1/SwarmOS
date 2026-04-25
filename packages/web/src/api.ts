@@ -4,7 +4,9 @@ export const WEB_VERSION = (import.meta.env.VITE_APP_VERSION ?? '0.6.0').trim();
 export const WEB_COMMIT_SHA = (import.meta.env.VITE_COMMIT_SHA ?? '').trim();
 
 export type Channel = { id: string; name: string; createdAt: string };
-export type Message = { id: string; channelId: string; senderName: string; content: string; agentId?: string; createdAt: string };
+export type Mention = { type: 'agent' | 'user'; id: string; label: string };
+export type Message = { id: string; channelId: string; senderName: string; content: string; agentId?: string; threadRootId?: string; replyCount?: number; latestReplyAt?: string; mentions?: Mention[]; createdAt: string };
+export type MessageThread = { root: Message; replies: Message[] };
 export type SearchMessageResult = Message & { channelName: string };
 export type AgentOrganization = { department?: string; roles?: string[]; capabilities?: string[]; responsibilities?: string[]; managerId?: string; backupAgentIds?: string[]; availability?: 'available' | 'unavailable' | 'overloaded' };
 export type Agent = { id: string; name: string; displayName?: string; description?: string; runtime: string; model?: string; systemPrompt?: string; envVars?: Record<string, string>; organization?: AgentOrganization; status: string; machineId?: string; autoStart?: boolean; createdAt: string };
@@ -75,11 +77,17 @@ export async function getMessages(channelId: string): Promise<Message[]> {
   return r.json();
 }
 
-export async function sendMessage(channelId: string, senderName: string, content: string, agentId?: string): Promise<Message> {
+export async function getMessageThread(messageId: string): Promise<MessageThread> {
+  const r = await fetch(`${API_BASE}/api/messages/${encodeURIComponent(messageId)}/thread`, { headers: authHeaders() });
+  if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error ?? 'Load thread failed');
+  return r.json();
+}
+
+export async function sendMessage(channelId: string, senderName: string, content: string, agentId?: string, threadRootId?: string): Promise<Message> {
   const r = await fetch(`${API_BASE}/api/channels/${channelId}/messages`, {
     method: 'POST',
     headers: authHeaders({ 'Content-Type': 'application/json' }),
-    body: JSON.stringify({ senderName, content, agentId }),
+    body: JSON.stringify({ senderName, content, agentId, threadRootId }),
   });
   if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error ?? 'Send message failed');
   return r.json();

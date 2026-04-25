@@ -78,6 +78,72 @@ describe('POST /api/channels/:id/messages', () => {
     expect(res.statusCode).toBe(400);
     await app.close();
   });
+
+  it('persists thread replies separately from channel messages', async () => {
+    const app = await buildApp();
+    const store = getStore();
+    await store.createAgent({
+      id: 'agent-1',
+      name: 'pm',
+      displayName: '产品经理',
+      runtime: 'claude',
+      status: 'idle',
+      createdAt: new Date().toISOString(),
+    });
+
+    const root = await app.inject({
+      method: 'POST',
+      url: '/api/channels/general/messages',
+      payload: { senderName: 'user', content: 'Root @产品经理' },
+    });
+    expect(root.statusCode).toBe(201);
+    expect(root.json().mentions).toEqual([{ type: 'agent', id: 'agent-1', label: '产品经理' }]);
+
+    const reply = await app.inject({
+      method: 'POST',
+      url: '/api/channels/general/messages',
+      payload: { senderName: 'user', content: 'Thread reply', threadRootId: root.json().id },
+    });
+    expect(reply.statusCode).toBe(201);
+    expect(reply.json()).toMatchObject({ threadRootId: root.json().id, content: 'Thread reply' });
+
+    const listed = await app.inject({ method: 'GET', url: '/api/channels/general/messages' });
+    expect(listed.statusCode).toBe(200);
+    expect(listed.json()).toHaveLength(1);
+    expect(listed.json()[0]).toMatchObject({ id: root.json().id, replyCount: 1 });
+
+    const thread = await app.inject({ method: 'GET', url: `/api/messages/${root.json().id}/thread` });
+    expect(thread.statusCode).toBe(200);
+    expect(thread.json().root.id).toBe(root.json().id);
+    expect(thread.json().replies).toHaveLength(1);
+    expect(thread.json().replies[0].id).toBe(reply.json().id);
+    await app.close();
+  });
+
+  it('rejects missing or cross-channel thread roots', async () => {
+    const app = await buildApp();
+    await getStore().createChannel('other', 'other');
+    const root = await app.inject({
+      method: 'POST',
+      url: '/api/channels/general/messages',
+      payload: { senderName: 'user', content: 'Root' },
+    });
+
+    const missing = await app.inject({
+      method: 'POST',
+      url: '/api/channels/general/messages',
+      payload: { senderName: 'user', content: 'reply', threadRootId: 'missing' },
+    });
+    expect(missing.statusCode).toBe(404);
+
+    const cross = await app.inject({
+      method: 'POST',
+      url: '/api/channels/other/messages',
+      payload: { senderName: 'user', content: 'reply', threadRootId: root.json().id },
+    });
+    expect(cross.statusCode).toBe(400);
+    await app.close();
+  });
 });
 
 describe('POST /api/agents', () => {

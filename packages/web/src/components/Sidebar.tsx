@@ -1,5 +1,7 @@
 import { useState } from 'react';
 import type { Channel, Agent, Machine, VersionInfo } from '../api.js';
+import { presenceLabel } from './PresenceAvatar.js';
+import { t } from '../i18n.js';
 
 type Props = {
   channels: Channel[];
@@ -74,7 +76,7 @@ export function Sidebar({ channels, agents, machines, selectedView, selectedChan
   return (
     <div style={S.sidebar}>
       <div style={S.workspaceName}>
-        <span>▶ WORKSPACE</span>
+        <span>▶ {t('nav.workspace')}</span>
         <span title={versionTitle(webVersion, hubVersion)} style={{ fontSize: 10, fontWeight: 400, opacity: 0.65 }}>
           web {shortVersion(webVersion.version)}
         </span>
@@ -82,7 +84,7 @@ export function Sidebar({ channels, agents, machines, selectedView, selectedChan
 
       <div style={{ padding: '4px 0' }}>
         <button onClick={onOpenSearch} style={navButtonStyle(false)}>
-          <span style={{ flex: 1 }}>SEARCH</span>
+          <span style={{ flex: 1 }}>{t('nav.search')}</span>
           <span style={{ fontSize: 10 }}>⌘K</span>
         </button>
         <button onClick={onSelectTasks} style={{
@@ -103,11 +105,11 @@ export function Sidebar({ channels, agents, machines, selectedView, selectedChan
           cursor: 'pointer',
           textAlign: 'left',
         }}>
-          <span style={{ flex: 1 }}>TASKS</span>
+          <span style={{ flex: 1 }}>{t('nav.tasks')}</span>
           <span style={{ fontSize: 10 }}>{taskCount}</span>
         </button>
 
-        <SectionHeader label="CHANNELS" count={channels.length} action={<button onClick={() => setCreating(true)} style={miniButtonStyle}>+</button>} />
+        <SectionHeader label={t('nav.channels')} count={channels.length} action={<button onClick={() => setCreating(true)} style={miniButtonStyle}>+</button>} />
         {creating ? (
           <div style={{ margin: '2px 8px 6px' }}>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 4 }}>
@@ -149,7 +151,7 @@ export function Sidebar({ channels, agents, machines, selectedView, selectedChan
           />
         ))}
 
-        <SectionHeader label="AGENTS" count={agents.length} style={{ marginTop: 8 }} />
+        <SectionHeader label={t('nav.agents')} count={agents.length} style={{ marginTop: 8 }} />
         {agents.length === 0 && <EmptyHint text="no agents" />}
         {agents.map((a) => (
           <button key={a.id} onClick={() => onSelectAgent(a.id)} style={{
@@ -173,6 +175,7 @@ export function Sidebar({ channels, agents, machines, selectedView, selectedChan
             <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: 600 }}>
               {a.displayName ?? a.name}
             </span>
+            <span style={{ fontSize: 9, opacity: 0.78, fontWeight: 700 }}>{presenceLabel(a.status as any, undefined, true)}</span>
             <span style={{
               fontSize: 9,
               fontWeight: 700,
@@ -186,7 +189,7 @@ export function Sidebar({ channels, agents, machines, selectedView, selectedChan
           </button>
         ))}
 
-        <SectionHeader label="MACHINES" count={machines.length} style={{ marginTop: 8 }} />
+        <SectionHeader label={t('nav.machines')} count={machines.length} style={{ marginTop: 8 }} />
         {machines.length === 0 && <EmptyHint text="no daemon connected" />}
         {machines.map((m) => (
           <div key={m.id} style={{
