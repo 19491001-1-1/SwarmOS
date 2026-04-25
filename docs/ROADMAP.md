@@ -32,6 +32,7 @@
 - [v0.4.1 — Agent Recovery & Daemon Auto Start](./v0.4.1-agent-recovery.md)
 - [v0.4.2 — Agent Delegation & Wake-on-Demand](./v0.4.2-agent-delegation.md)
 - [v0.4.3 — Agent-Facing CLI & Internal Agent API](./v0.4.3-agent-facing-cli.md)
+- [Agent-Facing CLI Reference](./agent-facing-cli-reference.md)
 - [v0.4.4 — Daemon Inbox, Wake Messages & Runtime Resume](./v0.4.4-daemon-inbox-resume.md)
 - [v0.4.5 — Agent Memory, Notes & Workspace Foundation](./v0.4.5-agent-memory-workspace.md)
 - [v0.4.6 — Agent MCP Bridge & Collaboration Tool Parity](./v0.4.6-agent-mcp-and-tools.md)
