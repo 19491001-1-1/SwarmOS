@@ -110,9 +110,18 @@ describe('agent internal API', () => {
     const targetCreated = await SELF.fetch('https://hub.test/api/agents', {
       method: 'POST',
       headers: authHeaders({ 'Content-Type': 'application/json' }),
-      body: JSON.stringify({ name: `internal-target-${crypto.randomUUID()}`, runtime: 'claude' }),
+      body: JSON.stringify({
+        name: `internal-target-${crypto.randomUUID()}`,
+        displayName: `产品经理-${crypto.randomUUID()}`,
+        description: 'Product manager for task triage',
+        runtime: 'claude',
+      }),
     });
-    const target = (await targetCreated.json()) as { id: string; name: string };
+    const target = (await targetCreated.json()) as { id: string; name: string; displayName: string };
+
+    const resolved = await SELF.fetch(`https://hub.test/internal/agent/${agent.id}/agents/resolve?query=${encodeURIComponent(target.displayName)}`, { headers: internalHeaders });
+    expect(resolved.status).toBe(200);
+    expect(await resolved.json()).toMatchObject({ match: { id: target.id }, confidence: 'exact_display_name' });
 
     const dm = await SELF.fetch(`https://hub.test/internal/agent/${agent.id}/dms/send`, {
       method: 'POST',

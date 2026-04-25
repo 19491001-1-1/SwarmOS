@@ -84,6 +84,13 @@ export type AgentWhoami = {
   agent: Agent;
 };
 
+export type AgentResolveResult = {
+  query: string;
+  match?: Agent;
+  confidence?: 'exact_id' | 'exact_name' | 'exact_display_name' | 'case_insensitive_name' | 'case_insensitive_display_name' | 'description_hint';
+  candidates: Agent[];
+};
+
 export type AgentServerInfo = {
   agent: Agent;
   channels: Channel[];

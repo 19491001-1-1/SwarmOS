@@ -9,6 +9,7 @@ import {
   CreateDirectMessageRequestSchema,
   CreateAgentDelegationRequestSchema,
   CreateTaskRequestSchema,
+  InternalAgentResolveRequestSchema,
   InternalAgentDelegateRequestSchema,
   InternalDmSendRequestSchema,
   InternalMessageReadRequestSchema,
@@ -197,6 +198,7 @@ describe('Internal agent API schemas', () => {
     expect(InternalMessageSendRequestSchema.safeParse({ channel: 'general', content: 'hello' }).success).toBe(true);
     expect(InternalMessageReadRequestSchema.safeParse({ channel: 'general', limit: '10' }).success).toBe(true);
     expect(InternalDmSendRequestSchema.safeParse({ to: 'agent-2', content: 'secret' }).success).toBe(true);
+    expect(InternalAgentResolveRequestSchema.safeParse({ query: '产品经理' }).success).toBe(true);
     expect(InternalAgentDelegateRequestSchema.safeParse({ to: 'agent-2', content: 'work', startIfInactive: true }).success).toBe(true);
     expect(InternalTaskListRequestSchema.safeParse({ status: 'todo', all: 'true' }).success).toBe(true);
     expect(InternalTaskUpdateRequestSchema.safeParse({ status: 'in_progress' }).success).toBe(true);
@@ -205,6 +207,7 @@ describe('Internal agent API schemas', () => {
   it('rejects empty internal agent API content', () => {
     expect(InternalMessageSendRequestSchema.safeParse({ channel: 'general', content: '' }).success).toBe(false);
     expect(InternalDmSendRequestSchema.safeParse({ to: 'agent-2', content: '' }).success).toBe(false);
+    expect(InternalAgentResolveRequestSchema.safeParse({ query: '' }).success).toBe(false);
     expect(InternalAgentDelegateRequestSchema.safeParse({ to: '', content: 'work' }).success).toBe(false);
     expect(InternalTaskUpdateRequestSchema.safeParse({}).success).toBe(false);
   });

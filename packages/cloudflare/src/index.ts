@@ -24,6 +24,7 @@ import {
   CreateDirectMessageRequestSchema,
   CreateTaskRequestSchema,
   InternalAgentDelegateRequestSchema,
+  InternalAgentResolveRequestSchema,
   InternalDmSendRequestSchema,
   InternalMessageReadRequestSchema,
   InternalMessageSendRequestSchema,
@@ -36,7 +37,7 @@ import {
   PatchTaskRequestSchema,
   TaskStatusSchema,
 } from '@mini-slock/shared';
-import { findDuplicateMachineIds, resolveStartMachineId, toAgentDelivery, toRuntimeConfig } from '@mini-slock/hub-core';
+import { findDuplicateMachineIds, resolveAgentReference, resolveStartMachineId, toAgentDelivery, toRuntimeConfig } from '@mini-slock/hub-core';
 
 type SocketAttachment =
   | { kind: 'browser' }
@@ -633,6 +634,12 @@ export class XoxiangHub extends DurableObject<Env> {
       });
     }
 
+    if (request.method === 'GET' && path === '/agents/resolve') {
+      const parsed = InternalAgentResolveRequestSchema.safeParse(Object.fromEntries(url.searchParams.entries()));
+      if (!parsed.success) return json({ error: 'Invalid query', issues: parsed.error.issues }, 400);
+      return json(resolveAgentReference(parsed.data.query, this.listAgents()));
+    }
+
     if (request.method === 'GET' && path === '/messages/check') {
       return json({
         channels: this.listChannels().map((channel) => {
@@ -1181,10 +1188,7 @@ export class XoxiangHub extends DurableObject<Env> {
   }
 
   private findAgentByNameOrId(value: string): Agent | undefined {
-    const byId = this.getAgent(value);
-    if (byId) return byId;
-    const row = this.ctx.storage.sql.exec<Row>('SELECT * FROM agents WHERE name = ? OR lower(name) = lower(?) LIMIT 1', value, value).toArray()[0];
-    return row ? toAgent(row) : undefined;
+    return resolveAgentReference(value, this.listAgents()).match;
   }
 
   private updateAgent(id: string, patch: Partial<Agent>): Agent | undefined {
@@ -1221,7 +1225,10 @@ export class XoxiangHub extends DurableObject<Env> {
         toAgentId: input.toAgentId,
         content: input.content,
         status: 'failed',
-        error: 'Target agent not found',
+        error: JSON.stringify({
+          message: 'Target agent not found',
+          resolve: resolveAgentReference(input.toAgentId, this.listAgents()),
+        }),
       });
       this.broadcast({ type: 'agent:delegation', delegation: failed });
       return failed;
