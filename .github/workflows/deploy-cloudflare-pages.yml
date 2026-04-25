@@ -14,6 +14,7 @@ jobs:
     env:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      WEB_AUTH_TOKEN: ${{ secrets.WEB_AUTH_TOKEN }}
     steps:
       - uses: actions/checkout@v4
 
@@ -35,11 +36,15 @@ jobs:
             echo "::error::CLOUDFLARE_API_TOKEN secret is not set. Please add it in repo Settings > Secrets."
             exit 1
           fi
+          if [ -z "$WEB_AUTH_TOKEN" ]; then
+            echo "::warning::WEB_AUTH_TOKEN secret is not set; web UI will fail to authenticate against the public hub."
+          fi
 
       - name: Build web UI
         run: pnpm --filter @mini-slock/web build
         env:
           VITE_API_BASE: ${{ env.VITE_API_BASE }}
+          VITE_WEB_AUTH_TOKEN: ${{ secrets.WEB_AUTH_TOKEN }}
 
       - name: Deploy to Cloudflare Pages
         id: pages_deploy
@@ -51,7 +56,10 @@ jobs:
             --commit-dirty=true 2>&1 | tee /tmp/wrangler-pages-deploy.log
           status=${PIPESTATUS[0]}
           set -e
-
+          if [ "$status" -ne 0 ]; then
+            echo "::error::wrangler pages deploy failed with exit code $status"
+            exit "$status"
+          fi
           url=$(grep -oE 'https://[^ ]+\.pages\.dev[^ ]*' /tmp/wrangler-pages-deploy.log | tail -1)
           if [ -n "$url" ]; then
             echo "pages_url=$url" >> "$GITHUB_OUTPUT"
