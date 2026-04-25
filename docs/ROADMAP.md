@@ -11,6 +11,7 @@
 | v0.2 | 数据持久化 | SQLite store，重启不丢数据 | — |
 | v0.3 | Agent 活动日志 | Activity 实时流，Thinking/Working/Output 状态 | v0.2 |
 | v0.4 | Agent Profile + DM | Agent 详情页，Agent 之间私信通道 | v0.3 |
+| v0.4.1 | Agent 恢复与 daemon 自动启动 | 修复冷启动误停 agent，daemon 连接后自动恢复应运行的 agent | v0.4 |
 | v0.5 | Workspace 文件浏览器 | Agent 工作目录文件树 + 文件预览 | v0.4 |
 | v0.6 | Task Board | Kanban 看板，消息转任务，TODO/IN PROGRESS/REVIEW/DONE | v0.4 |
 | v0.7 | Reminders | Agent 设置定时提醒，实时推送到 UI | v0.3 |
@@ -23,6 +24,7 @@
 - [v0.2 — 数据持久化](./v0.2-persistence.md)
 - [v0.3 — Agent Activity Log](./v0.3-activity-log.md)
 - [v0.4 — Agent Profile & DMs](./v0.4-agent-profile-dm.md)
+- [v0.4.1 — Agent Recovery & Daemon Auto Start](./v0.4.1-agent-recovery.md)
 - [v0.5 — Workspace 文件浏览器](./v0.5-workspace-browser.md)
 - [v0.6 — Task Board](./v0.6-task-board.md)
 - [v0.7 — Reminders](./v0.7-reminders.md)
