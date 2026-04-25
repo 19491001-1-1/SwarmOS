@@ -50,7 +50,7 @@ jobs:
         id: pages_deploy
         run: |
           set +e
-          pnpm --filter @mini-slock/cloudflare exec wrangler pages deploy packages/web/dist \
+          pnpm --filter @mini-slock/cloudflare exec wrangler pages deploy "$GITHUB_WORKSPACE/packages/web/dist" \
             --project-name xoxiang-web \
             --branch main \
             --commit-dirty=true 2>&1 | tee /tmp/wrangler-pages-deploy.log
