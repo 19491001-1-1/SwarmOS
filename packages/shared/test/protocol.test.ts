@@ -5,6 +5,7 @@ import {
   RuntimeIdSchema,
   CreateAgentRequestSchema,
   PatchAgentRequestSchema,
+  CreateChannelRequestSchema,
   CreateMessageRequestSchema,
   CreateDirectMessageRequestSchema,
   CreateAgentDelegationRequestSchema,
@@ -256,6 +257,19 @@ describe('CreateAgentRequestSchema', () => {
 
   it('rejects invalid runtime', () => {
     expect(CreateAgentRequestSchema.safeParse({ name: 'a', runtime: 'gpt4' }).success).toBe(false);
+  });
+});
+
+describe('CreateChannelRequestSchema', () => {
+  it('accepts display-oriented channel names', () => {
+    const result = CreateChannelRequestSchema.safeParse({ name: '  产品 讨论  ' });
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data.name).toBe('产品 讨论');
+  });
+
+  it('rejects empty and control-character channel names', () => {
+    expect(CreateChannelRequestSchema.safeParse({ name: '   ' }).success).toBe(false);
+    expect(CreateChannelRequestSchema.safeParse({ name: 'ops\nteam' }).success).toBe(false);
   });
 });
 

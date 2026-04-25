@@ -9,12 +9,12 @@ beforeEach(async () => {
 describe('channel API', () => {
   it('creates channels and lists them', async () => {
     const app = await buildApp();
-    const created = await app.inject({ method: 'POST', url: '/api/channels', payload: { name: 'ops' } });
+    const created = await app.inject({ method: 'POST', url: '/api/channels', payload: { name: ' 产品 讨论 ' } });
     expect(created.statusCode).toBe(201);
-    expect(created.json()).toMatchObject({ name: 'ops' });
+    expect(created.json()).toMatchObject({ name: '产品 讨论' });
 
     const listed = await app.inject({ method: 'GET', url: '/api/channels' });
-    expect(listed.json().map((channel: any) => channel.name)).toContain('ops');
+    expect(listed.json().map((channel: any) => channel.name)).toContain('产品 讨论');
     await app.close();
   });
 

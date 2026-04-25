@@ -56,13 +56,19 @@ const S = {
 export function Sidebar({ channels, agents, machines, selectedView, selectedChannel, selectedAgentId, webVersion, hubVersion, taskCount, onSelectTasks, onOpenSearch, onSelectChannel, onCreateChannel, onDeleteChannel, onSelectAgent }: Props) {
   const [creating, setCreating] = useState(false);
   const [channelName, setChannelName] = useState('');
+  const [channelError, setChannelError] = useState('');
 
   const submitChannel = async () => {
     const name = channelName.trim();
     if (!name) return;
-    await onCreateChannel(name);
-    setChannelName('');
-    setCreating(false);
+    setChannelError('');
+    try {
+      await onCreateChannel(name);
+      setChannelName('');
+      setCreating(false);
+    } catch (err) {
+      setChannelError(err instanceof Error ? err.message : String(err));
+    }
   };
 
   return (
@@ -103,18 +109,31 @@ export function Sidebar({ channels, agents, machines, selectedView, selectedChan
 
         <SectionHeader label="CHANNELS" count={channels.length} action={<button onClick={() => setCreating(true)} style={miniButtonStyle}>+</button>} />
         {creating ? (
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 4, margin: '2px 8px 6px' }}>
-            <input
-              autoFocus
-              value={channelName}
-              onChange={(event) => setChannelName(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter') submitChannel();
-                if (event.key === 'Escape') setCreating(false);
-              }}
-              style={{ border: '2px solid #000', padding: '5px 6px', fontFamily: "'Courier New', monospace", fontSize: 12 }}
-            />
-            <button onClick={submitChannel} style={miniButtonStyle}>OK</button>
+          <div style={{ margin: '2px 8px 6px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 4 }}>
+              <input
+                autoFocus
+                value={channelName}
+                onChange={(event) => {
+                  setChannelName(event.target.value);
+                  setChannelError('');
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') submitChannel();
+                  if (event.key === 'Escape') {
+                    setCreating(false);
+                    setChannelError('');
+                  }
+                }}
+                style={{ border: '2px solid #000', padding: '5px 6px', fontFamily: "'Courier New', monospace", fontSize: 12, minWidth: 0 }}
+              />
+              <button onClick={submitChannel} style={miniButtonStyle}>OK</button>
+            </div>
+            {channelError ? (
+              <div style={{ marginTop: 4, fontSize: 10, lineHeight: 1.3, color: '#b00020', fontWeight: 700 }}>
+                {channelError}
+              </div>
+            ) : null}
           </div>
         ) : null}
         {channels.map((ch) => (
