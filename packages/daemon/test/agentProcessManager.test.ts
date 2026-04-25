@@ -44,15 +44,18 @@ function createFakeProc(stdout: string[], exitCode = 0) {
 describe('AgentProcessManager', () => {
   let messages: Array<{ agentId: string; channelId: string; content: string }> = [];
   let statuses: Array<{ agentId: string; status: string }> = [];
+  let activities: Array<{ agentId: string; type: string; detail?: string }> = [];
   let manager: AgentProcessManager;
 
   beforeEach(() => {
     messages = [];
     statuses = [];
+    activities = [];
     manager = new AgentProcessManager(
       '/tmp/test-workspaces',
       (agentId, channelId, content) => messages.push({ agentId, channelId, content }),
-      (agentId, status) => statuses.push({ agentId, status })
+      (agentId, status) => statuses.push({ agentId, status }),
+      (agentId, type, detail) => activities.push({ agentId, type, detail })
     );
   });
 
@@ -93,6 +96,8 @@ describe('AgentProcessManager', () => {
       expect.any(Array),
       expect.any(Object)
     );
+    expect(activities.some((a) => a.agentId === 'agent-1' && a.type === 'working' && a.detail === 'Message received')).toBe(true);
+    expect(activities.some((a) => a.agentId === 'agent-1' && a.type === 'thinking')).toBe(true);
   });
 
   it('stdout line parsed into agent:message', async () => {
@@ -115,6 +120,28 @@ describe('AgentProcessManager', () => {
     expect(messages).toHaveLength(1);
     expect(messages[0].content).toBe('Echo: Hello');
     expect(messages[0].agentId).toBe('agent-1');
+    expect(activities.some((a) => a.type === 'sending' && a.detail === 'channel:general')).toBe(true);
+    expect(activities.some((a) => a.type === 'idle')).toBe(true);
+  });
+
+  it('fallback stdout is reported as output activity', async () => {
+    const fakeProc = createFakeProc(['Plain fallback answer']);
+    mockSpawn.mockReturnValue(fakeProc);
+
+    await manager.startAgent('agent-1', { runtime: 'claude', name: 'bot' }, 'general');
+    await manager.deliverMessage('agent-1', {
+      id: 'msg-1',
+      channelId: 'general',
+      channelName: 'general',
+      senderName: 'user',
+      content: 'Hello',
+      createdAt: new Date().toISOString(),
+    });
+
+    await new Promise((r) => setTimeout(r, 50));
+
+    expect(messages[0].content).toBe('Plain fallback answer');
+    expect(activities.some((a) => a.type === 'output' && a.detail === 'Plain fallback answer')).toBe(true);
   });
 
   it('stopAgent kills process', async () => {

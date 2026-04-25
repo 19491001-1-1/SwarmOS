@@ -85,6 +85,13 @@ export async function daemonSocketHandler(app: FastifyInstance) {
         }
 
         if (msg.type === 'agent:activity') {
+          const activity = await store.createAgentActivity({
+            id: nanoid(),
+            agentId: msg.agentId,
+            type: msg.activityType,
+            detail: msg.detail,
+          });
+          eventBus.emit({ type: 'agent:activity', agentId: msg.agentId, activity });
           return;
         }
 

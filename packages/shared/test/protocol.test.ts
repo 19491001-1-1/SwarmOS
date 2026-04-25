@@ -40,6 +40,30 @@ describe('DaemonToServer protocol', () => {
     const result = DaemonToServerSchema.safeParse(msg);
     expect(result.success).toBe(true);
   });
+
+  it('parses agent:activity', () => {
+    const msg = {
+      type: 'agent:activity',
+      agentId: 'agent-1',
+      activityType: 'sending',
+      detail: 'channel:general',
+    };
+    const result = DaemonToServerSchema.safeParse(msg);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.type).toBe('agent:activity');
+      expect(result.data.activityType).toBe('sending');
+    }
+  });
+
+  it('rejects unknown agent activity types', () => {
+    const result = DaemonToServerSchema.safeParse({
+      type: 'agent:activity',
+      agentId: 'agent-1',
+      activityType: 'planning',
+    });
+    expect(result.success).toBe(false);
+  });
 });
 
 describe('ServerToDaemon protocol', () => {

@@ -1,7 +1,7 @@
 import WebSocket from 'ws';
 import os from 'os';
 import { join } from 'path';
-import type { DaemonToServer, ServerToDaemon } from '@mini-slock/shared';
+import type { AgentActivity, DaemonToServer, ServerToDaemon } from '@mini-slock/shared';
 import { ServerToDaemonSchema } from '@mini-slock/shared';
 import { detectRuntimes } from './runtimeDetector.js';
 import { AgentProcessManager } from './agentProcessManager.js';
@@ -29,7 +29,8 @@ export class DaemonClient {
     this.processManager = new AgentProcessManager(
       workspaceBase,
       (agentId, channelId, content) => this.sendMessage({ type: 'agent:message', agentId, channelId, content }),
-      (agentId, status) => this.sendMessage({ type: 'agent:status', agentId, status: status as any })
+      (agentId, status) => this.sendMessage({ type: 'agent:status', agentId, status: status as any }),
+      (agentId, activityType, detail) => this.sendActivity(agentId, activityType, detail)
     );
   }
 
@@ -145,6 +146,10 @@ export class DaemonClient {
     if (this.ws?.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify(msg));
     }
+  }
+
+  sendActivity(agentId: string, activityType: AgentActivity['type'], detail?: string): void {
+    this.sendMessage({ type: 'agent:activity', agentId, activityType, detail });
   }
 
   disconnect(): void {

@@ -15,6 +15,14 @@ export const messages = sqliteTable('messages', {
   createdAt: text('created_at').notNull(),
 });
 
+export const activities = sqliteTable('activities', {
+  id: text('id').primaryKey(),
+  agentId: text('agent_id').notNull(),
+  type: text('type').notNull(),
+  detail: text('detail'),
+  createdAt: text('created_at').notNull(),
+});
+
 export const agents = sqliteTable('agents', {
   id: text('id').primaryKey(),
   name: text('name').notNull(),

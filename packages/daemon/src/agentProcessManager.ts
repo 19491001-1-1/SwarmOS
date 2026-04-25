@@ -2,7 +2,7 @@ import { mkdir, appendFile, readFile } from 'fs/promises';
 import { existsSync } from 'fs';
 import { join } from 'path';
 import { spawn, type ChildProcess } from 'child_process';
-import type { AgentRuntimeConfig, AgentDelivery } from '@mini-slock/shared';
+import type { AgentRuntimeConfig, AgentDelivery, AgentActivity } from '@mini-slock/shared';
 import type { RuntimeDriver } from './drivers/types.js';
 import { parseBridgeLine } from './bridge/simpleToolBridge.js';
 import { claudeDriver } from './drivers/claude.js';
@@ -17,6 +17,7 @@ const DRIVERS: Record<string, RuntimeDriver> = {
 
 export type AgentMessageCallback = (agentId: string, channelId: string, content: string) => void;
 export type AgentStatusCallback = (agentId: string, status: string) => void;
+export type AgentActivityCallback = (agentId: string, type: AgentActivity['type'], detail?: string) => void;
 
 interface AgentEntry {
   agentId: string;
@@ -33,15 +34,18 @@ export class AgentProcessManager {
   private workspaceBase: string;
   private onMessage: AgentMessageCallback;
   private onStatus: AgentStatusCallback;
+  private onActivity: AgentActivityCallback;
 
   constructor(
     workspaceBase: string,
     onMessage: AgentMessageCallback,
-    onStatus: AgentStatusCallback
+    onStatus: AgentStatusCallback,
+    onActivity: AgentActivityCallback = () => {}
   ) {
     this.workspaceBase = workspaceBase;
     this.onMessage = onMessage;
     this.onStatus = onStatus;
+    this.onActivity = onActivity;
   }
 
   async startAgent(agentId: string, config: AgentRuntimeConfig, channelId: string): Promise<void> {
@@ -80,6 +84,7 @@ export class AgentProcessManager {
     const line = `[${delivery.createdAt}] ${delivery.senderName}: ${delivery.content}\n`;
     await appendFile(entry.transcriptFile, line);
 
+    this.onActivity(agentId, 'working', 'Message received');
     this.onStatus(agentId, 'working');
 
     const ctx = {
@@ -94,6 +99,7 @@ export class AgentProcessManager {
 
     const displayArgs = cmd.args.map((a) => (a.length > 60 ? a.slice(0, 60) + '…' : a));
     console.log(`[daemon] spawning: ${cmd.cmd} ${displayArgs.join(' ')}`);
+    this.onActivity(agentId, 'thinking');
 
     const proc = spawn(cmd.cmd, cmd.args, {
       cwd: entry.workspaceDir,
@@ -134,15 +140,18 @@ export class AgentProcessManager {
         if (fallback) {
           console.log(`[daemon] agent ${agentId} fallback reply (no bridge marker found)`);
           this.onMessage(entry!.agentId, entry!.channelId, fallback);
+          this.onActivity(agentId, 'output', fallback.slice(0, 100));
         }
       }
       entry!.proc = null;
+      this.onActivity(agentId, 'idle');
       this.onStatus(agentId, 'idle');
     });
 
     proc.on('error', (err) => {
       console.error(`[daemon] agent ${agentId} spawn error:`, err.message);
       entry!.proc = null;
+      this.onActivity(agentId, 'error', err.message);
       this.onStatus(agentId, 'error');
     });
   }
@@ -152,6 +161,7 @@ export class AgentProcessManager {
     if (bridge) {
       console.log(`[daemon] agent ${entry.agentId} reply: ${bridge.content}`);
       this.onMessage(entry.agentId, entry.channelId, bridge.content);
+      this.onActivity(entry.agentId, 'sending', `channel:${entry.channelId}`);
       return true;
     }
     return false;

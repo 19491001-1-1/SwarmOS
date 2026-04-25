@@ -2,6 +2,14 @@ export type RuntimeId = 'claude' | 'codex' | 'gemini';
 
 export type AgentStatus = 'inactive' | 'starting' | 'running' | 'working' | 'idle' | 'error';
 
+export type AgentActivity = {
+  id: string;
+  agentId: string;
+  type: 'thinking' | 'working' | 'output' | 'idle' | 'sending' | 'error';
+  detail?: string;
+  createdAt: string;
+};
+
 export type AgentRuntimeConfig = {
   runtime: RuntimeId;
   model?: string;
@@ -35,7 +43,7 @@ export type DaemonToServer =
     }
   | { type: 'pong' }
   | { type: 'agent:status'; agentId: string; status: AgentStatus; launchId?: string }
-  | { type: 'agent:activity'; agentId: string; activity: string; detail?: string; launchId?: string }
+  | { type: 'agent:activity'; agentId: string; activityType: AgentActivity['type']; detail?: string; launchId?: string }
   | { type: 'agent:session'; agentId: string; sessionId: string; launchId?: string }
   | { type: 'agent:message'; agentId: string; channelId: string; content: string; inReplyToMessageId?: string }
   | { type: 'agent:deliver:ack'; agentId: string; seq: number }
@@ -91,4 +99,5 @@ export type Agent = {
 export type BrowserEvent =
   | { type: 'message:new'; message: Message }
   | { type: 'agent:update'; agent: Agent }
+  | { type: 'agent:activity'; agentId: string; activity: AgentActivity }
   | { type: 'machine:update'; machine: Machine };

@@ -11,6 +11,13 @@ export async function agentRoutes(app: FastifyInstance) {
     return getStore().listAgents();
   });
 
+  app.get<{ Params: { id: string } }>('/api/agents/:id/activities', async (req, reply) => {
+    const store = getStore();
+    const agent = await store.getAgent(req.params.id);
+    if (!agent) return reply.status(404).send({ error: 'Agent not found' });
+    return store.listAgentActivities(agent.id, 200);
+  });
+
   app.post<{
     Body: {
       name: string;

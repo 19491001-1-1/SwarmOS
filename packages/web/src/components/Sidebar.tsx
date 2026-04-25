@@ -5,7 +5,9 @@ type Props = {
   agents: Agent[];
   machines: Machine[];
   selectedChannel: string;
+  selectedAgentId?: string;
   onSelectChannel: (id: string) => void;
+  onSelectAgent: (id: string) => void;
 };
 
 const S = {
@@ -42,7 +44,7 @@ const S = {
   },
 };
 
-export function Sidebar({ channels, agents, machines, selectedChannel, onSelectChannel }: Props) {
+export function Sidebar({ channels, agents, machines, selectedChannel, selectedAgentId, onSelectChannel, onSelectAgent }: Props) {
   return (
     <div style={S.sidebar}>
       <div style={S.workspaceName}>
@@ -64,12 +66,22 @@ export function Sidebar({ channels, agents, machines, selectedChannel, onSelectC
         <SectionHeader label="AGENTS" count={agents.length} style={{ marginTop: 8 }} />
         {agents.length === 0 && <EmptyHint text="no agents" />}
         {agents.map((a) => (
-          <div key={a.id} style={{
+          <button key={a.id} onClick={() => onSelectAgent(a.id)} style={{
             display: 'flex',
             alignItems: 'center',
             gap: 7,
-            padding: '4px 14px',
+            width: 'calc(100% - 8px)',
+            margin: '1px 4px',
+            padding: '5px 10px',
             fontSize: 12,
+            fontFamily: "'Courier New', monospace",
+            border: 'none',
+            borderLeft: selectedAgentId === a.id ? '3px solid #000' : '3px solid transparent',
+            borderRight: selectedAgentId === a.id ? '3px solid #000' : '3px solid transparent',
+            background: selectedAgentId === a.id ? '#fff' : 'transparent',
+            color: '#000',
+            cursor: 'pointer',
+            textAlign: 'left',
           }}>
             <StatusDot status={a.status} />
             <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: 600 }}>
@@ -85,7 +97,7 @@ export function Sidebar({ channels, agents, machines, selectedChannel, onSelectC
             }}>
               {a.runtime.toUpperCase()}
             </span>
-          </div>
+          </button>
         ))}
 
         <SectionHeader label="MACHINES" count={machines.length} style={{ marginTop: 8 }} />
