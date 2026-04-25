@@ -140,9 +140,17 @@ xoxiang task update <taskId> --status in_review
 xoxiang task update <taskId> --status done
 ```
 
-`task list` returns tasks assigned to the current agent by default.
+`task list` returns tasks assigned to the current agent by default. A plain `task list` result is not the whole task board.
 
 Use `--all` only when the user asks for broader task board context. Otherwise agents should treat the assigned list as their work queue.
+
+Use `task list --all` when the user asks about:
+
+- unassigned tasks
+- all tasks
+- the whole task board
+- another agent's tasks
+- global task status or task ownership
 
 `task read <taskId>` returns one task. If a task is assigned to another agent, the hub rejects the read unless the task is unassigned.
 
