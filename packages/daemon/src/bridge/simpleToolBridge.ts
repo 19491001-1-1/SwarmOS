@@ -1,5 +1,6 @@
 export const BRIDGE_MARKER = '[[MINI_SLOCK_SEND_MESSAGE]]';
 export const DM_BRIDGE_MARKER = '[[MINI_SLOCK_SEND_DM]]';
+export const DELEGATE_BRIDGE_MARKER = '[[MINI_SLOCK_DELEGATE_AGENT]]';
 
 export type ParsedBridgeMessage = {
   content: string;
@@ -8,6 +9,12 @@ export type ParsedBridgeMessage = {
 export type ParsedBridgeDm = {
   to: string;
   content: string;
+};
+
+export type ParsedBridgeDelegate = {
+  to: string;
+  content: string;
+  startIfInactive?: boolean;
 };
 
 export function parseBridgeLine(line: string): ParsedBridgeMessage | null {
@@ -42,10 +49,34 @@ export function parseDmLine(line: string): ParsedBridgeDm | null {
   }
 }
 
+export function parseDelegateLine(line: string): ParsedBridgeDelegate | null {
+  const idx = line.indexOf(DELEGATE_BRIDGE_MARKER);
+  if (idx === -1) return null;
+
+  const jsonPart = line.slice(idx + DELEGATE_BRIDGE_MARKER.length).trim();
+  try {
+    const parsed = JSON.parse(jsonPart);
+    if (typeof parsed?.to === 'string' && typeof parsed?.content === 'string') {
+      return {
+        to: parsed.to,
+        content: parsed.content,
+        startIfInactive: typeof parsed.startIfInactive === 'boolean' ? parsed.startIfInactive : undefined,
+      };
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 export function buildBridgeInstruction(): string {
   return `When you want to send a chat reply, output exactly one line:\n${BRIDGE_MARKER} {"content":"your message here"}`;
 }
 
 export function buildDmInstruction(): string {
   return `To send a direct message to another agent, output exactly one line:\n${DM_BRIDGE_MARKER} {"to":"agentId or agentName","content":"your private message here"}`;
+}
+
+export function buildDelegateInstruction(): string {
+  return `To delegate work to another agent and wake it if needed, output exactly one line:\n${DELEGATE_BRIDGE_MARKER} {"to":"agentId or agentName","content":"task details","startIfInactive":true}`;
 }

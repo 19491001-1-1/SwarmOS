@@ -1,5 +1,14 @@
 import { describe, it, expect } from 'vitest';
-import { parseBridgeLine, parseDmLine, BRIDGE_MARKER, DM_BRIDGE_MARKER, buildDmInstruction } from '../src/bridge/simpleToolBridge.js';
+import {
+  parseBridgeLine,
+  parseDmLine,
+  parseDelegateLine,
+  BRIDGE_MARKER,
+  DM_BRIDGE_MARKER,
+  DELEGATE_BRIDGE_MARKER,
+  buildDmInstruction,
+  buildDelegateInstruction,
+} from '../src/bridge/simpleToolBridge.js';
 
 describe('parseBridgeLine', () => {
   it('extracts content from valid line', () => {
@@ -29,6 +38,28 @@ describe('parseBridgeLine', () => {
     const line = `some prefix ${BRIDGE_MARKER} {"content":"reply"}`;
     const result = parseBridgeLine(line);
     expect(result?.content).toBe('reply');
+  });
+});
+
+describe('parseDelegateLine', () => {
+  it('extracts target, content, and start flag from valid delegation line', () => {
+    const result = parseDelegateLine(`${DELEGATE_BRIDGE_MARKER} {"to":"agent-2","content":"do this","startIfInactive":true}`);
+    expect(result).toEqual({ to: 'agent-2', content: 'do this', startIfInactive: true });
+  });
+
+  it('allows omitted start flag', () => {
+    const result = parseDelegateLine(`${DELEGATE_BRIDGE_MARKER} {"to":"agent-2","content":"do this"}`);
+    expect(result).toEqual({ to: 'agent-2', content: 'do this', startIfInactive: undefined });
+  });
+
+  it('returns null for invalid JSON or missing fields', () => {
+    expect(parseDelegateLine(`${DELEGATE_BRIDGE_MARKER} not-json`)).toBeNull();
+    expect(parseDelegateLine(`${DELEGATE_BRIDGE_MARKER} {"content":"missing target"}`)).toBeNull();
+    expect(parseDelegateLine(`${DELEGATE_BRIDGE_MARKER} {"to":"agent-2"}`)).toBeNull();
+  });
+
+  it('includes the delegation marker in the generated instruction', () => {
+    expect(buildDelegateInstruction()).toContain(DELEGATE_BRIDGE_MARKER);
   });
 });
 

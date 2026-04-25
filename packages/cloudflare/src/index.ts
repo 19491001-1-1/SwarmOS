@@ -2,6 +2,7 @@ import { DurableObject } from 'cloudflare:workers';
 import type {
   Agent,
   AgentActivity,
+  AgentDelegation,
   BrowserEvent,
   Channel,
   DaemonToServer,
@@ -16,6 +17,7 @@ import type {
 } from '@mini-slock/shared';
 import {
   createVersionInfo,
+  CreateAgentDelegationRequestSchema,
   CreateAgentRequestSchema,
   CreateDirectMessageRequestSchema,
   CreateMessageRequestSchema,
@@ -122,6 +124,20 @@ export class XoxiangHub extends DurableObject<Env> {
           decodeURIComponent(dmMessagesMatch[2]),
           await request.json(),
         );
+      }
+
+      const delegationListMatch = url.pathname.match(/^\/api\/agents\/([^/]+)\/delegations$/);
+      if (delegationListMatch && request.method === 'GET') {
+        const agentId = decodeURIComponent(delegationListMatch[1]);
+        if (!this.getAgent(agentId)) return json({ error: 'Agent not found' }, 404);
+        return json(this.listAgentDelegations(agentId));
+      }
+
+      const delegationCreateMatch = url.pathname.match(/^\/api\/agents\/([^/]+)\/delegate\/([^/]+)$/);
+      if (delegationCreateMatch && request.method === 'POST') {
+        const fromAgentId = decodeURIComponent(delegationCreateMatch[1]);
+        const toAgentId = decodeURIComponent(delegationCreateMatch[2]);
+        return this.createUserDelegation(fromAgentId, toAgentId, await request.json());
       }
 
       const activitiesMatch = url.pathname.match(/^\/api\/agents\/([^/]+)\/activities$/);
@@ -257,6 +273,16 @@ export class XoxiangHub extends DurableObject<Env> {
       });
       this.broadcast({ type: 'dm:new', dm });
       this.deliverDirectMessage(target, dm);
+      return;
+    }
+
+    if (data.type === 'agent:delegate') {
+      this.delegateAgent({
+        fromAgentId: data.fromAgentId,
+        toAgentId: data.toAgentId,
+        content: data.content,
+        startIfInactive: data.startIfInactive,
+      });
     }
   }
 
@@ -323,6 +349,17 @@ export class XoxiangHub extends DurableObject<Env> {
         from_agent_id TEXT NOT NULL,
         to_agent_id TEXT NOT NULL,
         content TEXT NOT NULL,
+        created_at TEXT NOT NULL
+      )
+    `);
+    this.ctx.storage.sql.exec(`
+      CREATE TABLE IF NOT EXISTS agent_delegations (
+        id TEXT PRIMARY KEY,
+        from_agent_id TEXT NOT NULL,
+        to_agent_id TEXT NOT NULL,
+        content TEXT NOT NULL,
+        status TEXT NOT NULL,
+        error TEXT,
         created_at TEXT NOT NULL
       )
     `);
@@ -430,6 +467,22 @@ export class XoxiangHub extends DurableObject<Env> {
     return json(dm, 201);
   }
 
+  private createUserDelegation(fromAgentId: string, toAgentId: string, body: unknown): Response {
+    const from = this.getAgent(fromAgentId);
+    if (!from) return json({ error: 'Agent not found' }, 404);
+    const parsed = CreateAgentDelegationRequestSchema.safeParse(body);
+    if (!parsed.success) {
+      return json({ error: 'Invalid request body', issues: parsed.error.issues }, 400);
+    }
+    const delegation = this.delegateAgent({
+      fromAgentId: from.id,
+      toAgentId,
+      content: parsed.data.content,
+      startIfInactive: parsed.data.startIfInactive,
+    });
+    return json(delegation, delegation.status === 'failed' ? 202 : 201);
+  }
+
   private createAgent(body: unknown): Response {
     const parsed = CreateAgentRequestSchema.safeParse(body);
     if (!parsed.success) {
@@ -532,7 +585,7 @@ export class XoxiangHub extends DurableObject<Env> {
   }
 
   private getChannel(id: string): Channel | undefined {
-    const row = this.ctx.storage.sql.exec<Row>('SELECT id, name, created_at FROM channels WHERE id = ? LIMIT 1', id).one();
+    const row = this.ctx.storage.sql.exec<Row>('SELECT id, name, created_at FROM channels WHERE id = ? LIMIT 1', id).toArray()[0];
     return row ? toChannel(row) : undefined;
   }
 
@@ -585,6 +638,47 @@ export class XoxiangHub extends DurableObject<Env> {
       created.createdAt
     );
     return created;
+  }
+
+  private createAgentDelegation(delegation: Omit<AgentDelegation, 'createdAt'>): AgentDelegation {
+    const created: AgentDelegation = { ...delegation, createdAt: new Date().toISOString() };
+    this.ctx.storage.sql.exec(
+      `INSERT INTO agent_delegations (id, from_agent_id, to_agent_id, content, status, error, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      created.id,
+      created.fromAgentId,
+      created.toAgentId,
+      created.content,
+      created.status,
+      created.error ?? null,
+      created.createdAt
+    );
+    return created;
+  }
+
+  private updateAgentDelegation(delegation: AgentDelegation, status: AgentDelegation['status'], error?: string): AgentDelegation {
+    this.ctx.storage.sql.exec(
+      'UPDATE agent_delegations SET status = ?, error = ? WHERE id = ?',
+      status,
+      error ?? null,
+      delegation.id,
+    );
+    const updated = { ...delegation, status, error };
+    this.broadcast({ type: 'agent:delegation', delegation: updated });
+    return updated;
+  }
+
+  private listAgentDelegations(agentId: string): AgentDelegation[] {
+    return this.ctx.storage.sql
+      .exec<Row>(
+        `SELECT * FROM agent_delegations
+         WHERE from_agent_id = ? OR to_agent_id = ?
+         ORDER BY created_at DESC`,
+        agentId,
+        agentId,
+      )
+      .toArray()
+      .map(toAgentDelegation);
   }
 
   private listDirectMessages(agentId: string, otherId: string): DirectMessage[] {
@@ -653,14 +747,14 @@ export class XoxiangHub extends DurableObject<Env> {
   }
 
   private getAgent(id: string): Agent | undefined {
-    const row = this.ctx.storage.sql.exec<Row>('SELECT * FROM agents WHERE id = ? LIMIT 1', id).one();
+    const row = this.ctx.storage.sql.exec<Row>('SELECT * FROM agents WHERE id = ? LIMIT 1', id).toArray()[0];
     return row ? toAgent(row) : undefined;
   }
 
   private findAgentByNameOrId(value: string): Agent | undefined {
     const byId = this.getAgent(value);
     if (byId) return byId;
-    const row = this.ctx.storage.sql.exec<Row>('SELECT * FROM agents WHERE name = ? LIMIT 1', value).one();
+    const row = this.ctx.storage.sql.exec<Row>('SELECT * FROM agents WHERE name = ? LIMIT 1', value).toArray()[0];
     return row ? toAgent(row) : undefined;
   }
 
@@ -687,6 +781,74 @@ export class XoxiangHub extends DurableObject<Env> {
       id
     );
     return updated;
+  }
+
+  private delegateAgent(input: { fromAgentId: string; toAgentId: string; content: string; startIfInactive?: boolean }): AgentDelegation {
+    const target = this.findAgentByNameOrId(input.toAgentId);
+    if (!target) {
+      const failed = this.createAgentDelegation({
+        id: crypto.randomUUID(),
+        fromAgentId: input.fromAgentId,
+        toAgentId: input.toAgentId,
+        content: input.content,
+        status: 'failed',
+        error: 'Target agent not found',
+      });
+      this.broadcast({ type: 'agent:delegation', delegation: failed });
+      return failed;
+    }
+
+    const queued = this.createAgentDelegation({
+      id: crypto.randomUUID(),
+      fromAgentId: input.fromAgentId,
+      toAgentId: target.id,
+      content: input.content,
+      status: 'queued',
+    });
+    this.broadcast({ type: 'agent:delegation', delegation: queued });
+
+    const dm = this.createDirectMessage({
+      id: crypto.randomUUID(),
+      fromAgentId: input.fromAgentId,
+      toAgentId: target.id,
+      content: input.content,
+    });
+    this.broadcast({ type: 'dm:new', dm });
+
+    if (['starting', 'running', 'working', 'idle'].includes(target.status) && target.machineId) {
+      const sent = this.sendToDaemon(target.machineId, {
+        type: 'agent:deliver',
+        agentId: target.id,
+        seq: Date.now(),
+        channelId: `dm:${dm.fromAgentId}:${dm.toAgentId}`,
+        config: toRuntimeConfig(target),
+        message: toDirectMessageDelivery(dm),
+      });
+      return this.updateAgentDelegation(queued, sent ? 'delivered' : 'failed', sent ? undefined : 'Machine not connected');
+    }
+
+    if (input.startIfInactive === false) {
+      return queued;
+    }
+
+    const machineId = this.resolveStartMachineId(target);
+    if (!machineId) {
+      return this.updateAgentDelegation(queued, 'failed', 'No connected machine available for agent runtime');
+    }
+
+    const sent = this.sendToDaemon(machineId, {
+      type: 'agent:start',
+      agentId: target.id,
+      config: toRuntimeConfig(target),
+      launchId: crypto.randomUUID(),
+      wakeMessage: toDirectMessageDelivery(dm),
+    });
+    if (!sent) {
+      return this.updateAgentDelegation(queued, 'failed', 'Machine not connected');
+    }
+    const updated = this.updateAgent(target.id, { machineId, status: 'starting' });
+    if (updated) this.broadcast({ type: 'agent:update', agent: updated });
+    return this.updateAgentDelegation(queued, 'started');
   }
 
   private deliverDirectMessage(target: Agent, dm: DirectMessage): void {
@@ -739,7 +901,7 @@ export class XoxiangHub extends DurableObject<Env> {
 
   private setMachineOffline(machineId: string): Machine | undefined {
     this.ctx.storage.sql.exec("UPDATE machines SET status = 'offline' WHERE id = ?", machineId);
-    const row = this.ctx.storage.sql.exec<Row>('SELECT * FROM machines WHERE id = ? LIMIT 1', machineId).one();
+    const row = this.ctx.storage.sql.exec<Row>('SELECT * FROM machines WHERE id = ? LIMIT 1', machineId).toArray()[0];
     return row ? toMachine(row) : undefined;
   }
 
@@ -927,6 +1089,29 @@ function toDirectMessage(row: Row): DirectMessage {
     toAgentId: String(row.to_agent_id),
     content: String(row.content),
     createdAt: String(row.created_at),
+  };
+}
+
+function toAgentDelegation(row: Row): AgentDelegation {
+  return {
+    id: String(row.id),
+    fromAgentId: String(row.from_agent_id),
+    toAgentId: String(row.to_agent_id),
+    content: String(row.content),
+    status: String(row.status) as AgentDelegation['status'],
+    error: row.error ? String(row.error) : undefined,
+    createdAt: String(row.created_at),
+  };
+}
+
+function toDirectMessageDelivery(dm: DirectMessage) {
+  return {
+    id: dm.id,
+    channelId: `dm:${dm.fromAgentId}:${dm.toAgentId}`,
+    channelName: `DM from ${dm.fromAgentId}`,
+    senderName: dm.fromAgentId,
+    content: dm.content,
+    createdAt: dm.createdAt,
   };
 }
 

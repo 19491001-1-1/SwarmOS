@@ -4,8 +4,8 @@ import { homedir } from 'node:os';
 import { drizzle, type LibSQLDatabase } from 'drizzle-orm/libsql';
 import { createClient, type Client } from '@libsql/client';
 import { asc, desc, eq, inArray, or } from 'drizzle-orm';
-import type { Channel, Message, Machine, Agent, RuntimeId, AgentStatus, AgentActivity, DirectMessage, DirectMessageThread } from '@mini-slock/shared';
-import { activities, agents, channels, directMessages, machines, messages } from './schema.js';
+import type { Channel, Message, Machine, Agent, RuntimeId, AgentStatus, AgentActivity, DirectMessage, DirectMessageThread, AgentDelegation } from '@mini-slock/shared';
+import { activities, agentDelegations, agents, channels, directMessages, machines, messages } from './schema.js';
 
 type Database = LibSQLDatabase<typeof import('./schema.js')>;
 
@@ -32,7 +32,7 @@ async function ensureDbDirectory(path: string): Promise<void> {
 function createDatabase(): Database {
   const path = getDbPath();
   client = createClient({ url: getDbUrl(path) });
-  db = drizzle(client, { schema: { activities, agents, channels, directMessages, machines, messages } });
+  db = drizzle(client, { schema: { activities, agentDelegations, agents, channels, directMessages, machines, messages } });
   return db;
 }
 
@@ -81,6 +81,17 @@ export async function initDb(): Promise<void> {
         from_agent_id TEXT NOT NULL,
         to_agent_id TEXT NOT NULL,
         content TEXT NOT NULL,
+        created_at TEXT NOT NULL
+      )
+    `);
+    await database.run(`
+      CREATE TABLE IF NOT EXISTS agent_delegations (
+        id TEXT PRIMARY KEY,
+        from_agent_id TEXT NOT NULL,
+        to_agent_id TEXT NOT NULL,
+        content TEXT NOT NULL,
+        status TEXT NOT NULL,
+        error TEXT,
         created_at TEXT NOT NULL
       )
     `);
@@ -191,6 +202,18 @@ function toDirectMessage(row: typeof directMessages.$inferSelect): DirectMessage
   };
 }
 
+function toAgentDelegation(row: typeof agentDelegations.$inferSelect): AgentDelegation {
+  return {
+    id: row.id,
+    fromAgentId: row.fromAgentId,
+    toAgentId: row.toAgentId,
+    content: row.content,
+    status: row.status as AgentDelegation['status'],
+    error: row.error ?? undefined,
+    createdAt: row.createdAt,
+  };
+}
+
 function toMachine(row: typeof machines.$inferSelect): Machine {
   return {
     id: row.id,
@@ -289,6 +312,41 @@ export class SqliteStore {
     const created: DirectMessage = { ...dm, createdAt: new Date().toISOString() };
     await getDb().insert(directMessages).values(created);
     return created;
+  }
+
+  async createAgentDelegation(delegation: Omit<AgentDelegation, 'createdAt'>): Promise<AgentDelegation> {
+    await initDb();
+    const created: AgentDelegation = { ...delegation, createdAt: new Date().toISOString() };
+    await getDb().insert(agentDelegations).values({
+      ...created,
+      error: created.error ?? null,
+    });
+    return created;
+  }
+
+  async updateAgentDelegation(id: string, patch: Partial<Pick<AgentDelegation, 'status' | 'error'>>): Promise<AgentDelegation | undefined> {
+    await initDb();
+    const [existing] = await getDb().select().from(agentDelegations).where(eq(agentDelegations.id, id)).limit(1);
+    if (!existing) return undefined;
+    await getDb()
+      .update(agentDelegations)
+      .set({
+        status: patch.status ?? existing.status,
+        error: patch.error ?? existing.error,
+      })
+      .where(eq(agentDelegations.id, id));
+    const [updated] = await getDb().select().from(agentDelegations).where(eq(agentDelegations.id, id)).limit(1);
+    return updated ? toAgentDelegation(updated) : undefined;
+  }
+
+  async listAgentDelegations(agentId: string): Promise<AgentDelegation[]> {
+    await initDb();
+    const rows = await getDb()
+      .select()
+      .from(agentDelegations)
+      .where(or(eq(agentDelegations.fromAgentId, agentId), eq(agentDelegations.toAgentId, agentId)))
+      .orderBy(desc(agentDelegations.createdAt));
+    return rows.map(toAgentDelegation);
   }
 
   async listDirectMessages(agentId: string, otherId: string): Promise<DirectMessage[]> {
@@ -456,6 +514,7 @@ export async function resetStore(): Promise<void> {
   await database.delete(messages);
   await database.delete(activities);
   await database.delete(directMessages);
+  await database.delete(agentDelegations);
   await database.delete(agents);
   await database.delete(machines);
   await database.delete(channels);

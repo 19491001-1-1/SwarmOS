@@ -7,6 +7,7 @@ import { getStore } from '../db.js';
 import { daemonRegistry } from '../daemonRegistry.js';
 import { eventBus } from '../events.js';
 import { findDuplicateMachineIds, findExistingMachineId, toRuntimeConfig } from '@mini-slock/hub-core';
+import { delegateAgent } from '../delegation.js';
 
 const VALID_KEYS = new Set(['dev-machine-key']);
 const VOLATILE_AGENT_STATUSES = new Set(['starting', 'running', 'working', 'idle']);
@@ -124,6 +125,16 @@ export async function daemonSocketHandler(app: FastifyInstance) {
               },
             });
           }
+          return;
+        }
+
+        if (msg.type === 'agent:delegate') {
+          await delegateAgent({
+            fromAgentId: msg.fromAgentId,
+            toAgentId: msg.toAgentId,
+            content: msg.content,
+            startIfInactive: msg.startIfInactive,
+          });
           return;
         }
 

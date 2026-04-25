@@ -33,6 +33,16 @@ export type DirectMessageThread = {
   lastMessage: DirectMessage;
 };
 
+export type AgentDelegation = {
+  id: string;
+  fromAgentId: string;
+  toAgentId: string;
+  content: string;
+  status: 'queued' | 'delivered' | 'started' | 'failed';
+  error?: string;
+  createdAt: string;
+};
+
 export type AgentDelivery = {
   id: string;
   channelId: string;
@@ -76,6 +86,7 @@ export type DaemonToServer =
   | { type: 'agent:activity'; agentId: string; activityType: AgentActivity['type']; detail?: string; launchId?: string }
   | { type: 'agent:session'; agentId: string; sessionId: string; launchId?: string }
   | { type: 'agent:dm'; fromAgentId: string; toAgentId: string; content: string }
+  | { type: 'agent:delegate'; fromAgentId: string; toAgentId: string; content: string; startIfInactive?: boolean }
   | { type: 'agent:message'; agentId: string; channelId: string; content: string; inReplyToMessageId?: string }
   | { type: 'agent:deliver:ack'; agentId: string; seq: number }
   | { type: 'workspace:result'; requestId: string; result: WorkspaceEntry | WorkspaceError }
@@ -137,4 +148,5 @@ export type BrowserEvent =
   | { type: 'agent:updated'; agent: Agent }
   | { type: 'agent:activity'; agentId: string; activity: AgentActivity }
   | { type: 'dm:new'; dm: DirectMessage }
+  | { type: 'agent:delegation'; delegation: AgentDelegation }
   | { type: 'machine:update'; machine: Machine };

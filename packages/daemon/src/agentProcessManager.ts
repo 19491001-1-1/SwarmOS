@@ -20,6 +20,7 @@ export type AgentMessageCallback = (agentId: string, channelId: string, content:
 export type AgentStatusCallback = (agentId: string, status: string) => void;
 export type AgentActivityCallback = (agentId: string, type: AgentActivity['type'], detail?: string) => void;
 export type AgentDmCallback = (fromAgentId: string, toAgentId: string, content: string) => void;
+export type AgentDelegateCallback = (fromAgentId: string, toAgentId: string, content: string, startIfInactive?: boolean) => void;
 
 interface AgentEntry {
   agentId: string;
@@ -38,19 +39,22 @@ export class AgentProcessManager {
   private onStatus: AgentStatusCallback;
   private onActivity: AgentActivityCallback;
   private onDm: AgentDmCallback;
+  private onDelegate: AgentDelegateCallback;
 
   constructor(
     workspaceBase: string,
     onMessage: AgentMessageCallback,
     onStatus: AgentStatusCallback,
     onActivity: AgentActivityCallback = () => {},
-    onDm: AgentDmCallback = () => {}
+    onDm: AgentDmCallback = () => {},
+    onDelegate: AgentDelegateCallback = () => {}
   ) {
     this.workspaceBase = workspaceBase;
     this.onMessage = onMessage;
     this.onStatus = onStatus;
     this.onActivity = onActivity;
     this.onDm = onDm;
+    this.onDelegate = onDelegate;
   }
 
   async startAgent(agentId: string, config: AgentRuntimeConfig, channelId: string): Promise<void> {
@@ -182,6 +186,12 @@ export class AgentProcessManager {
       console.log(`[daemon] agent ${entry.agentId} dm to ${parsed.toAgentId}`);
       this.onDm(entry.agentId, parsed.toAgentId, parsed.content);
       this.onActivity(entry.agentId, 'sending', `dm:${parsed.toAgentId}`);
+      return true;
+    }
+    if (parsed?.type === 'delegate') {
+      console.log(`[daemon] agent ${entry.agentId} delegate to ${parsed.toAgentId}`);
+      this.onDelegate(entry.agentId, parsed.toAgentId, parsed.content, parsed.startIfInactive);
+      this.onActivity(entry.agentId, 'sending', `delegating to ${parsed.toAgentId}`);
       return true;
     }
     return false;

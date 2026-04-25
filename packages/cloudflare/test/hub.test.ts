@@ -152,6 +152,65 @@ describe('input validation', () => {
     const messages = (await messagesRes.json()) as Array<{ content: string }>;
     expect(messages.map((message) => message.content)).toContain('private hello');
   });
+
+  it('stores delegation and starts an inactive target with a wake message', async () => {
+    const daemonRes = await SELF.fetch(`https://hub.test/daemon/connect?key=${DAEMON_KEY}`, {
+      headers: { Upgrade: 'websocket' },
+    });
+    expect(daemonRes.status).toBe(101);
+    const ws = daemonRes.webSocket;
+    expect(ws).toBeTruthy();
+    if (!ws) return;
+    ws.accept();
+    ws.send(JSON.stringify({
+      type: 'ready',
+      machineId: 'delegate-machine',
+      hostname: 'delegate-host',
+      os: 'linux',
+      daemonVersion: '0.1.0',
+      runtimes: ['claude'],
+      runtimeVersions: { claude: '1.0.0' },
+      runningAgents: [],
+      capabilities: [],
+    }));
+    await new Promise((r) => setTimeout(r, 80));
+
+    const senderRes = await SELF.fetch('https://hub.test/api/agents', {
+      method: 'POST',
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ name: `delegate-sender-${crypto.randomUUID()}`, runtime: 'claude' }),
+    });
+    const sender = (await senderRes.json()) as { id: string };
+    const targetName = `delegate-target-${crypto.randomUUID()}`;
+    const targetRes = await SELF.fetch('https://hub.test/api/agents', {
+      method: 'POST',
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ name: targetName, runtime: 'claude' }),
+    });
+    const target = (await targetRes.json()) as { id: string };
+
+    const startPromise = new Promise<any>((resolve) => {
+      ws.addEventListener('message', (event) => {
+        const msg = JSON.parse(String(event.data));
+        if (msg.type === 'agent:start') resolve(msg);
+      });
+    });
+
+    const delegationRes = await SELF.fetch(`https://hub.test/api/agents/${sender.id}/delegate/${targetName}`, {
+      method: 'POST',
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ content: 'please handle cloudflare work' }),
+    });
+    expect(delegationRes.status).toBe(201);
+    const delegation = (await delegationRes.json()) as { status: string; toAgentId: string };
+    expect(delegation.status).toBe('started');
+    expect(delegation.toAgentId).toBe(target.id);
+
+    const start = await startPromise;
+    expect(start.agentId).toBe(target.id);
+    expect(start.wakeMessage.content).toBe('please handle cloudflare work');
+    ws.close();
+  });
 });
 
 describe('agent recovery', () => {

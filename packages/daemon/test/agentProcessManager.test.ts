@@ -48,6 +48,7 @@ describe('AgentProcessManager', () => {
   let statuses: Array<{ agentId: string; status: string }> = [];
   let activities: Array<{ agentId: string; type: string; detail?: string }> = [];
   let dms: Array<{ fromAgentId: string; toAgentId: string; content: string }> = [];
+  let delegations: Array<{ fromAgentId: string; toAgentId: string; content: string; startIfInactive?: boolean }> = [];
   let manager: AgentProcessManager;
 
   beforeEach(() => {
@@ -55,12 +56,14 @@ describe('AgentProcessManager', () => {
     statuses = [];
     activities = [];
     dms = [];
+    delegations = [];
     manager = new AgentProcessManager(
       '/tmp/test-workspaces',
       (agentId, channelId, content) => messages.push({ agentId, channelId, content }),
       (agentId, status) => statuses.push({ agentId, status }),
       (agentId, type, detail) => activities.push({ agentId, type, detail }),
-      (fromAgentId, toAgentId, content) => dms.push({ fromAgentId, toAgentId, content })
+      (fromAgentId, toAgentId, content) => dms.push({ fromAgentId, toAgentId, content }),
+      (fromAgentId, toAgentId, content, startIfInactive) => delegations.push({ fromAgentId, toAgentId, content, startIfInactive })
     );
     vi.clearAllMocks();
   });
@@ -177,6 +180,26 @@ describe('AgentProcessManager', () => {
 
     expect(dms).toEqual([{ fromAgentId: 'agent-1', toAgentId: 'agent-2', content: 'secret' }]);
     expect(activities.some((a) => a.type === 'sending' && a.detail === 'dm:agent-2')).toBe(true);
+  });
+
+  it('stdout delegation marker is reported as agent delegation', async () => {
+    const fakeProc = createFakeProc(['[[MINI_SLOCK_DELEGATE_AGENT]] {"to":"agent-2","content":"please work","startIfInactive":true}']);
+    mockSpawn.mockReturnValue(fakeProc);
+
+    await manager.startAgent('agent-1', { runtime: 'claude', name: 'bot' }, 'general');
+    await manager.deliverMessage('agent-1', {
+      id: 'msg-1',
+      channelId: 'general',
+      channelName: 'general',
+      senderName: 'user',
+      content: 'Hello',
+      createdAt: new Date().toISOString(),
+    });
+
+    await new Promise((r) => setTimeout(r, 50));
+
+    expect(delegations).toEqual([{ fromAgentId: 'agent-1', toAgentId: 'agent-2', content: 'please work', startIfInactive: true }]);
+    expect(activities.some((a) => a.type === 'sending' && a.detail === 'delegating to agent-2')).toBe(true);
   });
 
   it('stopAgent kills process', async () => {

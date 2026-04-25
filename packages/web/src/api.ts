@@ -13,6 +13,7 @@ export type WorkspaceFile = { name: string; type: 'file' | 'dir'; size?: number;
 export type WorkspaceEntry =
   | { type: 'dir'; path: string; children: WorkspaceFile[] }
   | { type: 'file'; path: string; content: string; truncated?: boolean };
+export type AgentDelegation = { id: string; fromAgentId: string; toAgentId: string; content: string; status: 'queued' | 'delivered' | 'started' | 'failed'; error?: string; createdAt: string };
 export type Machine = { id: string; hostname: string; os: string; runtimes: string[]; status: string; connectedAt: string };
 export type VersionInfo = { component: string; version: string; commit?: string; build?: string };
 

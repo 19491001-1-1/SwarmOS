@@ -7,6 +7,7 @@ import {
   PatchAgentRequestSchema,
   CreateMessageRequestSchema,
   CreateDirectMessageRequestSchema,
+  CreateAgentDelegationRequestSchema,
 } from '../src/validation.js';
 import { APP_VERSION, createVersionInfo } from '../src/version.js';
 
@@ -95,6 +96,22 @@ describe('DaemonToServer protocol', () => {
       content: 'private hello',
     });
     expect(result.success).toBe(true);
+  });
+
+  it('parses agent:delegate', () => {
+    const result = DaemonToServerSchema.safeParse({
+      type: 'agent:delegate',
+      fromAgentId: 'agent-1',
+      toAgentId: 'agent-2',
+      content: 'please handle this',
+      startIfInactive: true,
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects invalid agent:delegate payloads', () => {
+    expect(DaemonToServerSchema.safeParse({ type: 'agent:delegate', fromAgentId: 'a', toAgentId: '', content: 'x' }).success).toBe(false);
+    expect(DaemonToServerSchema.safeParse({ type: 'agent:delegate', fromAgentId: 'a', toAgentId: 'b', content: '' }).success).toBe(false);
   });
 });
 
@@ -217,6 +234,17 @@ describe('CreateDirectMessageRequestSchema', () => {
 
   it('rejects empty content', () => {
     expect(CreateDirectMessageRequestSchema.safeParse({ content: '' }).success).toBe(false);
+  });
+});
+
+describe('CreateAgentDelegationRequestSchema', () => {
+  it('accepts a delegation body', () => {
+    expect(CreateAgentDelegationRequestSchema.safeParse({ content: 'do this' }).success).toBe(true);
+    expect(CreateAgentDelegationRequestSchema.safeParse({ content: 'do this', startIfInactive: false }).success).toBe(true);
+  });
+
+  it('rejects empty content', () => {
+    expect(CreateAgentDelegationRequestSchema.safeParse({ content: '' }).success).toBe(false);
   });
 });
 
