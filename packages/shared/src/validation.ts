@@ -227,6 +227,15 @@ export const CreateMessageRequestSchema = z.object({
   agentId: z.string().optional(),
 });
 
+export const CreateChannelRequestSchema = z.object({
+  name: z.string().min(1).max(80).regex(/^[a-zA-Z0-9_-]+$/, 'Use letters, numbers, underscore, or dash'),
+});
+
+export const SearchRequestSchema = z.object({
+  q: z.string().trim().min(1),
+  limit: z.coerce.number().int().positive().max(50).default(20),
+});
+
 export const CreateDirectMessageRequestSchema = z.object({
   content: z.string().min(1),
   fromAgentId: z.string().optional(),

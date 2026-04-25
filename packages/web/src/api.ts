@@ -5,6 +5,7 @@ export const WEB_COMMIT_SHA = (import.meta.env.VITE_COMMIT_SHA ?? '').trim();
 
 export type Channel = { id: string; name: string; createdAt: string };
 export type Message = { id: string; channelId: string; senderName: string; content: string; agentId?: string; createdAt: string };
+export type SearchMessageResult = Message & { channelName: string };
 export type Agent = { id: string; name: string; displayName?: string; description?: string; runtime: string; model?: string; systemPrompt?: string; envVars?: Record<string, string>; status: string; machineId?: string; autoStart?: boolean; createdAt: string };
 export type AgentActivity = { id: string; agentId: string; type: 'thinking' | 'working' | 'output' | 'idle' | 'sending' | 'error'; detail?: string; createdAt: string };
 export type DirectMessage = { id: string; fromAgentId: string; toAgentId: string; content: string; createdAt: string };
@@ -39,6 +40,27 @@ export function buildWsUrl(path: string): string {
 
 export async function getChannels(): Promise<Channel[]> {
   const r = await fetch(`${API_BASE}/api/channels`, { headers: authHeaders() });
+  return r.json();
+}
+
+export async function createChannel(name: string): Promise<Channel> {
+  const r = await fetch(`${API_BASE}/api/channels`, {
+    method: 'POST',
+    headers: authHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ name }),
+  });
+  if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error ?? 'Create channel failed');
+  return r.json();
+}
+
+export async function deleteChannel(channelId: string): Promise<void> {
+  const r = await fetch(`${API_BASE}/api/channels/${encodeURIComponent(channelId)}`, { method: 'DELETE', headers: authHeaders() });
+  if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error ?? 'Delete channel failed');
+}
+
+export async function searchMessages(q: string, limit = 20): Promise<{ messages: SearchMessageResult[] }> {
+  const params = new URLSearchParams({ q, limit: String(limit) });
+  const r = await fetch(`${API_BASE}/api/search?${params.toString()}`, { headers: authHeaders() });
   return r.json();
 }
 

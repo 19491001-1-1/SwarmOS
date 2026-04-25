@@ -4,7 +4,7 @@ import { homedir } from 'node:os';
 import { drizzle, type LibSQLDatabase } from 'drizzle-orm/libsql';
 import { createClient, type Client } from '@libsql/client';
 import { asc, desc, eq, inArray, or } from 'drizzle-orm';
-import type { Channel, Message, Machine, Agent, RuntimeId, AgentStatus, AgentActivity, DirectMessage, DirectMessageThread, AgentDelegation, AgentTokenInfo, Task, TaskStatus, Reminder, ReminderStatus } from '@mini-slock/shared';
+import type { Channel, Message, Machine, Agent, RuntimeId, AgentStatus, AgentActivity, DirectMessage, DirectMessageThread, AgentDelegation, AgentTokenInfo, Task, TaskStatus, Reminder, ReminderStatus, SearchMessageResult } from '@mini-slock/shared';
 import { resolveAgentReference } from '@mini-slock/hub-core';
 import { activities, agentDelegations, agentTokens, agents, channels, directMessages, machines, messages, reminders, tasks } from './schema.js';
 
@@ -307,6 +307,17 @@ export class SqliteStore {
     return channel;
   }
 
+  async deleteChannel(id: string): Promise<boolean> {
+    await initDb();
+    const existing = await this.getChannel(id);
+    if (!existing) return false;
+    await getDb().delete(messages).where(eq(messages.channelId, id));
+    await getDb().delete(tasks).where(eq(tasks.channelId, id));
+    await getDb().delete(reminders).where(eq(reminders.channelId, id));
+    await getDb().delete(channels).where(eq(channels.id, id));
+    return true;
+  }
+
   async listMessages(channelId: string): Promise<Message[]> {
     await initDb();
     const rows = await getDb().select().from(messages).where(eq(messages.channelId, channelId)).orderBy(asc(messages.createdAt));
@@ -322,6 +333,18 @@ export class SqliteStore {
       .orderBy(desc(messages.createdAt))
       .limit(limit);
     return rows.map(toMessage).reverse();
+  }
+
+  async searchMessages(query: string, limit: number): Promise<SearchMessageResult[]> {
+    await initDb();
+    const needle = query.toLowerCase();
+    const channelMap = new Map((await this.listChannels()).map((channel) => [channel.id, channel.name]));
+    const rows = await getDb().select().from(messages).orderBy(desc(messages.createdAt)).limit(1000);
+    return rows
+      .map(toMessage)
+      .filter((message) => message.content.toLowerCase().includes(needle))
+      .slice(0, limit)
+      .map((message) => ({ ...message, channelName: channelMap.get(message.channelId) ?? message.channelId }));
   }
 
   async createMessage(msg: Omit<Message, 'createdAt'>): Promise<Message> {

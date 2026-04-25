@@ -21,6 +21,7 @@ import type {
 } from '@mini-slock/shared';
 import {
   createVersionInfo,
+  CreateChannelRequestSchema,
   CreateAgentDelegationRequestSchema,
   CreateAgentRequestSchema,
   CreateDirectMessageRequestSchema,
@@ -39,6 +40,7 @@ import {
   PatchAgentRequestSchema,
   PatchReminderRequestSchema,
   PatchTaskRequestSchema,
+  SearchRequestSchema,
   TaskStatusSchema,
 } from '@mini-slock/shared';
 import { findDuplicateMachineIds, resolveAgentReference, resolveStartMachineId, toAgentDelivery, toRuntimeConfig } from '@mini-slock/hub-core';
@@ -109,6 +111,21 @@ export class XoxiangHub extends DurableObject<Env> {
     try {
       if (request.method === 'GET' && url.pathname === '/api/channels') {
         return json(this.listChannels());
+      }
+
+      if (request.method === 'POST' && url.pathname === '/api/channels') {
+        return this.createUserChannel(await request.json());
+      }
+
+      const channelMatch = url.pathname.match(/^\/api\/channels\/([^/]+)$/);
+      if (channelMatch && request.method === 'DELETE') {
+        return this.deleteUserChannel(decodeURIComponent(channelMatch[1]));
+      }
+
+      if (request.method === 'GET' && url.pathname === '/api/search') {
+        const parsed = SearchRequestSchema.safeParse(Object.fromEntries(url.searchParams.entries()));
+        if (!parsed.success) return json({ error: 'Invalid query', issues: parsed.error.issues }, 400);
+        return json({ messages: this.searchMessages(parsed.data.q, parsed.data.limit) });
       }
 
       const messagesMatch = url.pathname.match(/^\/api\/channels\/([^/]+)\/messages$/);
@@ -605,6 +622,23 @@ export class XoxiangHub extends DurableObject<Env> {
     return json(message, 201);
   }
 
+  private createUserChannel(body: unknown): Response {
+    const parsed = CreateChannelRequestSchema.safeParse(body);
+    if (!parsed.success) return json({ error: 'Invalid request body', issues: parsed.error.issues }, 400);
+    if (this.listChannels().some((channel) => channel.name === parsed.data.name)) return json({ error: 'Channel name already exists' }, 409);
+    const channel = this.createChannel(crypto.randomUUID(), parsed.data.name);
+    this.broadcast({ type: 'channel:created', channel });
+    return json(channel, 201);
+  }
+
+  private deleteUserChannel(id: string): Response {
+    if (id === 'general') return json({ error: 'Cannot delete general channel' }, 400);
+    if (!this.getChannel(id)) return json({ error: 'Channel not found' }, 404);
+    this.deleteChannel(id);
+    this.broadcast({ type: 'channel:deleted', channelId: id });
+    return new Response(null, { status: 204, headers: JSON_HEADERS });
+  }
+
   private createUserTask(body: unknown): Response {
     const parsed = CreateTaskRequestSchema.safeParse(body);
     if (!parsed.success) return json({ error: 'Invalid request body', issues: parsed.error.issues }, 400);
@@ -1039,6 +1073,19 @@ export class XoxiangHub extends DurableObject<Env> {
     return row ? toChannel(row) : undefined;
   }
 
+  private createChannel(id: string, name: string): Channel {
+    const channel: Channel = { id, name, createdAt: new Date().toISOString() };
+    this.ctx.storage.sql.exec('INSERT INTO channels (id, name, created_at) VALUES (?, ?, ?)', channel.id, channel.name, channel.createdAt);
+    return channel;
+  }
+
+  private deleteChannel(id: string): void {
+    this.ctx.storage.sql.exec('DELETE FROM messages WHERE channel_id = ?', id);
+    this.ctx.storage.sql.exec('DELETE FROM tasks WHERE channel_id = ?', id);
+    this.ctx.storage.sql.exec('DELETE FROM reminders WHERE channel_id = ?', id);
+    this.ctx.storage.sql.exec('DELETE FROM channels WHERE id = ?', id);
+  }
+
   private getMessage(id: string): Message | undefined {
     const row = this.ctx.storage.sql.exec<Row>('SELECT * FROM messages WHERE id = ? LIMIT 1', id).toArray()[0];
     return row ? toMessage(row) : undefined;
@@ -1057,6 +1104,18 @@ export class XoxiangHub extends DurableObject<Env> {
       .toArray()
       .map(toMessage)
       .reverse();
+  }
+
+  private searchMessages(query: string, limit: number) {
+    const needle = query.toLowerCase();
+    const channelMap = new Map(this.listChannels().map((channel) => [channel.id, channel.name]));
+    return this.ctx.storage.sql
+      .exec<Row>('SELECT * FROM messages ORDER BY created_at DESC LIMIT 1000')
+      .toArray()
+      .map(toMessage)
+      .filter((message) => message.content.toLowerCase().includes(needle))
+      .slice(0, limit)
+      .map((message) => ({ ...message, channelName: channelMap.get(message.channelId) ?? message.channelId }));
   }
 
   private findChannel(value: string): Channel | undefined {
