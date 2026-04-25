@@ -8,6 +8,27 @@ function authHeaders(extra?: Record<string, string>): Record<string, string> {
   return { Authorization: `Bearer ${WEB_TOKEN}`, ...(extra ?? {}) };
 }
 
+async function connectDaemon(): Promise<WebSocket> {
+  const res = await SELF.fetch(`https://hub.test/daemon/connect?key=${DAEMON_KEY}`, {
+    headers: { Upgrade: 'websocket' },
+  });
+  expect(res.status).toBe(101);
+  const ws = res.webSocket;
+  expect(ws).toBeTruthy();
+  if (!ws) throw new Error('missing websocket');
+  ws.accept();
+  return ws;
+}
+
+function waitForMessage(ws: WebSocket, type: string): Promise<any> {
+  return new Promise((resolve) => {
+    ws.addEventListener('message', (event) => {
+      const msg = JSON.parse(String(event.data));
+      if (msg.type === type) resolve(msg);
+    });
+  });
+}
+
 describe('browser auth', () => {
   it('returns public hub version info', async () => {
     const res = await SELF.fetch('https://hub.test/api/version');
@@ -64,6 +85,7 @@ describe('input validation', () => {
     const agent = (await res.json()) as { id: string; name: string; status: string };
     expect(agent.name).toBe('a');
     expect(agent.status).toBe('inactive');
+    expect((agent as any).autoStart).toBe(false);
   });
 
   it('rejects empty message content', async () => {
@@ -88,6 +110,79 @@ describe('input validation', () => {
       body: JSON.stringify({}),
     });
     expect(res.status).toBe(400);
+  });
+});
+
+describe('agent recovery', () => {
+  it('sets autoStart on start and clears it on stop', async () => {
+    const daemon = await connectDaemon();
+    daemon.send(JSON.stringify({
+      type: 'ready',
+      machineId: 'machine-recovery-1',
+      hostname: 'host-recovery-1',
+      os: 'darwin',
+      daemonVersion: '0.1.0',
+      runtimes: ['claude'],
+      runtimeVersions: { claude: '1.0.0' },
+      runningAgents: [],
+      capabilities: [],
+    }));
+    await new Promise((r) => setTimeout(r, 80));
+
+    const created = await SELF.fetch('https://hub.test/api/agents', {
+      method: 'POST',
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ name: 'recovery-agent-1', runtime: 'claude', machineId: 'machine-recovery-1' }),
+    });
+    const agent = (await created.json()) as { id: string };
+
+    const startMessage = waitForMessage(daemon, 'agent:start');
+    const started = await SELF.fetch(`https://hub.test/api/agents/${agent.id}/start`, {
+      method: 'POST',
+      headers: authHeaders(),
+    });
+    expect(started.status).toBe(200);
+    expect(await startMessage).toMatchObject({ type: 'agent:start', agentId: agent.id });
+    expect(await started.json()).toMatchObject({ status: 'starting', autoStart: true });
+
+    const stopped = await SELF.fetch(`https://hub.test/api/agents/${agent.id}/stop`, {
+      method: 'POST',
+      headers: authHeaders(),
+    });
+    expect(stopped.status).toBe(200);
+    expect(await stopped.json()).toMatchObject({ status: 'inactive', autoStart: false });
+    daemon.close();
+  });
+
+  it('auto-starts enabled agents on daemon ready', async () => {
+    const created = await SELF.fetch('https://hub.test/api/agents', {
+      method: 'POST',
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ name: 'recovery-agent-2', runtime: 'claude' }),
+    });
+    const agent = (await created.json()) as { id: string };
+    await SELF.fetch(`https://hub.test/api/agents/${agent.id}`, {
+      method: 'PATCH',
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ autoStart: true }),
+    });
+
+    const daemon = await connectDaemon();
+    const startMessage = waitForMessage(daemon, 'agent:start');
+    daemon.send(JSON.stringify({
+      type: 'ready',
+      machineId: 'machine-recovery-2',
+      hostname: 'host-recovery-2',
+      os: 'darwin',
+      daemonVersion: '0.1.0',
+      runtimes: ['claude'],
+      runtimeVersions: { claude: '1.0.0' },
+      runningAgents: [],
+      capabilities: [],
+    }));
+
+    expect(await startMessage).toMatchObject({ type: 'agent:start', agentId: agent.id });
+    daemon.close();
   });
 });
 

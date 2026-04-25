@@ -1,4 +1,4 @@
-import { sqliteTable, text } from 'drizzle-orm/sqlite-core';
+import { integer, sqliteTable, text } from 'drizzle-orm/sqlite-core';
 
 export const channels = sqliteTable('channels', {
   id: text('id').primaryKey(),
@@ -33,6 +33,7 @@ export const agents = sqliteTable('agents', {
   systemPrompt: text('system_prompt'),
   machineId: text('machine_id'),
   status: text('status').notNull(),
+  autoStart: integer('auto_start', { mode: 'boolean' }).notNull().default(false),
   createdAt: text('created_at').notNull(),
 });
 

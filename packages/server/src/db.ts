@@ -86,9 +86,18 @@ export async function initDb(): Promise<void> {
         system_prompt TEXT,
         machine_id TEXT,
         status TEXT NOT NULL,
+        auto_start INTEGER NOT NULL DEFAULT 0,
         created_at TEXT NOT NULL
       )
     `);
+    try {
+      await database.run('ALTER TABLE agents ADD COLUMN auto_start INTEGER NOT NULL DEFAULT 0');
+    } catch (err) {
+      const message = [String(err), (err as { message?: string }).message, (err as { cause?: { message?: string } }).cause?.message]
+        .join(' ')
+        .toLowerCase();
+      if (!message.includes('duplicate column')) throw err;
+    }
     await database.run(`
       CREATE TABLE IF NOT EXISTS machines (
         id TEXT PRIMARY KEY,
@@ -121,10 +130,6 @@ export async function initDb(): Promise<void> {
 export async function resetVolatileState(): Promise<void> {
   const database = getDb();
   await database.update(machines).set({ status: 'offline' });
-  await database
-    .update(agents)
-    .set({ status: 'inactive' })
-    .where(inArray(agents.status, ['starting', 'running', 'working', 'idle']));
 }
 
 function toAgent(row: typeof agents.$inferSelect): Agent {
@@ -138,6 +143,7 @@ function toAgent(row: typeof agents.$inferSelect): Agent {
     systemPrompt: row.systemPrompt ?? undefined,
     machineId: row.machineId ?? undefined,
     status: row.status as AgentStatus,
+    autoStart: row.autoStart,
     createdAt: row.createdAt,
   };
 }
@@ -327,6 +333,7 @@ export class SqliteStore {
       model: agent.model ?? null,
       systemPrompt: agent.systemPrompt ?? null,
       machineId: agent.machineId ?? null,
+      autoStart: agent.autoStart ?? false,
     });
     return agent;
   }
@@ -351,6 +358,7 @@ export class SqliteStore {
         systemPrompt: updated.systemPrompt ?? null,
         machineId: updated.machineId ?? null,
         status: updated.status,
+        autoStart: updated.autoStart ?? false,
         createdAt: updated.createdAt,
       })
       .where(eq(agents.id, id));

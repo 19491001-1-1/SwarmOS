@@ -93,7 +93,7 @@ export class DaemonClient {
       daemonVersion: DAEMON_VERSION,
       runtimes: runtimeIds,
       runtimeVersions,
-      runningAgents: [],
+      runningAgents: this.processManager.listRunningAgentIds(),
       capabilities: ['agent:start', 'agent:stop', 'agent:deliver'],
     });
   }

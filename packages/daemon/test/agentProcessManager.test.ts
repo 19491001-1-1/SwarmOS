@@ -75,6 +75,15 @@ describe('AgentProcessManager', () => {
   it('startAgent uses correct driver', async () => {
     await manager.startAgent('agent-1', { runtime: 'gemini', name: 'bot' }, 'general');
     expect(manager.isRunning('agent-1')).toBe(true);
+    expect(manager.listRunningAgentIds()).toEqual(['agent-1']);
+  });
+
+  it('startAgent is idempotent for an already registered agent', async () => {
+    await manager.startAgent('agent-1', { runtime: 'claude', name: 'bot' }, 'general');
+    await manager.startAgent('agent-1', { runtime: 'gemini', name: 'bot' }, 'other');
+
+    expect(manager.listRunningAgentIds()).toEqual(['agent-1']);
+    expect(statuses.filter((s) => s.agentId === 'agent-1' && s.status === 'idle')).toHaveLength(2);
   });
 
   it('deliverMessage writes to stdin and spawns process', async () => {

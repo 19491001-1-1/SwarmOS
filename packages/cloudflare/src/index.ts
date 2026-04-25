@@ -44,7 +44,6 @@ export class XoxiangHub extends DurableObject<Env> {
     super(ctx, env);
     ctx.blockConcurrencyWhile(async () => {
       this.initSchema();
-      this.resetVolatileState();
     });
   }
 
@@ -162,6 +161,7 @@ export class XoxiangHub extends DurableObject<Env> {
         connectedAt: new Date().toISOString(),
       });
       this.broadcast({ type: 'machine:update', machine });
+      this.reconcileReadyAgents(machineId, data.runtimes, new Set(data.runningAgents));
       return;
     }
 
@@ -202,6 +202,7 @@ export class XoxiangHub extends DurableObject<Env> {
     if (!attachment || attachment.kind !== 'daemon') return;
     const machine = this.setMachineOffline(attachment.machineId);
     if (machine) this.broadcast({ type: 'machine:update', machine });
+    this.markMachineAgentsInactive(attachment.machineId);
   }
 
   private acceptBrowser(request: Request): Response {
@@ -264,9 +265,18 @@ export class XoxiangHub extends DurableObject<Env> {
         system_prompt TEXT,
         machine_id TEXT,
         status TEXT NOT NULL,
+        auto_start INTEGER NOT NULL DEFAULT 0,
         created_at TEXT NOT NULL
       )
     `);
+    try {
+      this.ctx.storage.sql.exec('ALTER TABLE agents ADD COLUMN auto_start INTEGER NOT NULL DEFAULT 0');
+    } catch (err) {
+      const message = [String(err), (err as { message?: string }).message, (err as { cause?: { message?: string } }).cause?.message]
+        .join(' ')
+        .toLowerCase();
+      if (!message.includes('duplicate column')) throw err;
+    }
     this.ctx.storage.sql.exec(`
       CREATE TABLE IF NOT EXISTS machines (
         id TEXT PRIMARY KEY,
@@ -285,11 +295,6 @@ export class XoxiangHub extends DurableObject<Env> {
       'general',
       new Date().toISOString()
     );
-  }
-
-  private resetVolatileState(): void {
-    this.ctx.storage.sql.exec("UPDATE machines SET status = 'offline'");
-    this.ctx.storage.sql.exec("UPDATE agents SET status = 'inactive' WHERE status IN ('starting', 'running', 'working', 'idle')");
   }
 
   private createUserMessage(channelId: string, body: unknown): Response {
@@ -345,12 +350,13 @@ export class XoxiangHub extends DurableObject<Env> {
       systemPrompt: payload.systemPrompt,
       machineId: payload.machineId,
       status: 'inactive',
+      autoStart: false,
       createdAt: new Date().toISOString(),
     };
     this.ctx.storage.sql.exec(
       `INSERT INTO agents
-       (id, name, display_name, description, runtime, model, system_prompt, machine_id, status, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       (id, name, display_name, description, runtime, model, system_prompt, machine_id, status, auto_start, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       agent.id,
       agent.name,
       agent.displayName ?? null,
@@ -360,6 +366,7 @@ export class XoxiangHub extends DurableObject<Env> {
       agent.systemPrompt ?? null,
       agent.machineId ?? null,
       agent.status,
+      agent.autoStart ? 1 : 0,
       agent.createdAt
     );
     return json(agent, 201);
@@ -391,7 +398,7 @@ export class XoxiangHub extends DurableObject<Env> {
     });
     if (!sent) return json({ error: 'Machine not connected' }, 503);
 
-    const updated = this.updateAgent(agentId, { machineId, status: 'starting' });
+    const updated = this.updateAgent(agentId, { machineId, status: 'starting', autoStart: true });
     if (updated) this.broadcast({ type: 'agent:update', agent: updated });
     return json(updated);
   }
@@ -400,7 +407,7 @@ export class XoxiangHub extends DurableObject<Env> {
     const agent = this.getAgent(agentId);
     if (!agent) return json({ error: 'Agent not found' }, 404);
     if (agent.machineId) this.sendToDaemon(agent.machineId, { type: 'agent:stop', agentId });
-    const updated = this.updateAgent(agentId, { status: 'inactive' });
+    const updated = this.updateAgent(agentId, { status: 'inactive', autoStart: false });
     if (updated) this.broadcast({ type: 'agent:update', agent: updated });
     return json(updated);
   }
@@ -490,7 +497,7 @@ export class XoxiangHub extends DurableObject<Env> {
     this.ctx.storage.sql.exec(
       `UPDATE agents
        SET name = ?, display_name = ?, description = ?, runtime = ?, model = ?,
-           system_prompt = ?, machine_id = ?, status = ?, created_at = ?
+           system_prompt = ?, machine_id = ?, status = ?, auto_start = ?, created_at = ?
        WHERE id = ?`,
       updated.name,
       updated.displayName ?? null,
@@ -500,6 +507,7 @@ export class XoxiangHub extends DurableObject<Env> {
       updated.systemPrompt ?? null,
       updated.machineId ?? null,
       updated.status,
+      updated.autoStart ? 1 : 0,
       updated.createdAt,
       id
     );
@@ -553,6 +561,39 @@ export class XoxiangHub extends DurableObject<Env> {
       machines: this.listMachines(),
       connectedMachineIds: this.connectedMachineIds(),
     });
+  }
+
+  private reconcileReadyAgents(machineId: string, runtimes: RuntimeId[], runningAgents: Set<string>): void {
+    const supportedRuntimes = new Set<RuntimeId>(runtimes);
+    for (const agent of this.listAgents()) {
+      if (!agent.autoStart || !supportedRuntimes.has(agent.runtime)) continue;
+      if (agent.machineId && agent.machineId !== machineId) continue;
+
+      if (runningAgents.has(agent.id)) {
+        const updated = this.updateAgent(agent.id, { machineId, status: 'running' });
+        if (updated) this.broadcast({ type: 'agent:update', agent: updated });
+        continue;
+      }
+
+      const sent = this.sendToDaemon(machineId, {
+        type: 'agent:start',
+        agentId: agent.id,
+        config: toRuntimeConfig(agent),
+        launchId: crypto.randomUUID(),
+      });
+      if (!sent) continue;
+      const updated = this.updateAgent(agent.id, { machineId, status: 'starting' });
+      if (updated) this.broadcast({ type: 'agent:update', agent: updated });
+    }
+  }
+
+  private markMachineAgentsInactive(machineId: string): void {
+    const volatileStatuses = new Set(['starting', 'running', 'working', 'idle']);
+    for (const agent of this.listAgents()) {
+      if (agent.machineId !== machineId || !volatileStatuses.has(agent.status)) continue;
+      const updated = this.updateAgent(agent.id, { status: 'inactive' });
+      if (updated) this.broadcast({ type: 'agent:update', agent: updated });
+    }
   }
 
   private connectedMachineIds(): Set<string> {
@@ -665,6 +706,7 @@ function toAgent(row: Row): Agent {
     systemPrompt: row.system_prompt ? String(row.system_prompt) : undefined,
     machineId: row.machine_id ? String(row.machine_id) : undefined,
     status: String(row.status) as Agent['status'],
+    autoStart: Boolean(Number(row.auto_start ?? 0)),
     createdAt: String(row.created_at),
   };
 }

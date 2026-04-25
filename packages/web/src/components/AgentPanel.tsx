@@ -236,7 +236,7 @@ function AgentCard({ agent, onStart, onStop }: { agent: Agent; onStart: () => vo
         </span>
       </div>
       <div style={{ fontSize: 10, color: '#888', marginBottom: 7, letterSpacing: '0.3px' }}>
-        STATUS: {agent.status.toUpperCase()}
+        STATUS: {agent.status.toUpperCase()} · AUTO START: {agent.autoStart ? 'ON' : 'OFF'}
       </div>
       {['inactive', 'error'].includes(agent.status) ? (
         <PxButton onClick={onStart} bg="#00c853" color="#fff" small>▶ START</PxButton>

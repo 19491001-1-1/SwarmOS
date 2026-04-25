@@ -94,13 +94,15 @@ export const PatchAgentRequestSchema = z
     displayName: z.string().optional(),
     model: z.string().optional(),
     systemPrompt: z.string().optional(),
+    autoStart: z.boolean().optional(),
   })
   .refine(
     (val) =>
       val.machineId !== undefined ||
       val.displayName !== undefined ||
       val.model !== undefined ||
-      val.systemPrompt !== undefined,
+      val.systemPrompt !== undefined ||
+      val.autoStart !== undefined,
     { message: 'At least one field must be provided' },
   );
 
