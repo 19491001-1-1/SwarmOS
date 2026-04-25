@@ -77,6 +77,10 @@ describe('memory instruction', () => {
     expect(instruction).toContain('MEMORY.md');
     expect(instruction).toContain('notes/work-log.md');
     expect(instruction).toContain('Do not write secrets');
+    expect(instruction).toContain('common tool commands and invocation patterns');
+    expect(instruction).toContain('project-specific lessons learned');
+    expect(instruction).toContain('business/domain knowledge');
+    expect(instruction).toContain('why a tool or approach worked');
   });
 });
 

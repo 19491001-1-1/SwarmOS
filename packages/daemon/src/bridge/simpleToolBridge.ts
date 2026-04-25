@@ -237,5 +237,7 @@ export function buildMemoryInstruction(): string {
     '- Store user preferences in `notes/user-preferences.md` and channel background in `notes/channels.md` when useful.',
     '- Do not write secrets, auth tokens, API keys, or sensitive private data into MEMORY.md or notes.',
     '- After meaningful work, update MEMORY.md or notes only when it preserves useful future context.',
+    '- Be deliberate about summarizing reusable knowledge: common tool commands and invocation patterns, project-specific lessons learned, and business/domain knowledge that will help future work.',
+    '- Prefer concise, structured notes over raw chat logs; record why a tool or approach worked, when to reuse it, and any caveats.',
   ].join('\n');
 }
