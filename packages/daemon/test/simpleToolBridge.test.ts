@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseBridgeLine, BRIDGE_MARKER } from '../src/bridge/simpleToolBridge.js';
+import { parseBridgeLine, parseDmLine, BRIDGE_MARKER, DM_BRIDGE_MARKER, buildDmInstruction } from '../src/bridge/simpleToolBridge.js';
 
 describe('parseBridgeLine', () => {
   it('extracts content from valid line', () => {
@@ -29,5 +29,31 @@ describe('parseBridgeLine', () => {
     const line = `some prefix ${BRIDGE_MARKER} {"content":"reply"}`;
     const result = parseBridgeLine(line);
     expect(result?.content).toBe('reply');
+  });
+});
+
+describe('parseDmLine', () => {
+  it('extracts target and content from valid DM line', () => {
+    const result = parseDmLine(`${DM_BRIDGE_MARKER} {"to":"agent-2","content":"hello privately"}`);
+    expect(result).toEqual({ to: 'agent-2', content: 'hello privately' });
+  });
+
+  it('handles marker with preceding text', () => {
+    const result = parseDmLine(`prefix ${DM_BRIDGE_MARKER} {"to":"receiver","content":"secret"}`);
+    expect(result?.to).toBe('receiver');
+    expect(result?.content).toBe('secret');
+  });
+
+  it('returns null for invalid JSON after marker', () => {
+    expect(parseDmLine(`${DM_BRIDGE_MARKER} not-json`)).toBeNull();
+  });
+
+  it('returns null when required fields are missing', () => {
+    expect(parseDmLine(`${DM_BRIDGE_MARKER} {"content":"missing target"}`)).toBeNull();
+    expect(parseDmLine(`${DM_BRIDGE_MARKER} {"to":"agent-2"}`)).toBeNull();
+  });
+
+  it('includes the DM marker in the generated instruction', () => {
+    expect(buildDmInstruction()).toContain(DM_BRIDGE_MARKER);
   });
 });

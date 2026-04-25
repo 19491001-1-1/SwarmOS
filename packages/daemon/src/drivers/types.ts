@@ -16,6 +16,7 @@ export type RuntimeCommand = {
 
 export type AgentOutputEvent =
   | { type: 'message'; content: string }
+  | { type: 'dm'; toAgentId: string; content: string }
   | { type: 'activity'; detail: string };
 
 export interface RuntimeDriver {

@@ -23,6 +23,14 @@ export const activities = sqliteTable('activities', {
   createdAt: text('created_at').notNull(),
 });
 
+export const directMessages = sqliteTable('direct_messages', {
+  id: text('id').primaryKey(),
+  fromAgentId: text('from_agent_id').notNull(),
+  toAgentId: text('to_agent_id').notNull(),
+  content: text('content').notNull(),
+  createdAt: text('created_at').notNull(),
+});
+
 export const agents = sqliteTable('agents', {
   id: text('id').primaryKey(),
   name: text('name').notNull(),
@@ -31,6 +39,7 @@ export const agents = sqliteTable('agents', {
   runtime: text('runtime').notNull(),
   model: text('model'),
   systemPrompt: text('system_prompt'),
+  envVars: text('env_vars'),
   machineId: text('machine_id'),
   status: text('status').notNull(),
   createdAt: text('created_at').notNull(),

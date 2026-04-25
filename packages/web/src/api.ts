@@ -5,8 +5,10 @@ export const WEB_COMMIT_SHA = (import.meta.env.VITE_COMMIT_SHA ?? '').trim();
 
 export type Channel = { id: string; name: string; createdAt: string };
 export type Message = { id: string; channelId: string; senderName: string; content: string; agentId?: string; createdAt: string };
-export type Agent = { id: string; name: string; displayName?: string; description?: string; runtime: string; model?: string; systemPrompt?: string; status: string; machineId?: string; createdAt: string };
+export type Agent = { id: string; name: string; displayName?: string; description?: string; runtime: string; model?: string; systemPrompt?: string; envVars?: Record<string, string>; status: string; machineId?: string; createdAt: string };
 export type AgentActivity = { id: string; agentId: string; type: 'thinking' | 'working' | 'output' | 'idle' | 'sending' | 'error'; detail?: string; createdAt: string };
+export type DirectMessage = { id: string; fromAgentId: string; toAgentId: string; content: string; createdAt: string };
+export type DirectMessageThread = { otherAgentId: string; lastMessage: DirectMessage };
 export type Machine = { id: string; hostname: string; os: string; runtimes: string[]; status: string; connectedAt: string };
 export type VersionInfo = { component: string; version: string; commit?: string; build?: string };
 
@@ -63,9 +65,11 @@ export async function getAgentActivities(agentId: string): Promise<AgentActivity
 export async function createAgent(data: {
   name: string;
   displayName?: string;
+  description?: string;
   runtime: string;
   model?: string;
   systemPrompt?: string;
+  envVars?: Record<string, string>;
   machineId?: string;
 }): Promise<Agent> {
   const r = await fetch(`${API_BASE}/api/agents`, {
@@ -76,11 +80,30 @@ export async function createAgent(data: {
   return r.json();
 }
 
-export async function patchAgent(agentId: string, data: { machineId?: string; displayName?: string; model?: string; systemPrompt?: string }): Promise<Agent> {
+export async function patchAgent(agentId: string, data: { machineId?: string; displayName?: string; description?: string; model?: string; systemPrompt?: string; envVars?: Record<string, string> }): Promise<Agent> {
   const r = await fetch(`${API_BASE}/api/agents/${agentId}`, {
     method: 'PATCH',
     headers: authHeaders({ 'Content-Type': 'application/json' }),
     body: JSON.stringify(data),
+  });
+  return r.json();
+}
+
+export async function getAgentDmThreads(agentId: string): Promise<DirectMessageThread[]> {
+  const r = await fetch(`${API_BASE}/api/agents/${agentId}/dms`, { headers: authHeaders() });
+  return r.json();
+}
+
+export async function getAgentDirectMessages(agentId: string, otherId: string): Promise<DirectMessage[]> {
+  const r = await fetch(`${API_BASE}/api/agents/${agentId}/dms/${encodeURIComponent(otherId)}`, { headers: authHeaders() });
+  return r.json();
+}
+
+export async function sendAgentDirectMessage(agentId: string, otherId: string, content: string): Promise<DirectMessage> {
+  const r = await fetch(`${API_BASE}/api/agents/${agentId}/dms/${encodeURIComponent(otherId)}`, {
+    method: 'POST',
+    headers: authHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ content }),
   });
   return r.json();
 }

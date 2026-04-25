@@ -45,17 +45,20 @@ describe('AgentProcessManager', () => {
   let messages: Array<{ agentId: string; channelId: string; content: string }> = [];
   let statuses: Array<{ agentId: string; status: string }> = [];
   let activities: Array<{ agentId: string; type: string; detail?: string }> = [];
+  let dms: Array<{ fromAgentId: string; toAgentId: string; content: string }> = [];
   let manager: AgentProcessManager;
 
   beforeEach(() => {
     messages = [];
     statuses = [];
     activities = [];
+    dms = [];
     manager = new AgentProcessManager(
       '/tmp/test-workspaces',
       (agentId, channelId, content) => messages.push({ agentId, channelId, content }),
       (agentId, status) => statuses.push({ agentId, status }),
-      (agentId, type, detail) => activities.push({ agentId, type, detail })
+      (agentId, type, detail) => activities.push({ agentId, type, detail }),
+      (fromAgentId, toAgentId, content) => dms.push({ fromAgentId, toAgentId, content })
     );
   });
 
@@ -142,6 +145,26 @@ describe('AgentProcessManager', () => {
 
     expect(messages[0].content).toBe('Plain fallback answer');
     expect(activities.some((a) => a.type === 'output' && a.detail === 'Plain fallback answer')).toBe(true);
+  });
+
+  it('stdout DM marker is reported as agent dm', async () => {
+    const fakeProc = createFakeProc(['[[MINI_SLOCK_SEND_DM]] {"to":"agent-2","content":"secret"}']);
+    mockSpawn.mockReturnValue(fakeProc);
+
+    await manager.startAgent('agent-1', { runtime: 'claude', name: 'bot' }, 'general');
+    await manager.deliverMessage('agent-1', {
+      id: 'msg-1',
+      channelId: 'general',
+      channelName: 'general',
+      senderName: 'user',
+      content: 'Hello',
+      createdAt: new Date().toISOString(),
+    });
+
+    await new Promise((r) => setTimeout(r, 50));
+
+    expect(dms).toEqual([{ fromAgentId: 'agent-1', toAgentId: 'agent-2', content: 'secret' }]);
+    expect(activities.some((a) => a.type === 'sending' && a.detail === 'dm:agent-2')).toBe(true);
   });
 
   it('stopAgent kills process', async () => {

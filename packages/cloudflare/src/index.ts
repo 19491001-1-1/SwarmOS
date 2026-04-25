@@ -5,6 +5,8 @@ import type {
   BrowserEvent,
   Channel,
   DaemonToServer,
+  DirectMessage,
+  DirectMessageThread,
   Machine,
   Message,
   RuntimeId,
@@ -13,6 +15,7 @@ import type {
 import {
   createVersionInfo,
   CreateAgentRequestSchema,
+  CreateDirectMessageRequestSchema,
   CreateMessageRequestSchema,
   PatchAgentRequestSchema,
 } from '@mini-slock/shared';
@@ -92,6 +95,29 @@ export class XoxiangHub extends DurableObject<Env> {
         return json(this.listAgents());
       }
 
+      const dmThreadsMatch = url.pathname.match(/^\/api\/agents\/([^/]+)\/dms$/);
+      if (dmThreadsMatch && request.method === 'GET') {
+        const agentId = decodeURIComponent(dmThreadsMatch[1]);
+        if (!this.getAgent(agentId)) return json({ error: 'Agent not found' }, 404);
+        return json(this.listDirectMessageThreads(agentId));
+      }
+
+      const dmMessagesMatch = url.pathname.match(/^\/api\/agents\/([^/]+)\/dms\/([^/]+)$/);
+      if (dmMessagesMatch && request.method === 'GET') {
+        const agentId = decodeURIComponent(dmMessagesMatch[1]);
+        const otherId = decodeURIComponent(dmMessagesMatch[2]);
+        if (!this.getAgent(agentId)) return json({ error: 'Agent not found' }, 404);
+        return json(this.listDirectMessages(agentId, otherId));
+      }
+
+      if (dmMessagesMatch && request.method === 'POST') {
+        return this.createUserDirectMessage(
+          decodeURIComponent(dmMessagesMatch[1]),
+          decodeURIComponent(dmMessagesMatch[2]),
+          await request.json(),
+        );
+      }
+
       const activitiesMatch = url.pathname.match(/^\/api\/agents\/([^/]+)\/activities$/);
       if (activitiesMatch && request.method === 'GET') {
         if (!this.getAgent(activitiesMatch[1])) return json({ error: 'Agent not found' }, 404);
@@ -103,8 +129,14 @@ export class XoxiangHub extends DurableObject<Env> {
       }
 
       const agentMatch = url.pathname.match(/^\/api\/agents\/([^/]+)$/);
+      if (agentMatch && request.method === 'GET') {
+        const agent = this.getAgent(decodeURIComponent(agentMatch[1]));
+        if (!agent) return json({ error: 'Agent not found' }, 404);
+        return json(agent);
+      }
+
       if (agentMatch && request.method === 'PATCH') {
-        return this.patchAgent(agentMatch[1], await request.json());
+        return this.patchAgent(decodeURIComponent(agentMatch[1]), await request.json());
       }
 
       const startMatch = url.pathname.match(/^\/api\/agents\/([^/]+)\/start$/);
@@ -194,6 +226,20 @@ export class XoxiangHub extends DurableObject<Env> {
         detail: data.detail,
       });
       this.broadcast({ type: 'agent:activity', agentId: data.agentId, activity });
+      return;
+    }
+
+    if (data.type === 'agent:dm') {
+      const target = this.findAgentByNameOrId(data.toAgentId);
+      if (!target) return;
+      const dm = this.createDirectMessage({
+        id: crypto.randomUUID(),
+        fromAgentId: data.fromAgentId,
+        toAgentId: target.id,
+        content: data.content,
+      });
+      this.broadcast({ type: 'dm:new', dm });
+      this.deliverDirectMessage(target, dm);
     }
   }
 
@@ -254,6 +300,15 @@ export class XoxiangHub extends DurableObject<Env> {
       )
     `);
     this.ctx.storage.sql.exec(`
+      CREATE TABLE IF NOT EXISTS direct_messages (
+        id TEXT PRIMARY KEY,
+        from_agent_id TEXT NOT NULL,
+        to_agent_id TEXT NOT NULL,
+        content TEXT NOT NULL,
+        created_at TEXT NOT NULL
+      )
+    `);
+    this.ctx.storage.sql.exec(`
       CREATE TABLE IF NOT EXISTS agents (
         id TEXT PRIMARY KEY,
         name TEXT NOT NULL,
@@ -262,11 +317,17 @@ export class XoxiangHub extends DurableObject<Env> {
         runtime TEXT NOT NULL,
         model TEXT,
         system_prompt TEXT,
+        env_vars TEXT,
         machine_id TEXT,
         status TEXT NOT NULL,
         created_at TEXT NOT NULL
       )
     `);
+    try {
+      this.ctx.storage.sql.exec('ALTER TABLE agents ADD COLUMN env_vars TEXT');
+    } catch {
+      // Existing Durable Objects may already have the column.
+    }
     this.ctx.storage.sql.exec(`
       CREATE TABLE IF NOT EXISTS machines (
         id TEXT PRIMARY KEY,
@@ -328,6 +389,25 @@ export class XoxiangHub extends DurableObject<Env> {
     return json(message, 201);
   }
 
+  private createUserDirectMessage(agentId: string, otherId: string, body: unknown): Response {
+    const target = this.getAgent(agentId);
+    if (!target) return json({ error: 'Agent not found' }, 404);
+    const parsed = CreateDirectMessageRequestSchema.safeParse(body);
+    if (!parsed.success) {
+      return json({ error: 'Invalid request body', issues: parsed.error.issues }, 400);
+    }
+
+    const dm = this.createDirectMessage({
+      id: crypto.randomUUID(),
+      fromAgentId: parsed.data.fromAgentId ?? otherId,
+      toAgentId: target.id,
+      content: parsed.data.content,
+    });
+    this.broadcast({ type: 'dm:new', dm });
+    this.deliverDirectMessage(target, dm);
+    return json(dm, 201);
+  }
+
   private createAgent(body: unknown): Response {
     const parsed = CreateAgentRequestSchema.safeParse(body);
     if (!parsed.success) {
@@ -343,14 +423,15 @@ export class XoxiangHub extends DurableObject<Env> {
       runtime: payload.runtime,
       model: payload.model,
       systemPrompt: payload.systemPrompt,
+      envVars: payload.envVars,
       machineId: payload.machineId,
       status: 'inactive',
       createdAt: new Date().toISOString(),
     };
     this.ctx.storage.sql.exec(
       `INSERT INTO agents
-       (id, name, display_name, description, runtime, model, system_prompt, machine_id, status, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       (id, name, display_name, description, runtime, model, system_prompt, env_vars, machine_id, status, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       agent.id,
       agent.name,
       agent.displayName ?? null,
@@ -358,6 +439,7 @@ export class XoxiangHub extends DurableObject<Env> {
       agent.runtime,
       agent.model ?? null,
       agent.systemPrompt ?? null,
+      agent.envVars ? JSON.stringify(agent.envVars) : null,
       agent.machineId ?? null,
       agent.status,
       agent.createdAt
@@ -373,7 +455,10 @@ export class XoxiangHub extends DurableObject<Env> {
       return json({ error: 'Invalid request body', issues: parsed.error.issues }, 400);
     }
     const updated = this.updateAgent(agentId, parsed.data);
-    if (updated) this.broadcast({ type: 'agent:update', agent: updated });
+    if (updated) {
+      this.broadcast({ type: 'agent:update', agent: updated });
+      this.broadcast({ type: 'agent:updated', agent: updated });
+    }
     return json(updated);
   }
 
@@ -451,6 +536,58 @@ export class XoxiangHub extends DurableObject<Env> {
     return created;
   }
 
+  private createDirectMessage(dm: Omit<DirectMessage, 'createdAt'>): DirectMessage {
+    const created: DirectMessage = { ...dm, createdAt: new Date().toISOString() };
+    this.ctx.storage.sql.exec(
+      `INSERT INTO direct_messages (id, from_agent_id, to_agent_id, content, created_at)
+       VALUES (?, ?, ?, ?, ?)`,
+      created.id,
+      created.fromAgentId,
+      created.toAgentId,
+      created.content,
+      created.createdAt
+    );
+    return created;
+  }
+
+  private listDirectMessages(agentId: string, otherId: string): DirectMessage[] {
+    return this.ctx.storage.sql
+      .exec<Row>(
+        `SELECT * FROM direct_messages
+         WHERE (from_agent_id = ? AND to_agent_id = ?)
+            OR (from_agent_id = ? AND to_agent_id = ?)
+         ORDER BY created_at`,
+        agentId,
+        otherId,
+        otherId,
+        agentId,
+      )
+      .toArray()
+      .map(toDirectMessage);
+  }
+
+  private listDirectMessageThreads(agentId: string): DirectMessageThread[] {
+    const rows = this.ctx.storage.sql
+      .exec<Row>(
+        `SELECT * FROM direct_messages
+         WHERE from_agent_id = ? OR to_agent_id = ?
+         ORDER BY created_at DESC`,
+        agentId,
+        agentId,
+      )
+      .toArray()
+      .map(toDirectMessage);
+    const seen = new Set<string>();
+    const threads: DirectMessageThread[] = [];
+    for (const dm of rows) {
+      const otherAgentId = dm.fromAgentId === agentId ? dm.toAgentId : dm.fromAgentId;
+      if (seen.has(otherAgentId)) continue;
+      seen.add(otherAgentId);
+      threads.push({ otherAgentId, lastMessage: dm });
+    }
+    return threads;
+  }
+
   private listAgentActivities(agentId: string, limit: number): AgentActivity[] {
     return this.ctx.storage.sql
       .exec<Row>('SELECT * FROM activities WHERE agent_id = ? ORDER BY created_at DESC LIMIT ?', agentId, limit)
@@ -483,6 +620,13 @@ export class XoxiangHub extends DurableObject<Env> {
     return row ? toAgent(row) : undefined;
   }
 
+  private findAgentByNameOrId(value: string): Agent | undefined {
+    const byId = this.getAgent(value);
+    if (byId) return byId;
+    const row = this.ctx.storage.sql.exec<Row>('SELECT * FROM agents WHERE name = ? LIMIT 1', value).one();
+    return row ? toAgent(row) : undefined;
+  }
+
   private updateAgent(id: string, patch: Partial<Agent>): Agent | undefined {
     const existing = this.getAgent(id);
     if (!existing) return undefined;
@@ -490,7 +634,7 @@ export class XoxiangHub extends DurableObject<Env> {
     this.ctx.storage.sql.exec(
       `UPDATE agents
        SET name = ?, display_name = ?, description = ?, runtime = ?, model = ?,
-           system_prompt = ?, machine_id = ?, status = ?, created_at = ?
+           system_prompt = ?, env_vars = ?, machine_id = ?, status = ?, created_at = ?
        WHERE id = ?`,
       updated.name,
       updated.displayName ?? null,
@@ -498,12 +642,33 @@ export class XoxiangHub extends DurableObject<Env> {
       updated.runtime,
       updated.model ?? null,
       updated.systemPrompt ?? null,
+      updated.envVars ? JSON.stringify(updated.envVars) : null,
       updated.machineId ?? null,
       updated.status,
       updated.createdAt,
       id
     );
     return updated;
+  }
+
+  private deliverDirectMessage(target: Agent, dm: DirectMessage): void {
+    const machineId = this.resolveStartMachineId(target);
+    if (!machineId || target.status === 'inactive') return;
+    this.sendToDaemon(machineId, {
+      type: 'agent:deliver',
+      agentId: target.id,
+      seq: Date.now(),
+      channelId: `dm:${dm.fromAgentId}:${dm.toAgentId}`,
+      config: toRuntimeConfig(target),
+      message: {
+        id: dm.id,
+        channelId: `dm:${dm.fromAgentId}:${dm.toAgentId}`,
+        channelName: `DM from ${dm.fromAgentId}`,
+        senderName: dm.fromAgentId,
+        content: dm.content,
+        createdAt: dm.createdAt,
+      },
+    });
   }
 
   private listMachines(): Machine[] {
@@ -654,6 +819,16 @@ function toAgentActivity(row: Row): AgentActivity {
   };
 }
 
+function toDirectMessage(row: Row): DirectMessage {
+  return {
+    id: String(row.id),
+    fromAgentId: String(row.from_agent_id),
+    toAgentId: String(row.to_agent_id),
+    content: String(row.content),
+    createdAt: String(row.created_at),
+  };
+}
+
 function toAgent(row: Row): Agent {
   return {
     id: String(row.id),
@@ -663,6 +838,7 @@ function toAgent(row: Row): Agent {
     runtime: String(row.runtime) as RuntimeId,
     model: row.model ? String(row.model) : undefined,
     systemPrompt: row.system_prompt ? String(row.system_prompt) : undefined,
+    envVars: row.env_vars ? JSON.parse(String(row.env_vars)) as Record<string, string> : undefined,
     machineId: row.machine_id ? String(row.machine_id) : undefined,
     status: String(row.status) as Agent['status'],
     createdAt: String(row.created_at),
