@@ -20,8 +20,6 @@ const AVATAR_PALETTES = [
   ['#f44336', '#FFD700', '#fff', '#000'],
 ];
 
-const PHOSPHOR_GREEN = '#00ff41';
-
 export function PresenceAvatar({ name, isAgent, status, latestActivity, size = 36, onClick }: Props) {
   const label = presenceLabel(status, latestActivity, isAgent);
   const color = presenceColor(status, latestActivity, isAgent);
@@ -102,8 +100,8 @@ export function presenceLabel(status?: PresenceStatus, latestActivity?: AgentAct
 function presenceColor(status?: PresenceStatus, latestActivity?: AgentActivity, isAgent = true): string {
   if (!isAgent) return '#00c853';
   if (latestActivity?.type === 'thinking') return '#2196f3';
-  if (latestActivity?.type === 'working') return PHOSPHOR_GREEN;
-  if (status === 'working') return PHOSPHOR_GREEN;
+  if (latestActivity?.type === 'working') return '#7c3aed';
+  if (status === 'working') return '#7c3aed';
   if (status === 'starting') return '#ffb300';
   if (status === 'running') return '#00c853';
   if (status === 'idle') return '#7aa874';

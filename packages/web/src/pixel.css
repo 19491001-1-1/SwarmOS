@@ -5,7 +5,6 @@
   --yellow: #FFD700;
   --yellow-dark: #e6c200;
   --pink: #FF4D8D;
-  --phosphor-green: #00ff41;
   --black: #000;
   --white: #fff;
   --bg: #f5f0e8;
@@ -239,9 +238,8 @@ body {
   content: '';
   position: absolute;
   inset: -5px;
-  border: 2px solid color-mix(in srgb, var(--phosphor-green) 72%, transparent);
+  border: 2px solid rgba(124, 58, 237, 0.55);
   border-radius: 8px;
-  box-shadow: 0 0 10px color-mix(in srgb, var(--phosphor-green) 55%, transparent);
   animation: avatar-breathing-ring 1.8s ease-in-out infinite;
   pointer-events: none;
 }
