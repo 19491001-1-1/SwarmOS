@@ -181,6 +181,46 @@ describe('input validation', () => {
     expect(res.status).toBe(400);
   });
 
+  it('supports task board CRUD and message conversion', async () => {
+    const title = `cf task ${crypto.randomUUID()}`;
+    const created = await SELF.fetch('https://hub.test/api/tasks', {
+      method: 'POST',
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ channelId: 'general', title, creatorName: 'user' }),
+    });
+    expect(created.status).toBe(201);
+    const task = (await created.json()) as { id: string; title: string; status: string };
+    expect(task.title).toBe(title);
+    expect(task.status).toBe('todo');
+
+    const patched = await SELF.fetch(`https://hub.test/api/tasks/${task.id}`, {
+      method: 'PATCH',
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ status: 'done' }),
+    });
+    expect(patched.status).toBe(200);
+    expect((await patched.json()) as { status: string }).toMatchObject({ status: 'done' });
+
+    const listed = await SELF.fetch('https://hub.test/api/tasks?status=done', { headers: authHeaders() });
+    expect(listed.status).toBe(200);
+    const tasks = (await listed.json()) as Array<{ id: string }>;
+    expect(tasks.find((candidate) => candidate.id === task.id)).toBeTruthy();
+
+    const message = await SELF.fetch('https://hub.test/api/channels/general/messages', {
+      method: 'POST',
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ senderName: 'user', content: `task from message ${crypto.randomUUID()}` }),
+    });
+    const msg = (await message.json()) as { id: string; content: string };
+    const converted = await SELF.fetch(`https://hub.test/api/messages/${msg.id}/to-task`, {
+      method: 'POST',
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ creatorName: 'user' }),
+    });
+    expect(converted.status).toBe(201);
+    expect(await converted.json()).toMatchObject({ messageId: msg.id, title: msg.content });
+  });
+
   it('updates profile fields and stores direct messages', async () => {
     const created = await SELF.fetch('https://hub.test/api/agents', {
       method: 'POST',

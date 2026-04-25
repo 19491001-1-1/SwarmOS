@@ -4,6 +4,7 @@ import type { Message } from '../api.js';
 type Props = {
   channelName: string;
   messages: Message[];
+  onCreateTask?: (messageId: string) => void;
 };
 
 // Deterministic pixel avatar colors per name
@@ -39,7 +40,7 @@ function PixelAvatar({ name, isAgent }: { name: string; isAgent: boolean }) {
   );
 }
 
-export function ChannelView({ channelName, messages }: Props) {
+export function ChannelView({ channelName, messages, onCreateTask }: Props) {
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -124,6 +125,25 @@ export function ChannelView({ channelName, messages }: Props) {
                     <span style={{ fontSize: 10, color: '#999', fontFamily: "'Courier New', monospace" }}>
                       {formatTime(msg.createdAt)}
                     </span>
+                    {onCreateTask && (
+                      <button
+                        onClick={() => onCreateTask(msg.id)}
+                        title="Create task from message"
+                        style={{
+                          marginLeft: 'auto',
+                          border: '1.5px solid #000',
+                          background: '#fff',
+                          height: 20,
+                          padding: '0 6px',
+                          fontSize: 10,
+                          fontWeight: 700,
+                          fontFamily: "'Courier New', monospace",
+                          cursor: 'pointer',
+                        }}
+                      >
+                        {'-> TASK'}
+                      </button>
+                    )}
                   </div>
                 )}
                 <div style={{

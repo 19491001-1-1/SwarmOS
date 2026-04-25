@@ -1,4 +1,4 @@
-import type { RuntimeId, AgentRuntimeConfig } from '@mini-slock/shared';
+import type { RuntimeId, AgentRuntimeConfig, TaskStatus } from '@mini-slock/shared';
 
 export type AgentSpawnContext = {
   agentId: string;
@@ -18,6 +18,8 @@ export type AgentOutputEvent =
   | { type: 'message'; content: string }
   | { type: 'dm'; toAgentId: string; content: string }
   | { type: 'delegate'; toAgentId: string; content: string; startIfInactive?: boolean }
+  | { type: 'create_task'; title: string; assigneeId?: string; channelId?: string }
+  | { type: 'update_task'; taskId: string; status: TaskStatus }
   | { type: 'activity'; detail: string };
 
 export interface RuntimeDriver {

@@ -101,7 +101,7 @@ All components expose or carry a version:
 - Server and Cloudflare hub: `GET /api/version`.
 - Daemon: `--version`, and the same value is sent as `daemonVersion` in the ready handshake.
 
-Local defaults use `0.1.0`. CI/CD injects the Git commit SHA into `XOXIANG_VERSION` and `VITE_APP_VERSION` so every deployed iteration is identifiable.
+Local defaults use the package version. CI/CD injects the Git commit SHA into `XOXIANG_VERSION` and `VITE_APP_VERSION` so every deployed iteration is identifiable.
 
 ## Verify (typecheck + tests)
 

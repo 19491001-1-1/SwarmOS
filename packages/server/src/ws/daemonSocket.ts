@@ -139,6 +139,30 @@ export async function daemonSocketHandler(app: FastifyInstance) {
           return;
         }
 
+        if (msg.type === 'agent:create_task') {
+          const channelId = msg.channelId ?? 'general';
+          const channel = await store.getChannel(channelId);
+          if (!channel) return;
+          const agent = await store.getAgent(msg.agentId);
+          const assignee = msg.assigneeId ? await store.findAgentByNameOrId(msg.assigneeId) : undefined;
+          const task = await store.createTask({
+            id: nanoid(),
+            channelId,
+            title: msg.title,
+            status: 'todo',
+            creatorName: agent?.displayName ?? agent?.name ?? msg.agentId,
+            assigneeId: assignee?.id ?? msg.assigneeId,
+          });
+          eventBus.emit({ type: 'task:update', task });
+          return;
+        }
+
+        if (msg.type === 'agent:update_task') {
+          const task = await store.updateTask(msg.taskId, { status: msg.status });
+          if (task) eventBus.emit({ type: 'task:update', task });
+          return;
+        }
+
         if (msg.type === 'agent:deliver:ack') {
           return;
         }

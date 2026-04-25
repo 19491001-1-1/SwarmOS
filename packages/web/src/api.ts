@@ -1,6 +1,6 @@
 export const API_BASE = (import.meta.env.VITE_API_BASE ?? '').replace(/\/$/, '');
 export const WEB_AUTH_TOKEN = (import.meta.env.VITE_WEB_AUTH_TOKEN ?? '').trim();
-export const WEB_VERSION = (import.meta.env.VITE_APP_VERSION ?? '0.1.0').trim();
+export const WEB_VERSION = (import.meta.env.VITE_APP_VERSION ?? '0.6.0').trim();
 export const WEB_COMMIT_SHA = (import.meta.env.VITE_COMMIT_SHA ?? '').trim();
 
 export type Channel = { id: string; name: string; createdAt: string };
@@ -16,6 +16,8 @@ export type WorkspaceEntry =
 export type AgentDelegation = { id: string; fromAgentId: string; toAgentId: string; content: string; status: 'queued' | 'delivered' | 'started' | 'failed'; error?: string; createdAt: string };
 export type Machine = { id: string; hostname: string; os: string; runtimes: string[]; status: string; connectedAt: string };
 export type VersionInfo = { component: string; version: string; commit?: string; build?: string };
+export type TaskStatus = 'todo' | 'in_progress' | 'in_review' | 'done';
+export type Task = { id: string; channelId: string; messageId?: string; title: string; status: TaskStatus; creatorName: string; assigneeId?: string; createdAt: string; updatedAt: string };
 
 function authHeaders(extra?: Record<string, string>): Record<string, string> {
   const headers: Record<string, string> = { ...(extra ?? {}) };
@@ -135,5 +137,45 @@ export async function stopAgent(agentId: string): Promise<Agent> {
 
 export async function getMachines(): Promise<Machine[]> {
   const r = await fetch(`${API_BASE}/api/machines`, { headers: authHeaders() });
+  return r.json();
+}
+
+export async function getTasks(filter: { channelId?: string; status?: TaskStatus } = {}): Promise<Task[]> {
+  const params = new URLSearchParams();
+  if (filter.channelId) params.set('channelId', filter.channelId);
+  if (filter.status) params.set('status', filter.status);
+  const query = params.toString() ? `?${params.toString()}` : '';
+  const r = await fetch(`${API_BASE}/api/tasks${query}`, { headers: authHeaders() });
+  return r.json();
+}
+
+export async function createTask(data: { channelId?: string; title: string; assigneeId?: string; creatorName?: string }): Promise<Task> {
+  const r = await fetch(`${API_BASE}/api/tasks`, {
+    method: 'POST',
+    headers: authHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(data),
+  });
+  return r.json();
+}
+
+export async function patchTask(taskId: string, data: { status?: TaskStatus; assigneeId?: string }): Promise<Task> {
+  const r = await fetch(`${API_BASE}/api/tasks/${taskId}`, {
+    method: 'PATCH',
+    headers: authHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(data),
+  });
+  return r.json();
+}
+
+export async function deleteTask(taskId: string): Promise<void> {
+  await fetch(`${API_BASE}/api/tasks/${taskId}`, { method: 'DELETE', headers: authHeaders() });
+}
+
+export async function messageToTask(messageId: string, data: { assigneeId?: string; creatorName?: string } = {}): Promise<Task> {
+  const r = await fetch(`${API_BASE}/api/messages/${messageId}/to-task`, {
+    method: 'POST',
+    headers: authHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(data),
+  });
   return r.json();
 }

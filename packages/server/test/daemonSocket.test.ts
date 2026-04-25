@@ -142,6 +142,55 @@ describe('daemon WebSocket', () => {
     ws.close();
   });
 
+  it('creates and updates tasks from daemon task events', async () => {
+    const daemon = await connectDaemon('dev-machine-key');
+    const browser = await connectBrowser();
+    await sendAndWait(daemon, {
+      type: 'ready',
+      machineId: 'machine-1',
+      hostname: 'h',
+      os: 'linux',
+      daemonVersion: '0.1.0',
+      runtimes: [],
+      runtimeVersions: {},
+      runningAgents: [],
+      capabilities: [],
+    });
+
+    const store = getStore();
+    await store.createAgent({
+      id: 'agent-1',
+      name: 'bot',
+      runtime: 'claude',
+      status: 'running',
+      machineId: 'machine-1',
+      createdAt: new Date().toISOString(),
+    });
+
+    const createEvent = waitForBrowserEvent(browser, 'task:update');
+    await sendAndWait(daemon, {
+      type: 'agent:create_task',
+      agentId: 'agent-1',
+      channelId: 'general',
+      title: 'daemon made task',
+    });
+    const created = await createEvent;
+    expect(created.task.title).toBe('daemon made task');
+    expect((await store.listTasks())[0].creatorName).toBe('bot');
+
+    const updateEvent = waitForBrowserEvent(browser, 'task:update');
+    await sendAndWait(daemon, {
+      type: 'agent:update_task',
+      agentId: 'agent-1',
+      taskId: created.task.id,
+      status: 'done',
+    });
+    const updated = await updateEvent;
+    expect(updated.task.status).toBe('done');
+    browser.close();
+    daemon.close();
+  });
+
   it('updates agent status on agent:status', async () => {
     const ws = await connectDaemon('dev-machine-key');
     await sendAndWait(ws, {
