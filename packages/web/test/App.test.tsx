@@ -50,7 +50,7 @@ describe('App', () => {
     expect(container.querySelector('.sidebar-mobile-open')).toBeTruthy();
   });
 
-  it('lets a user turn a chat message into a goal and create a contextual task', async () => {
+  it('lets a user align a goal in chat and confirm contextual tasks', async () => {
     vi.mocked(api.getMessages).mockResolvedValue([
       {
         id: 'msg-1',
@@ -60,37 +60,96 @@ describe('App', () => {
         createdAt: '2026-04-25T00:00:00.000Z',
       },
     ]);
-    vi.mocked(api.messageToGoal).mockResolvedValueOnce({
-      id: 'goal-1',
+    vi.mocked(api.getMessageThread).mockResolvedValueOnce({
+      root: {
+        id: 'msg-1',
+        channelId: 'general',
+        senderName: 'user',
+        content: 'Help me ship a Mac voice input MVP',
+        createdAt: '2026-04-25T00:00:00.000Z',
+      },
+      replies: [],
+    });
+    vi.mocked(api.startGoalAlignment).mockResolvedValueOnce({
+      id: 'alignment-1',
       channelId: 'general',
+      threadRootId: 'msg-1',
       sourceMessageId: 'msg-1',
-      requesterName: 'user',
+      status: 'needs_clarification',
       objective: 'Help me ship a Mac voice input MVP',
-      background: [],
-      successCriteria: [],
+      questions: ['What does success look like for this goal?'],
+      answers: [],
+      successCriteria: ['MVP plan is actionable'],
       constraints: [],
-      assumptions: [],
-      risks: [],
-      status: 'draft',
+      planSummary: 'Draft plan for a Mac voice input MVP.',
+      taskDrafts: [{ title: 'Plan: Help me ship a Mac voice input MVP', role: 'owner', acceptanceCriteria: ['MVP plan is actionable'] }],
+      recommendedAgentIds: [],
+      reviewerAgentIds: [],
+      recommendationReasons: {},
+      gaps: ['No owner agent matched product/planning or engineering responsibilities.'],
+      riskLevel: 'low',
       createdAt: '2026-04-25T00:00:01.000Z',
       updatedAt: '2026-04-25T00:00:01.000Z',
     });
-    vi.mocked(api.patchGoal).mockResolvedValueOnce({
-      id: 'goal-1',
+    vi.mocked(api.patchGoalAlignment).mockResolvedValueOnce({
+      id: 'alignment-1',
       channelId: 'general',
+      threadRootId: 'msg-1',
       sourceMessageId: 'msg-1',
-      requesterName: 'user',
+      status: 'awaiting_confirmation',
       objective: 'Help me ship a Mac voice input MVP',
-      background: [],
+      questions: ['What does success look like for this goal?'],
+      answers: ['MVP should be actionable'],
       successCriteria: ['MVP plan is actionable'],
       constraints: [],
-      assumptions: [],
-      risks: [],
-      status: 'confirmed',
+      planSummary: 'Draft plan for a Mac voice input MVP.',
+      taskDrafts: [{ title: 'Plan: Help me ship a Mac voice input MVP', role: 'owner', acceptanceCriteria: ['MVP plan is actionable'] }],
+      recommendedAgentIds: [],
+      reviewerAgentIds: [],
+      recommendationReasons: {},
+      gaps: [],
+      riskLevel: 'low',
       createdAt: '2026-04-25T00:00:01.000Z',
       updatedAt: '2026-04-25T00:00:02.000Z',
     });
-    vi.mocked(api.createGoalTasks).mockResolvedValueOnce({
+    vi.mocked(api.confirmGoalAlignment).mockResolvedValueOnce({
+      alignment: {
+        id: 'alignment-1',
+        channelId: 'general',
+        threadRootId: 'msg-1',
+        sourceMessageId: 'msg-1',
+        goalId: 'goal-1',
+        status: 'confirmed',
+        objective: 'Help me ship a Mac voice input MVP',
+        questions: [],
+        answers: ['MVP should be actionable'],
+        successCriteria: ['MVP plan is actionable'],
+        constraints: [],
+        planSummary: 'Draft plan for a Mac voice input MVP.',
+        taskDrafts: [],
+        recommendedAgentIds: [],
+        reviewerAgentIds: [],
+        recommendationReasons: {},
+        gaps: [],
+        riskLevel: 'low',
+        createdAt: '2026-04-25T00:00:01.000Z',
+        updatedAt: '2026-04-25T00:00:03.000Z',
+      },
+      goal: {
+        id: 'goal-1',
+        channelId: 'general',
+        sourceMessageId: 'msg-1',
+        requesterName: 'user',
+        objective: 'Help me ship a Mac voice input MVP',
+        background: [],
+        successCriteria: ['MVP plan is actionable'],
+        constraints: [],
+        assumptions: [],
+        risks: [],
+        status: 'confirmed',
+        createdAt: '2026-04-25T00:00:03.000Z',
+        updatedAt: '2026-04-25T00:00:03.000Z',
+      },
       tasks: [{
         id: 'task-1',
         channelId: 'general',
@@ -117,18 +176,20 @@ describe('App', () => {
     fireEvent.click(await screen.findByTitle('Plan goal'));
 
     await waitFor(() => {
-      expect(screen.getByText('GOAL BRIEF')).toBeTruthy();
+      expect(screen.getByText('GOAL ALIGNMENT')).toBeTruthy();
+      expect(screen.getByText(/What does success look like/)).toBeTruthy();
+      expect(screen.getByText('PLAN PREVIEW')).toBeTruthy();
     });
 
     fireEvent.change(screen.getByLabelText('SUCCESS CRITERIA'), { target: { value: 'MVP plan is actionable' } });
-    fireEvent.click(screen.getByText('CONFIRM GOAL'));
+    fireEvent.change(screen.getByLabelText('ANSWERS / CONTEXT'), { target: { value: 'MVP should be actionable' } });
+    fireEvent.click(screen.getByText('REVISE'));
 
     await waitFor(() => {
-      expect(api.patchGoal).toHaveBeenCalledWith('goal-1', expect.objectContaining({ status: 'confirmed' }));
+      expect(api.patchGoalAlignment).toHaveBeenCalledWith('alignment-1', expect.objectContaining({ status: 'awaiting_confirmation' }));
     });
 
-    fireEvent.change(screen.getByPlaceholderText('Task title'), { target: { value: 'Draft MVP plan' } });
-    fireEvent.click(screen.getByText('CREATE TASK'));
+    fireEvent.click(screen.getByText('CONFIRM PLAN'));
 
     await waitFor(() => {
       expect(screen.getByText('Draft MVP plan')).toBeTruthy();
@@ -161,6 +222,9 @@ vi.mock('../src/api.js', () => ({
   getTasks: vi.fn(async () => []),
   messageToTask: vi.fn(),
   messageToGoal: vi.fn(),
+  startGoalAlignment: vi.fn(),
+  patchGoalAlignment: vi.fn(),
+  confirmGoalAlignment: vi.fn(),
   patchGoal: vi.fn(),
   createGoalTasks: vi.fn(),
   getAgentReminders: vi.fn(async () => []),

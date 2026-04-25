@@ -7,10 +7,11 @@ import { AgentDetailPanel } from './components/AgentDetailPanel.js';
 import { TaskBoard } from './components/TaskBoard.js';
 import { ThreadPanel } from './components/ThreadPanel.js';
 import { GoalDraftPanel } from './components/GoalDraftPanel.js';
+import { GoalAlignmentPanel } from './components/GoalAlignmentPanel.js';
 import { MobileTopBar } from './components/MobileTopBar.js';
 import { LoginView } from './components/LoginView.js';
-import type { Channel, Message, MessageThread, Agent, Machine, AgentActivity, VersionInfo, Task, Reminder, SearchMessageResult, GoalBrief } from './api.js';
-import { AuthError, WEB_COMMIT_SHA, WEB_VERSION, buildWsUrl, getChannels, getMessages, getMessageThread, sendMessage, getAgents, getMachines, getAgentActivities, getHubVersion, getTasks, messageToTask, messageToGoal, getAgentReminders, createChannel, deleteChannel, searchMessages, setAuthFailureHandler, verifyAuthToken } from './api.js';
+import type { Channel, Message, MessageThread, Agent, Machine, AgentActivity, VersionInfo, Task, Reminder, SearchMessageResult, GoalBrief, GoalAlignment } from './api.js';
+import { AuthError, WEB_COMMIT_SHA, WEB_VERSION, buildWsUrl, getChannels, getMessages, getMessageThread, sendMessage, getAgents, getMachines, getAgentActivities, getHubVersion, getTasks, messageToTask, startGoalAlignment, getAgentReminders, createChannel, deleteChannel, searchMessages, setAuthFailureHandler, verifyAuthToken } from './api.js';
 import { clearStoredAuthToken, getEffectiveAuthToken, markSignedOut, setStoredAuthToken } from './auth.js';
 
 export function App() {
@@ -31,6 +32,7 @@ export function App() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [thread, setThread] = useState<MessageThread | undefined>();
   const [goalDraft, setGoalDraft] = useState<GoalBrief | undefined>();
+  const [goalAlignment, setGoalAlignment] = useState<GoalAlignment | undefined>();
   const [targetMessageId, setTargetMessageId] = useState<string | undefined>();
   const [threadTargetMessageId, setThreadTargetMessageId] = useState<string | undefined>();
   const [searchOpen, setSearchOpen] = useState(false);
@@ -54,6 +56,7 @@ export function App() {
     setSidebarOpen(false);
     setThread(undefined);
     setGoalDraft(undefined);
+    setGoalAlignment(undefined);
     setTargetMessageId(undefined);
     setThreadTargetMessageId(undefined);
     setSearchOpen(false);
@@ -276,6 +279,8 @@ export function App() {
           });
         } else if (msg.type === 'goal:update') {
           setGoalDraft((current) => current?.id === msg.goal.id ? msg.goal : current);
+        } else if (msg.type === 'goal-alignment:update') {
+          setGoalAlignment((current) => current?.id === msg.alignment.id ? msg.alignment : current);
         } else if (msg.type === 'channel:created') {
           setChannels((prev) => prev.some((channel) => channel.id === msg.channel.id) ? prev : [...prev, msg.channel]);
         } else if (msg.type === 'channel:deleted') {
@@ -337,6 +342,7 @@ export function App() {
     setRightPanel(undefined);
     setSelectedAgentId(undefined);
     setGoalDraft(undefined);
+    setGoalAlignment(undefined);
     setThread(await getMessageThread(rootId));
   };
 
@@ -346,6 +352,7 @@ export function App() {
     setThread(undefined);
     setRightPanel(undefined);
     setGoalDraft(undefined);
+    setGoalAlignment(undefined);
   };
 
   const handleThreadSend = async (content: string, agentId?: string) => {
@@ -385,9 +392,11 @@ export function App() {
   };
 
   const handleMessageToGoal = async (messageId: string) => {
-    const goal = await messageToGoal(messageId, { requesterName: 'user' });
-    setGoalDraft(goal);
-    setThread(undefined);
+    const alignment = await startGoalAlignment(messageId, { requesterName: 'user' });
+    setGoalAlignment(alignment);
+    setThread(await getMessageThread(alignment.threadRootId));
+    setGoalDraft(undefined);
+    setSelectedView('channel');
     setSelectedAgentId(undefined);
     setRightPanel(undefined);
   };
@@ -444,7 +453,7 @@ export function App() {
         subtitle={thread ? 'Thread' : selectedView === 'tasks' ? `${tasks.filter((task) => task.status !== 'done').length} open` : 'Workspace'}
         hasThread={!!thread}
         onOpenMenu={() => setSidebarOpen(true)}
-        onOpenAgents={() => { setRightPanel('agents'); setSelectedAgentId(undefined); setThread(undefined); }}
+        onOpenAgents={() => { setRightPanel('agents'); setSelectedAgentId(undefined); setThread(undefined); setGoalAlignment(undefined); }}
         onCloseThread={() => setThread(undefined)}
       />
       {sidebarOpen ? <button type="button" className="mobile-scrim" aria-label="Close navigation" onClick={() => setSidebarOpen(false)} /> : null}
@@ -460,7 +469,7 @@ export function App() {
         webVersion={{ component: 'web', version: WEB_VERSION, commit: WEB_COMMIT_SHA || undefined }}
         hubVersion={hubVersion}
         taskCount={tasks.filter((task) => task.status !== 'done').length}
-        onSelectTasks={() => { setSelectedView('tasks'); setSelectedAgentId(undefined); }}
+        onSelectTasks={() => { setSelectedView('tasks'); setSelectedAgentId(undefined); setGoalAlignment(undefined); }}
         onOpenSearch={() => setSearchOpen(true)}
         onSelectChannel={(id) => {
           setSelectedView('channel');
@@ -468,13 +477,14 @@ export function App() {
           setSelectedAgentId(undefined);
           setThread(undefined);
           setGoalDraft(undefined);
+          setGoalAlignment(undefined);
           setTargetMessageId(undefined);
           setThreadTargetMessageId(undefined);
         }}
         onCreateChannel={handleCreateChannel}
         onDeleteChannel={handleDeleteChannel}
         onSelectAgent={(id) => { setSelectedAgentId(id); }}
-        onOpenAgents={() => { setRightPanel((current) => current === 'agents' ? undefined : 'agents'); setSelectedAgentId(undefined); setThread(undefined); setGoalDraft(undefined); }}
+        onOpenAgents={() => { setRightPanel((current) => current === 'agents' ? undefined : 'agents'); setSelectedAgentId(undefined); setThread(undefined); setGoalDraft(undefined); setGoalAlignment(undefined); }}
         onNavigate={() => setSidebarOpen(false)}
         onSignOut={handleSignOut}
       />
@@ -506,7 +516,18 @@ export function App() {
           </>
         )}
       </div>
-      {goalDraft ? (
+      {goalAlignment ? (
+        <GoalAlignmentPanel
+          alignment={goalAlignment}
+          agents={agents}
+          onClose={() => setGoalAlignment(undefined)}
+          onAlignmentUpdated={setGoalAlignment}
+          onTasksCreated={(createdTasks) => {
+            for (const task of createdTasks) upsertTask(task);
+            setSelectedView('tasks');
+          }}
+        />
+      ) : goalDraft ? (
         <GoalDraftPanel
           goal={goalDraft}
           agents={agents}

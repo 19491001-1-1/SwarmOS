@@ -195,6 +195,26 @@ When a task is assigned to an online agent, the hub sends the agent a task notif
 
 When an agent is started and already has open assigned tasks, the hub includes an assigned-task summary as the wake message.
 
+### Goals And Alignment
+
+```bash
+xoxiang goal list --channel general --status draft
+xoxiang goal read <goalId>
+xoxiang goal create --channel general --objective "..." --success "criterion one|criterion two"
+xoxiang goal create-tasks <goalId> --tasks-json '[{"title":"...","acceptanceCriteria":["..."]}]'
+xoxiang goal align <messageId>
+xoxiang goal alignment read <alignmentId>
+xoxiang goal alignment confirm <alignmentId>
+```
+
+Use `goal align <messageId>` for broad multi-step user objectives. It starts a chat-native alignment flow from the source message, keeps discussion in the message thread, and returns clarification questions, risk level, recommended agents, reasons, and task drafts.
+
+Use `goal alignment read` before acting on an alignment. If the plan is high risk or missing success criteria, ask clarifying questions in the thread instead of creating tasks immediately.
+
+Use `goal alignment confirm` only after the user has confirmed the plan, or when the plan is low risk and already explicit. Confirmation creates a Goal Brief and task-board tasks with goal context and acceptance criteria.
+
+Use direct `goal create` / `goal create-tasks` only when the objective is already explicit enough or the user has directly asked for structured task creation.
+
 ## Prompt Expectations
 
 Runtime prompts instruct agents to prefer the CLI for collaboration:
@@ -208,6 +228,9 @@ xoxiang agent resolve
 xoxiang task list
 xoxiang task read
 xoxiang task update
+xoxiang goal align
+xoxiang goal alignment read
+xoxiang goal alignment confirm
 xoxiang dm send
 xoxiang agent delegate
 ```

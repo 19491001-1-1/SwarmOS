@@ -260,6 +260,35 @@ describe('agent-facing xoxiang CLI', () => {
       })
     );
   });
+
+  it('starts, reads, and confirms goal alignments', async () => {
+    const fetchImpl = okFetch({ id: 'alignment-1' });
+    const started = await run(['goal', 'align', 'msg-1', '--objective', 'ship v1.2'], fetchImpl);
+    expect(started.code).toBe(0);
+    expect(fetchImpl).toHaveBeenCalledWith(
+      'http://hub.test/internal/agent/agent-1/goals/align?messageId=msg-1',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ requesterName: 'user', objective: 'ship v1.2' }),
+      })
+    );
+
+    const readFetch = okFetch({ id: 'alignment-1', status: 'awaiting_confirmation' });
+    const read = await run(['goal', 'alignment', 'read', 'alignment-1'], readFetch);
+    expect(read.code).toBe(0);
+    expect(readFetch).toHaveBeenCalledWith(
+      'http://hub.test/internal/agent/agent-1/goal-alignments/alignment-1',
+      expect.objectContaining({ method: 'GET' })
+    );
+
+    const confirmFetch = okFetch({ goal: { id: 'goal-1' }, tasks: [] });
+    const confirmed = await run(['goal', 'alignment', 'confirm', 'alignment-1'], confirmFetch);
+    expect(confirmed.code).toBe(0);
+    expect(confirmFetch).toHaveBeenCalledWith(
+      'http://hub.test/internal/agent/agent-1/goal-alignments/alignment-1/confirm',
+      expect.objectContaining({ method: 'POST' })
+    );
+  });
 });
 
 function okFetch(body: unknown): typeof fetch {

@@ -72,6 +72,8 @@ describe('parseBridgeLine', () => {
   it('instructs agents to use goal briefs for broad multi-step objectives', () => {
     const instruction = buildBridgeInstruction();
     expect(instruction).toContain('xoxiang goal list');
+    expect(instruction).toContain('xoxiang goal align');
+    expect(instruction).toContain('xoxiang goal alignment confirm');
     expect(instruction).toContain('xoxiang goal create');
     expect(instruction).toContain('xoxiang goal create-tasks');
     expect(instruction).toContain('broad multi-step objective');

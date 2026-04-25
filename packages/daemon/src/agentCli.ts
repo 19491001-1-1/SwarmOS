@@ -176,6 +176,32 @@ function parseCommand(argv: string[]): ParsedCommand {
       },
     };
   }
+  if (group === 'goal' && action === 'align') {
+    const messageId = required(rest[0], 'message id');
+    const opts = parseFlags(rest.slice(1));
+    const params = new URLSearchParams({ messageId });
+    return {
+      method: 'POST',
+      path: `/goals/align?${params.toString()}`,
+      body: {
+        requesterName: typeof opts.requester === 'string' ? opts.requester : 'user',
+        objective: typeof opts.objective === 'string' ? opts.objective : undefined,
+      },
+    };
+  }
+  if (group === 'goal' && action === 'alignment') {
+    const subaction = required(rest[0], 'alignment action');
+    const alignmentId = required(rest[1], 'alignment id');
+    if (subaction === 'read') {
+      if (rest.length > 2) throw new Error(`unexpected argument: ${rest[2]}`);
+      return { method: 'GET', path: `/goal-alignments/${encodeURIComponent(alignmentId)}` };
+    }
+    if (subaction === 'confirm') {
+      if (rest.length > 2) throw new Error(`unexpected argument: ${rest[2]}`);
+      return { method: 'POST', path: `/goal-alignments/${encodeURIComponent(alignmentId)}/confirm`, body: {} };
+    }
+    throw new Error(`unknown goal alignment action: ${subaction}`);
+  }
   throw new Error('unknown command');
 }
 

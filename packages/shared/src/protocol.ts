@@ -48,6 +48,8 @@ export type AgentDelegation = {
 
 export type TaskStatus = 'todo' | 'in_progress' | 'in_review' | 'done';
 export type GoalBriefStatus = 'draft' | 'confirmed' | 'cancelled' | 'completed';
+export type GoalAlignmentStatus = 'needs_clarification' | 'awaiting_confirmation' | 'confirmed' | 'cancelled';
+export type GoalAlignmentRiskLevel = 'low' | 'medium' | 'high';
 
 export type GoalBrief = {
   id: string;
@@ -71,6 +73,33 @@ export type GoalTaskDraft = {
   dependencies?: string[];
   acceptanceCriteria?: string[];
   artifacts?: string[];
+};
+
+export type GoalAlignmentTaskDraft = GoalTaskDraft & {
+  role?: 'owner' | 'reviewer' | 'support';
+};
+
+export type GoalAlignment = {
+  id: string;
+  channelId: string;
+  threadRootId: string;
+  sourceMessageId: string;
+  goalId?: string;
+  status: GoalAlignmentStatus;
+  objective: string;
+  questions: string[];
+  answers: string[];
+  successCriteria: string[];
+  constraints: string[];
+  planSummary?: string;
+  taskDrafts: GoalAlignmentTaskDraft[];
+  recommendedAgentIds: string[];
+  reviewerAgentIds: string[];
+  recommendationReasons: Record<string, string>;
+  gaps: string[];
+  riskLevel: GoalAlignmentRiskLevel;
+  createdAt: string;
+  updatedAt: string;
 };
 
 export type TaskContext = {
@@ -288,6 +317,7 @@ export type BrowserEvent =
   | { type: 'dm:new'; dm: DirectMessage }
   | { type: 'agent:delegation'; delegation: AgentDelegation }
   | { type: 'goal:update'; goal: GoalBrief }
+  | { type: 'goal-alignment:update'; alignment: GoalAlignment }
   | { type: 'task:update'; task: Task }
   | { type: 'reminder:update'; reminder: Reminder }
   | { type: 'machine:update'; machine: Machine };
