@@ -13,11 +13,13 @@ vi.mock('child_process', () => ({
 // Mock fs/promises
 vi.mock('fs/promises', () => ({
   mkdir: vi.fn().mockResolvedValue(undefined),
+  access: vi.fn().mockRejectedValue(Object.assign(new Error('not found'), { code: 'ENOENT' })),
   appendFile: vi.fn().mockResolvedValue(undefined),
   chmod: vi.fn().mockResolvedValue(undefined),
   writeFile: vi.fn().mockResolvedValue(undefined),
   readFile: vi.fn().mockResolvedValue('transcript content'),
   readdir: vi.fn(),
+  realpath: vi.fn(async (path: string) => path),
   stat: vi.fn(),
 }));
 
@@ -121,6 +123,25 @@ describe('AgentProcessManager', () => {
     );
   });
 
+  it('startAgent creates durable memory and notes files', async () => {
+    const { mkdir } = await import('fs/promises');
+
+    await manager.startAgent('agent-1', { runtime: 'claude', name: 'bot', displayName: 'Bot', description: 'Research role' }, 'general');
+
+    expect(vi.mocked(writeFile)).toHaveBeenCalledWith(
+      expect.stringContaining('/tmp/test-workspaces/agent-1/MEMORY.md'),
+      expect.stringContaining('# Bot')
+    );
+    expect(vi.mocked(mkdir)).toHaveBeenCalledWith(
+      expect.stringContaining('/tmp/test-workspaces/agent-1/notes'),
+      { recursive: true }
+    );
+    expect(vi.mocked(writeFile)).toHaveBeenCalledWith(
+      expect.stringContaining('/tmp/test-workspaces/agent-1/notes/work-log.md'),
+      expect.stringContaining('# Work Log')
+    );
+  });
+
   it('startAgent uses correct driver', async () => {
     await manager.startAgent('agent-1', { runtime: 'gemini', name: 'bot' }, 'general');
     expect(manager.isRunning('agent-1')).toBe(true);
@@ -174,6 +195,7 @@ describe('AgentProcessManager', () => {
       })
     );
     const spawnOptions = mockSpawn.mock.calls[0]?.[2] as { env?: Record<string, string> };
+    expect(spawnOptions).toMatchObject({ cwd: '/tmp/test-workspaces/agent-1' });
     expect(spawnOptions.env?.XOXIANG_AGENT_TOKEN).toBeUndefined();
     expect(spawnOptions.env?.PATH?.startsWith(`/tmp/test-workspaces/agent-1/.xoxiang${delimiter}`)).toBe(true);
     expect(activities.some((a) => a.agentId === 'agent-1' && a.type === 'working' && a.detail === 'Message received')).toBe(true);
@@ -435,17 +457,17 @@ describe('AgentProcessManager', () => {
     vi.mocked(stat).mockResolvedValue({
       isDirectory: () => false,
       isFile: () => true,
-      size: 101 * 1024,
+      size: 2 * 1024 * 1024,
       mtime: new Date('2026-01-01T00:00:00.000Z'),
     } as any);
-    vi.mocked(readFile).mockResolvedValue(Buffer.alloc(101 * 1024, 'a') as any);
+    vi.mocked(readFile).mockResolvedValue(Buffer.alloc(2 * 1024 * 1024, 'a') as any);
 
     const result = await manager.readWorkspace('agent-1', 'big.txt');
 
     expect(result.type).toBe('file');
     if (result.type === 'file') {
       expect(result.truncated).toBe(true);
-      expect(Buffer.byteLength(result.content)).toBe(100 * 1024);
+      expect(Buffer.byteLength(result.content)).toBe(1024 * 1024);
     }
   });
 

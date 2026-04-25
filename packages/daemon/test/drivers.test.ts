@@ -35,6 +35,8 @@ describe('Claude driver', () => {
     const sysIdx = cmd.args.indexOf('--append-system-prompt');
     const sysPrompt = cmd.args[sysIdx + 1];
     expect(sysPrompt).toContain(BRIDGE_MARKER);
+    expect(sysPrompt).toContain('MEMORY.md');
+    expect(sysPrompt).toContain('persistent agent workspace');
   });
 
   it('uses stream-json stdin transport', () => {
@@ -90,6 +92,7 @@ describe('Codex driver', () => {
     const ctx = { ...baseCtx, config: { ...baseCtx.config, runtime: 'codex' as const } };
     const cmd = codexDriver.buildCommand(ctx);
     expect(cmd.args[1]).toContain(BRIDGE_MARKER);
+    expect(cmd.args[1]).toContain('MEMORY.md');
     expect(cmd.args[1]).toContain('Current user message:');
     expect(cmd.args[1]).toContain('You have 1 queued message');
   });
@@ -129,6 +132,7 @@ describe('Gemini driver', () => {
     const ctx = { ...baseCtx, config: { ...baseCtx.config, runtime: 'gemini' as const } };
     const cmd = geminiDriver.buildCommand(ctx);
     expect(cmd.env?.GEMINI_SYSTEM_PROMPT).toContain(BRIDGE_MARKER);
+    expect(cmd.env?.GEMINI_SYSTEM_PROMPT).toContain('MEMORY.md');
   });
 
   it('uses formatted wake prompt as prompt', () => {

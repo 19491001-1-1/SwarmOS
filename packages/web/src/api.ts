@@ -12,7 +12,7 @@ export type DirectMessageThread = { otherAgentId: string; lastMessage: DirectMes
 export type WorkspaceFile = { name: string; type: 'file' | 'dir'; size?: number; modifiedAt?: string };
 export type WorkspaceEntry =
   | { type: 'dir'; path: string; children: WorkspaceFile[] }
-  | { type: 'file'; path: string; content: string; truncated?: boolean };
+  | { type: 'file'; path: string; content: string; truncated?: boolean; binary?: boolean };
 export type AgentDelegation = { id: string; fromAgentId: string; toAgentId: string; content: string; status: 'queued' | 'delivered' | 'started' | 'failed'; error?: string; createdAt: string };
 export type Machine = { id: string; hostname: string; os: string; runtimes: string[]; status: string; connectedAt: string };
 export type VersionInfo = { component: string; version: string; commit?: string; build?: string };

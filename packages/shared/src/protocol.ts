@@ -121,7 +121,7 @@ export type WorkspaceFile = {
 
 export type WorkspaceEntry =
   | { type: 'dir'; path: string; children: WorkspaceFile[] }
-  | { type: 'file'; path: string; content: string; truncated?: boolean };
+  | { type: 'file'; path: string; content: string; truncated?: boolean; binary?: boolean };
 
 export type WorkspaceError = {
   type: 'error';
