@@ -4,7 +4,6 @@ import { join } from 'path';
 import { spawn, type ChildProcess } from 'child_process';
 import type { AgentRuntimeConfig, AgentDelivery, AgentActivity } from '@mini-slock/shared';
 import type { RuntimeDriver } from './drivers/types.js';
-import { parseBridgeLine } from './bridge/simpleToolBridge.js';
 import { claudeDriver } from './drivers/claude.js';
 import { codexDriver } from './drivers/codex.js';
 import { geminiDriver } from './drivers/gemini.js';
@@ -18,6 +17,7 @@ const DRIVERS: Record<string, RuntimeDriver> = {
 export type AgentMessageCallback = (agentId: string, channelId: string, content: string) => void;
 export type AgentStatusCallback = (agentId: string, status: string) => void;
 export type AgentActivityCallback = (agentId: string, type: AgentActivity['type'], detail?: string) => void;
+export type AgentDmCallback = (fromAgentId: string, toAgentId: string, content: string) => void;
 
 interface AgentEntry {
   agentId: string;
@@ -35,17 +35,20 @@ export class AgentProcessManager {
   private onMessage: AgentMessageCallback;
   private onStatus: AgentStatusCallback;
   private onActivity: AgentActivityCallback;
+  private onDm: AgentDmCallback;
 
   constructor(
     workspaceBase: string,
     onMessage: AgentMessageCallback,
     onStatus: AgentStatusCallback,
-    onActivity: AgentActivityCallback = () => {}
+    onActivity: AgentActivityCallback = () => {},
+    onDm: AgentDmCallback = () => {}
   ) {
     this.workspaceBase = workspaceBase;
     this.onMessage = onMessage;
     this.onStatus = onStatus;
     this.onActivity = onActivity;
+    this.onDm = onDm;
   }
 
   async startAgent(agentId: string, config: AgentRuntimeConfig, channelId: string): Promise<void> {
@@ -157,11 +160,17 @@ export class AgentProcessManager {
   }
 
   private handleOutputLine(entry: AgentEntry, line: string): boolean {
-    const bridge = parseBridgeLine(line);
-    if (bridge) {
-      console.log(`[daemon] agent ${entry.agentId} reply: ${bridge.content}`);
-      this.onMessage(entry.agentId, entry.channelId, bridge.content);
+    const parsed = entry.driver.parseOutput?.(line);
+    if (parsed?.type === 'message') {
+      console.log(`[daemon] agent ${entry.agentId} reply: ${parsed.content}`);
+      this.onMessage(entry.agentId, entry.channelId, parsed.content);
       this.onActivity(entry.agentId, 'sending', `channel:${entry.channelId}`);
+      return true;
+    }
+    if (parsed?.type === 'dm') {
+      console.log(`[daemon] agent ${entry.agentId} dm to ${parsed.toAgentId}`);
+      this.onDm(entry.agentId, parsed.toAgentId, parsed.content);
+      this.onActivity(entry.agentId, 'sending', `dm:${parsed.toAgentId}`);
       return true;
     }
     return false;

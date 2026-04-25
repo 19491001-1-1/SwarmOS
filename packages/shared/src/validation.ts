@@ -58,6 +58,12 @@ export const DaemonToServerSchema = z.discriminatedUnion('type', [
     launchId: z.string().optional(),
   }),
   z.object({
+    type: z.literal('agent:dm'),
+    fromAgentId: z.string(),
+    toAgentId: z.string(),
+    content: z.string().min(1),
+  }),
+  z.object({
     type: z.literal('agent:message'),
     agentId: z.string(),
     channelId: z.string(),
@@ -86,21 +92,26 @@ export const CreateAgentRequestSchema = z.object({
   model: z.string().optional(),
   systemPrompt: z.string().optional(),
   machineId: z.string().optional(),
+  envVars: z.record(z.string()).optional(),
 });
 
 export const PatchAgentRequestSchema = z
   .object({
     machineId: z.string().optional(),
     displayName: z.string().optional(),
+    description: z.string().optional(),
     model: z.string().optional(),
     systemPrompt: z.string().optional(),
+    envVars: z.record(z.string()).optional(),
   })
   .refine(
     (val) =>
       val.machineId !== undefined ||
       val.displayName !== undefined ||
+      val.description !== undefined ||
       val.model !== undefined ||
-      val.systemPrompt !== undefined,
+      val.systemPrompt !== undefined ||
+      val.envVars !== undefined,
     { message: 'At least one field must be provided' },
   );
 
@@ -110,9 +121,15 @@ export const CreateMessageRequestSchema = z.object({
   agentId: z.string().optional(),
 });
 
+export const CreateDirectMessageRequestSchema = z.object({
+  content: z.string().min(1),
+  fromAgentId: z.string().optional(),
+});
+
 export type CreateAgentRequest = z.infer<typeof CreateAgentRequestSchema>;
 export type PatchAgentRequest = z.infer<typeof PatchAgentRequestSchema>;
 export type CreateMessageRequest = z.infer<typeof CreateMessageRequestSchema>;
+export type CreateDirectMessageRequest = z.infer<typeof CreateDirectMessageRequestSchema>;
 
 export const ServerToDaemonSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('ping') }),
