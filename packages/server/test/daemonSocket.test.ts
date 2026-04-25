@@ -41,6 +41,17 @@ function waitForDaemonMessage(ws: WebSocket, type: string): Promise<any> {
   });
 }
 
+function waitForWorkspaceRead(ws: WebSocket, result: unknown): Promise<any> {
+  return new Promise((resolve) => {
+    ws.on('message', (raw) => {
+      const msg = JSON.parse(raw.toString());
+      if (msg.type !== 'workspace:read') return;
+      ws.send(JSON.stringify({ type: 'workspace:result', requestId: msg.requestId, result }));
+      resolve(msg);
+    });
+  });
+}
+
 function connectBrowser(): Promise<WebSocket> {
   return new Promise((resolve, reject) => {
     const ws = new WebSocket(`ws://127.0.0.1:${port}/ws`);
@@ -515,5 +526,97 @@ describe('daemon WebSocket', () => {
     expect(machines[0].id).toBe('stable-machine');
     expect((await store.getAgent('agent-1'))?.machineId).toBe('stable-machine');
     ws.close();
+  });
+
+  it('reads agent workspace through daemon', async () => {
+    const store = getStore();
+    await store.createAgent({
+      id: 'agent-1',
+      name: 'bot',
+      runtime: 'claude',
+      status: 'inactive',
+      machineId: 'machine-1',
+      createdAt: new Date().toISOString(),
+    });
+
+    const ws = await connectDaemon('dev-machine-key');
+    await sendAndWait(ws, {
+      type: 'ready',
+      machineId: 'machine-1',
+      hostname: 'h',
+      os: 'linux',
+      daemonVersion: '0.1.0',
+      runtimes: ['claude'],
+      runtimeVersions: { claude: '1.0' },
+      runningAgents: [],
+      capabilities: ['workspace:read'],
+    });
+
+    const readPromise = waitForWorkspaceRead(ws, {
+      type: 'dir',
+      path: '',
+      children: [{ name: 'transcript.txt', type: 'file', size: 12 }],
+    });
+    const res = await app.inject({ method: 'GET', url: '/api/agents/agent-1/workspace' });
+
+    expect(res.statusCode).toBe(200);
+    expect(await readPromise).toMatchObject({ agentId: 'agent-1', relPath: '' });
+    expect(res.json()).toMatchObject({
+      type: 'dir',
+      children: [{ name: 'transcript.txt', type: 'file', size: 12 }],
+    });
+    ws.close();
+  });
+
+  it('reads agent workspace files through daemon', async () => {
+    const store = getStore();
+    await store.createAgent({
+      id: 'agent-1',
+      name: 'bot',
+      runtime: 'claude',
+      status: 'inactive',
+      machineId: 'machine-1',
+      createdAt: new Date().toISOString(),
+    });
+
+    const ws = await connectDaemon('dev-machine-key');
+    await sendAndWait(ws, {
+      type: 'ready',
+      machineId: 'machine-1',
+      hostname: 'h',
+      os: 'linux',
+      daemonVersion: '0.1.0',
+      runtimes: ['claude'],
+      runtimeVersions: { claude: '1.0' },
+      runningAgents: [],
+      capabilities: ['workspace:read'],
+    });
+
+    const readPromise = waitForWorkspaceRead(ws, {
+      type: 'file',
+      path: 'transcript.txt',
+      content: 'hello',
+    });
+    const res = await app.inject({ method: 'GET', url: '/api/agents/agent-1/workspace?path=transcript.txt' });
+
+    expect(res.statusCode).toBe(200);
+    expect(await readPromise).toMatchObject({ agentId: 'agent-1', relPath: 'transcript.txt' });
+    expect(res.json()).toMatchObject({ type: 'file', path: 'transcript.txt', content: 'hello' });
+    ws.close();
+  });
+
+  it('rejects workspace path traversal before contacting daemon', async () => {
+    await getStore().createAgent({
+      id: 'agent-1',
+      name: 'bot',
+      runtime: 'claude',
+      status: 'inactive',
+      machineId: 'machine-1',
+      createdAt: new Date().toISOString(),
+    });
+
+    const res = await app.inject({ method: 'GET', url: '/api/agents/agent-1/workspace?path=../../../etc/passwd' });
+
+    expect(res.statusCode).toBe(403);
   });
 });

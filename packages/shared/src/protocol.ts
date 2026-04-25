@@ -42,6 +42,23 @@ export type AgentDelivery = {
   createdAt: string;
 };
 
+export type WorkspaceFile = {
+  name: string;
+  type: 'file' | 'dir';
+  size?: number;
+  modifiedAt?: string;
+};
+
+export type WorkspaceEntry =
+  | { type: 'dir'; path: string; children: WorkspaceFile[] }
+  | { type: 'file'; path: string; content: string; truncated?: boolean };
+
+export type WorkspaceError = {
+  type: 'error';
+  error: string;
+  status?: number;
+};
+
 export type DaemonToServer =
   | {
       type: 'ready';
@@ -61,6 +78,7 @@ export type DaemonToServer =
   | { type: 'agent:dm'; fromAgentId: string; toAgentId: string; content: string }
   | { type: 'agent:message'; agentId: string; channelId: string; content: string; inReplyToMessageId?: string }
   | { type: 'agent:deliver:ack'; agentId: string; seq: number }
+  | { type: 'workspace:result'; requestId: string; result: WorkspaceEntry | WorkspaceError }
   | { type: 'machine:runtime_models:result'; requestId: string; models?: string[]; default?: string; error?: string };
 
 export type ServerToDaemon =
@@ -69,6 +87,7 @@ export type ServerToDaemon =
   | { type: 'agent:stop'; agentId: string }
   | { type: 'agent:deliver'; agentId: string; seq: number; message: AgentDelivery; config?: AgentRuntimeConfig; channelId?: string }
   | { type: 'agent:reset-workspace'; agentId: string }
+  | { type: 'workspace:read'; agentId: string; requestId: string; relPath: string }
   | { type: 'machine:runtime_models:detect'; runtime: RuntimeId; requestId: string };
 
 export type Message = {

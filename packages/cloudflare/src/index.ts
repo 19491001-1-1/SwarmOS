@@ -11,6 +11,8 @@ import type {
   Message,
   RuntimeId,
   ServerToDaemon,
+  WorkspaceEntry,
+  WorkspaceError,
 } from '@mini-slock/shared';
 import {
   createVersionInfo,
@@ -43,6 +45,11 @@ export default {
 };
 
 export class XoxiangHub extends DurableObject<Env> {
+  private workspaceReads = new Map<string, {
+    resolve: (result: WorkspaceEntry | WorkspaceError) => void;
+    timeout: ReturnType<typeof setTimeout>;
+  }>();
+
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
     ctx.blockConcurrencyWhile(async () => {
@@ -121,6 +128,11 @@ export class XoxiangHub extends DurableObject<Env> {
       if (activitiesMatch && request.method === 'GET') {
         if (!this.getAgent(activitiesMatch[1])) return json({ error: 'Agent not found' }, 404);
         return json(this.listAgentActivities(activitiesMatch[1], 200));
+      }
+
+      const workspaceMatch = url.pathname.match(/^\/api\/agents\/([^/]+)\/workspace$/);
+      if (workspaceMatch && request.method === 'GET') {
+        return await this.readAgentWorkspace(decodeURIComponent(workspaceMatch[1]), url.searchParams.get('path') ?? '');
       }
 
       if (request.method === 'POST' && url.pathname === '/api/agents') {
@@ -226,6 +238,11 @@ export class XoxiangHub extends DurableObject<Env> {
         detail: data.detail,
       });
       this.broadcast({ type: 'agent:activity', agentId: data.agentId, activity });
+      return;
+    }
+
+    if (data.type === 'workspace:result') {
+      this.resolveWorkspaceRead(data.requestId, data.result);
       return;
     }
 
@@ -495,6 +512,19 @@ export class XoxiangHub extends DurableObject<Env> {
     const updated = this.updateAgent(agentId, { status: 'inactive', autoStart: false });
     if (updated) this.broadcast({ type: 'agent:update', agent: updated });
     return json(updated);
+  }
+
+  private async readAgentWorkspace(agentId: string, relPath: string): Promise<Response> {
+    const agent = this.getAgent(agentId);
+    if (!agent) return json({ error: 'Agent not found' }, 404);
+    if (isUnsafeWorkspacePath(relPath)) return json({ error: 'Path traversal is not allowed' }, 403);
+
+    const machineId = this.resolveStartMachineId(agent);
+    if (!machineId) return json({ error: 'No connected machine available for agent workspace' }, 503);
+
+    const result = await this.readWorkspace(machineId, agent.id, relPath);
+    if (result.type === 'error') return json({ error: result.error }, result.status ?? 500);
+    return json(result);
   }
 
   private listChannels(): Channel[] {
@@ -780,6 +810,32 @@ export class XoxiangHub extends DurableObject<Env> {
     return true;
   }
 
+  private readWorkspace(machineId: string, agentId: string, relPath: string): Promise<WorkspaceEntry | WorkspaceError> {
+    const requestId = crypto.randomUUID();
+    return new Promise((resolve) => {
+      const timeout = setTimeout(() => {
+        this.workspaceReads.delete(requestId);
+        resolve({ type: 'error', error: 'Workspace read timed out', status: 504 });
+      }, 5000);
+      this.workspaceReads.set(requestId, { resolve, timeout });
+      const sent = this.sendToDaemon(machineId, { type: 'workspace:read', agentId, requestId, relPath });
+      if (!sent) {
+        clearTimeout(timeout);
+        this.workspaceReads.delete(requestId);
+        resolve({ type: 'error', error: 'Machine not connected', status: 503 });
+      }
+    });
+  }
+
+  private resolveWorkspaceRead(requestId: string, result: WorkspaceEntry | WorkspaceError): boolean {
+    const pending = this.workspaceReads.get(requestId);
+    if (!pending) return false;
+    clearTimeout(pending.timeout);
+    this.workspaceReads.delete(requestId);
+    pending.resolve(result);
+    return true;
+  }
+
   private broadcast(event: BrowserEvent): void {
     const raw = JSON.stringify(event);
     for (const ws of this.ctx.getWebSockets()) {
@@ -796,6 +852,10 @@ function json(data: unknown, status = 200): Response {
 
 function unauthorized(reason: string): Response {
   return json({ error: 'Unauthorized', reason }, 401);
+}
+
+function isUnsafeWorkspacePath(value: string): boolean {
+  return value.startsWith('/') || value.split(/[\\/]+/).some((part) => part === '..');
 }
 
 export async function requireBrowserAuth(request: Request, env: Env): Promise<Response | null> {

@@ -9,6 +9,10 @@ export type Agent = { id: string; name: string; displayName?: string; descriptio
 export type AgentActivity = { id: string; agentId: string; type: 'thinking' | 'working' | 'output' | 'idle' | 'sending' | 'error'; detail?: string; createdAt: string };
 export type DirectMessage = { id: string; fromAgentId: string; toAgentId: string; content: string; createdAt: string };
 export type DirectMessageThread = { otherAgentId: string; lastMessage: DirectMessage };
+export type WorkspaceFile = { name: string; type: 'file' | 'dir'; size?: number; modifiedAt?: string };
+export type WorkspaceEntry =
+  | { type: 'dir'; path: string; children: WorkspaceFile[] }
+  | { type: 'file'; path: string; content: string; truncated?: boolean };
 export type Machine = { id: string; hostname: string; os: string; runtimes: string[]; status: string; connectedAt: string };
 export type VersionInfo = { component: string; version: string; commit?: string; build?: string };
 
@@ -59,6 +63,16 @@ export async function getAgents(): Promise<Agent[]> {
 
 export async function getAgentActivities(agentId: string): Promise<AgentActivity[]> {
   const r = await fetch(`${API_BASE}/api/agents/${agentId}/activities`, { headers: authHeaders() });
+  return r.json();
+}
+
+export async function getAgentWorkspace(agentId: string, relPath = ''): Promise<WorkspaceEntry> {
+  const query = relPath ? `?path=${encodeURIComponent(relPath)}` : '';
+  const r = await fetch(`${API_BASE}/api/agents/${agentId}/workspace${query}`, { headers: authHeaders() });
+  if (!r.ok) {
+    const body = await r.json().catch(() => ({}));
+    throw new Error(body.error ?? `Workspace request failed (${r.status})`);
+  }
   return r.json();
 }
 

@@ -1,8 +1,8 @@
-import { mkdir, appendFile, readFile } from 'fs/promises';
+import { mkdir, appendFile, readdir, readFile, stat } from 'fs/promises';
 import { existsSync } from 'fs';
-import { join } from 'path';
+import { isAbsolute, join, normalize, sep } from 'path';
 import { spawn, type ChildProcess } from 'child_process';
-import type { AgentRuntimeConfig, AgentDelivery, AgentActivity } from '@mini-slock/shared';
+import type { AgentRuntimeConfig, AgentDelivery, AgentActivity, WorkspaceEntry, WorkspaceError } from '@mini-slock/shared';
 import type { RuntimeDriver } from './drivers/types.js';
 import { claudeDriver } from './drivers/claude.js';
 import { codexDriver } from './drivers/codex.js';
@@ -13,6 +13,8 @@ const DRIVERS: Record<string, RuntimeDriver> = {
   codex: codexDriver,
   gemini: geminiDriver,
 };
+
+const MAX_WORKSPACE_FILE_BYTES = 100 * 1024;
 
 export type AgentMessageCallback = (agentId: string, channelId: string, content: string) => void;
 export type AgentStatusCallback = (agentId: string, status: string) => void;
@@ -200,5 +202,51 @@ export class AgentProcessManager {
 
   listRunningAgentIds(): string[] {
     return Array.from(this.agents.keys());
+  }
+
+  async readWorkspace(agentId: string, relPath: string): Promise<WorkspaceEntry | WorkspaceError> {
+    const safePath = normalize(relPath || '.');
+    if (isAbsolute(relPath) || safePath === '..' || safePath.startsWith(`..${sep}`) || safePath.includes(`${sep}..${sep}`)) {
+      return { type: 'error', error: 'Path traversal is not allowed', status: 403 };
+    }
+
+    const workspaceDir = this.agents.get(agentId)?.workspaceDir ?? join(this.workspaceBase, agentId);
+    const targetPath = join(workspaceDir, safePath);
+    const displayPath = safePath === '.' ? '' : safePath;
+
+    try {
+      const info = await stat(targetPath);
+      if (info.isDirectory()) {
+        const entries = await readdir(targetPath, { withFileTypes: true });
+        const children = await Promise.all(entries.map(async (entry) => {
+          const childPath = join(targetPath, entry.name);
+          const childInfo = await stat(childPath);
+          return {
+            name: entry.name,
+            type: entry.isDirectory() ? 'dir' as const : 'file' as const,
+            size: childInfo.size,
+            modifiedAt: childInfo.mtime.toISOString(),
+          };
+        }));
+        children.sort((a, b) => {
+          if (a.type !== b.type) return a.type === 'dir' ? -1 : 1;
+          return a.name.localeCompare(b.name);
+        });
+        return { type: 'dir', path: displayPath, children };
+      }
+
+      if (!info.isFile()) {
+        return { type: 'error', error: 'Workspace path is not a file or directory', status: 400 };
+      }
+
+      const buffer = await readFile(targetPath);
+      const truncated = buffer.byteLength > MAX_WORKSPACE_FILE_BYTES;
+      const content = buffer.subarray(0, MAX_WORKSPACE_FILE_BYTES).toString('utf8');
+      return { type: 'file', path: displayPath, content, truncated };
+    } catch (err) {
+      const code = (err as { code?: string }).code;
+      if (code === 'ENOENT') return { type: 'error', error: 'Workspace path not found', status: 404 };
+      return { type: 'error', error: err instanceof Error ? err.message : 'Failed to read workspace', status: 500 };
+    }
   }
 }

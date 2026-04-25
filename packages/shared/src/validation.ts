@@ -25,6 +25,33 @@ export const AgentDeliverySchema = z.object({
   createdAt: z.string(),
 });
 
+export const WorkspaceFileSchema = z.object({
+  name: z.string(),
+  type: z.enum(['file', 'dir']),
+  size: z.number().optional(),
+  modifiedAt: z.string().optional(),
+});
+
+export const WorkspaceEntrySchema = z.discriminatedUnion('type', [
+  z.object({
+    type: z.literal('dir'),
+    path: z.string(),
+    children: z.array(WorkspaceFileSchema),
+  }),
+  z.object({
+    type: z.literal('file'),
+    path: z.string(),
+    content: z.string(),
+    truncated: z.boolean().optional(),
+  }),
+]);
+
+export const WorkspaceErrorSchema = z.object({
+  type: z.literal('error'),
+  error: z.string(),
+  status: z.number().optional(),
+});
+
 export const DaemonToServerSchema = z.discriminatedUnion('type', [
   z.object({
     type: z.literal('ready'),
@@ -74,6 +101,11 @@ export const DaemonToServerSchema = z.discriminatedUnion('type', [
     type: z.literal('agent:deliver:ack'),
     agentId: z.string(),
     seq: z.number(),
+  }),
+  z.object({
+    type: z.literal('workspace:result'),
+    requestId: z.string(),
+    result: z.union([WorkspaceEntrySchema, WorkspaceErrorSchema]),
   }),
   z.object({
     type: z.literal('machine:runtime_models:result'),
@@ -152,6 +184,12 @@ export const ServerToDaemonSchema = z.discriminatedUnion('type', [
     channelId: z.string().optional(),
   }),
   z.object({ type: z.literal('agent:reset-workspace'), agentId: z.string() }),
+  z.object({
+    type: z.literal('workspace:read'),
+    agentId: z.string(),
+    requestId: z.string(),
+    relPath: z.string(),
+  }),
   z.object({
     type: z.literal('machine:runtime_models:detect'),
     runtime: RuntimeIdSchema,

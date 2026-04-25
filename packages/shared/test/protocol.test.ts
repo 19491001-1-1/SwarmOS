@@ -50,6 +50,19 @@ describe('DaemonToServer protocol', () => {
     expect(result.success).toBe(true);
   });
 
+  it('parses workspace:result', () => {
+    const result = DaemonToServerSchema.safeParse({
+      type: 'workspace:result',
+      requestId: 'workspace-1',
+      result: {
+        type: 'dir',
+        path: '',
+        children: [{ name: 'transcript.txt', type: 'file', size: 12 }],
+      },
+    });
+    expect(result.success).toBe(true);
+  });
+
   it('parses agent:activity', () => {
     const msg = {
       type: 'agent:activity',
@@ -120,6 +133,16 @@ describe('ServerToDaemon protocol', () => {
 
   it('parses ping', () => {
     const result = ServerToDaemonSchema.safeParse({ type: 'ping' });
+    expect(result.success).toBe(true);
+  });
+
+  it('parses workspace:read', () => {
+    const result = ServerToDaemonSchema.safeParse({
+      type: 'workspace:read',
+      agentId: 'agent-1',
+      requestId: 'workspace-1',
+      relPath: 'transcript.txt',
+    });
     expect(result.success).toBe(true);
   });
 });

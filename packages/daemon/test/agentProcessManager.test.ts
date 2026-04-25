@@ -13,6 +13,8 @@ vi.mock('fs/promises', () => ({
   mkdir: vi.fn().mockResolvedValue(undefined),
   appendFile: vi.fn().mockResolvedValue(undefined),
   readFile: vi.fn().mockResolvedValue('transcript content'),
+  readdir: vi.fn(),
+  stat: vi.fn(),
 }));
 
 // Mock fs
@@ -60,6 +62,7 @@ describe('AgentProcessManager', () => {
       (agentId, type, detail) => activities.push({ agentId, type, detail }),
       (fromAgentId, toAgentId, content) => dms.push({ fromAgentId, toAgentId, content })
     );
+    vi.clearAllMocks();
   });
 
   it('startAgent creates workspace directory', async () => {
@@ -186,5 +189,56 @@ describe('AgentProcessManager', () => {
     expect(manager.isRunning('agent-1')).toBe(false);
     const statusEvents = statuses.filter((s) => s.agentId === 'agent-1');
     expect(statusEvents.some((s) => s.status === 'inactive')).toBe(true);
+  });
+
+  it('readWorkspace returns directory children sorted by type and name', async () => {
+    const { readdir, stat } = await import('fs/promises');
+    vi.mocked(readdir).mockResolvedValue([
+      { name: 'z.txt', isDirectory: () => false },
+      { name: 'src', isDirectory: () => true },
+    ] as any);
+    vi.mocked(stat).mockImplementation(async (path: any) => ({
+      isDirectory: () => String(path).endsWith('agent-1') || String(path).endsWith('src'),
+      isFile: () => String(path).endsWith('z.txt'),
+      size: String(path).endsWith('z.txt') ? 4 : 0,
+      mtime: new Date('2026-01-01T00:00:00.000Z'),
+    } as any));
+
+    const result = await manager.readWorkspace('agent-1', '');
+
+    expect(result).toMatchObject({
+      type: 'dir',
+      path: '',
+      children: [
+        { name: 'src', type: 'dir' },
+        { name: 'z.txt', type: 'file', size: 4 },
+      ],
+    });
+  });
+
+  it('readWorkspace truncates large files', async () => {
+    const { readFile, stat } = await import('fs/promises');
+    vi.mocked(stat).mockResolvedValue({
+      isDirectory: () => false,
+      isFile: () => true,
+      size: 101 * 1024,
+      mtime: new Date('2026-01-01T00:00:00.000Z'),
+    } as any);
+    vi.mocked(readFile).mockResolvedValue(Buffer.alloc(101 * 1024, 'a') as any);
+
+    const result = await manager.readWorkspace('agent-1', 'big.txt');
+
+    expect(result.type).toBe('file');
+    if (result.type === 'file') {
+      expect(result.truncated).toBe(true);
+      expect(Buffer.byteLength(result.content)).toBe(100 * 1024);
+    }
+  });
+
+  it('readWorkspace rejects path traversal', async () => {
+    await expect(manager.readWorkspace('agent-1', '../../../etc/passwd')).resolves.toMatchObject({
+      type: 'error',
+      status: 403,
+    });
   });
 });

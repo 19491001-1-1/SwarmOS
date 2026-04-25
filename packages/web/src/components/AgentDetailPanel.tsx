@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { Agent, AgentActivity, DirectMessage, DirectMessageThread } from '../api.js';
 import { getAgentDirectMessages, getAgentDmThreads, patchAgent, sendAgentDirectMessage } from '../api.js';
+import { WorkspaceBrowser } from './WorkspaceBrowser.js';
 
 type Props = {
   agent: Agent;
@@ -64,7 +65,7 @@ export function AgentDetailPanel({ agent, activities, onAgentUpdated, onClose }:
         {tab === 'profile' ? <Profile agent={agent} onAgentUpdated={onAgentUpdated} /> : null}
         {tab === 'dms' ? <DirectMessages agent={agent} /> : null}
         {tab === 'reminders' ? <EmptyBox label="[ NO REMINDERS ]" /> : null}
-        {tab === 'workspace' ? <EmptyBox label="[ NO WORKSPACE FILES ]" /> : null}
+        {tab === 'workspace' ? <WorkspaceBrowser agentId={agent.id} /> : null}
         {tab === 'activity' ? <ActivityTimeline activities={activities} /> : null}
       </div>
     </div>
