@@ -437,6 +437,7 @@ export function App() {
         className={sidebarOpen ? 'sidebar-mobile-open' : ''}
         channels={channels}
         agents={agents}
+        activitiesByAgent={activitiesByAgent}
         machines={machines}
         selectedView={selectedView}
         selectedChannel={selectedChannel}

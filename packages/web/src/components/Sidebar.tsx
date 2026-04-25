@@ -1,11 +1,12 @@
 import { useState } from 'react';
-import type { Channel, Agent, Machine, VersionInfo } from '../api.js';
-import { presenceLabel } from './PresenceAvatar.js';
+import type { Channel, Agent, AgentActivity, Machine, VersionInfo } from '../api.js';
+import { PresenceAvatar, presenceLabel } from './PresenceAvatar.js';
 import { t } from '../i18n.js';
 
 type Props = {
   channels: Channel[];
   agents: Agent[];
+  activitiesByAgent?: Record<string, AgentActivity[]>;
   machines: Machine[];
   selectedView: 'channel' | 'tasks';
   selectedChannel: string;
@@ -59,7 +60,7 @@ const S = {
   },
 };
 
-export function Sidebar({ channels, agents, machines, selectedView, selectedChannel, selectedAgentId, webVersion, hubVersion, taskCount, onSelectTasks, onOpenSearch, onSelectChannel, onCreateChannel, onDeleteChannel, onSelectAgent, onOpenAgents, className, onNavigate, onSignOut }: Props) {
+export function Sidebar({ channels, agents, activitiesByAgent = {}, machines, selectedView, selectedChannel, selectedAgentId, webVersion, hubVersion, taskCount, onSelectTasks, onOpenSearch, onSelectChannel, onCreateChannel, onDeleteChannel, onSelectAgent, onOpenAgents, className, onNavigate, onSignOut }: Props) {
   const [creating, setCreating] = useState(false);
   const [channelName, setChannelName] = useState('');
   const [channelError, setChannelError] = useState('');
@@ -167,7 +168,9 @@ export function Sidebar({ channels, agents, machines, selectedView, selectedChan
 
         <SectionHeader label={t('nav.agents')} count={agents.length} style={{ marginTop: 8 }} action={<button onClick={() => { onOpenAgents(); onNavigate?.(); }} style={miniButtonStyle}>MANAGE</button>} />
         {agents.length === 0 && <EmptyHint text="no agents" />}
-        {agents.map((a) => (
+        {agents.map((a) => {
+          const latestActivity = activitiesByAgent[a.id]?.[0];
+          return (
           <button key={a.id} className={`sidebar-item${selectedAgentId === a.id ? ' sidebar-item-active' : ''}`} onClick={() => { onSelectAgent(a.id); onNavigate?.(); }} style={{
             display: 'flex',
             alignItems: 'center',
@@ -185,11 +188,17 @@ export function Sidebar({ channels, agents, machines, selectedView, selectedChan
             cursor: 'pointer',
             textAlign: 'left',
           }}>
-            <StatusDot status={a.status} />
+            <PresenceAvatar
+              name={a.displayName ?? a.name}
+              isAgent
+              status={a.status as any}
+              latestActivity={latestActivity}
+              size={16}
+            />
             <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: 600 }}>
               {a.displayName ?? a.name}
             </span>
-            <span style={{ fontSize: 9, opacity: 0.78, fontWeight: 700 }}>{presenceLabel(a.status as any, undefined, true)}</span>
+            <span style={{ fontSize: 9, opacity: 0.78, fontWeight: 700 }}>{presenceLabel(a.status as any, latestActivity, true)}</span>
             <span style={{
               fontSize: 9,
               fontWeight: 700,
@@ -201,7 +210,8 @@ export function Sidebar({ channels, agents, machines, selectedView, selectedChan
               {a.runtime.toUpperCase()}
             </span>
           </button>
-        ))}
+          );
+        })}
 
         <SectionHeader label={t('nav.machines')} count={machines.length} style={{ marginTop: 8 }} />
         {machines.length === 0 && <EmptyHint text="no daemon connected" />}
@@ -357,23 +367,5 @@ function ChannelItem({ id, name, active, onClick, onDelete }: { id: string; name
 function EmptyHint({ text }: { text: string }) {
   return (
     <div style={{ padding: '3px 14px', fontSize: 11, opacity: 0.5, fontStyle: 'italic' }}>{text}</div>
-  );
-}
-
-function StatusDot({ status }: { status: string }) {
-  const color = status === 'idle' || status === 'running' ? '#00c853'
-    : status === 'working' ? '#FFD700'
-    : status === 'starting' ? '#2196f3'
-    : status === 'error' ? '#f44336'
-    : '#888';
-  return (
-    <span style={{
-      width: 8,
-      height: 8,
-      background: color,
-      border: '1.5px solid #000',
-      flexShrink: 0,
-      display: 'inline-block',
-    }} />
   );
 }

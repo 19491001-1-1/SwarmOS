@@ -23,7 +23,7 @@ const AVATAR_PALETTES = [
 export function PresenceAvatar({ name, isAgent, status, latestActivity, size = 36, onClick }: Props) {
   const label = presenceLabel(status, latestActivity, isAgent);
   const color = presenceColor(status, latestActivity, isAgent);
-  const active = status === 'working' || latestActivity?.type === 'thinking';
+  const active = status === 'working' || latestActivity?.type === 'thinking' || latestActivity?.type === 'working';
   const idx = (name.charCodeAt(0) + name.charCodeAt(1 % Math.max(name.length, 1))) % AVATAR_PALETTES.length;
   const palette = AVATAR_PALETTES[idx];
   const hash = name.split('').reduce((sum, char) => sum + char.charCodeAt(0), 0);
@@ -36,16 +36,8 @@ export function PresenceAvatar({ name, isAgent, status, latestActivity, size = 3
     cursor: onClick ? 'pointer' : 'default',
   };
 
-  return (
-    <button
-      type="button"
-      className={active ? 'presence-avatar presence-avatar-active' : 'presence-avatar'}
-      onClick={onClick}
-      aria-disabled={!onClick}
-      tabIndex={onClick ? 0 : -1}
-      style={frameStyle}
-      title={label}
-    >
+  const content = (
+    <>
       <div style={{
         width: size,
         height: size,
@@ -68,6 +60,27 @@ export function PresenceAvatar({ name, isAgent, status, latestActivity, size = 3
         background: color,
         boxShadow: active ? `0 0 0 2px ${color}55` : 'none',
       }} />
+    </>
+  );
+
+  const className = active ? 'presence-avatar presence-avatar-active' : 'presence-avatar';
+  if (!onClick) {
+    return (
+      <span className={className} style={frameStyle} title={label}>
+        {content}
+      </span>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      className={className}
+      onClick={onClick}
+      style={frameStyle}
+      title={label}
+    >
+      {content}
     </button>
   );
 }
@@ -75,6 +88,7 @@ export function PresenceAvatar({ name, isAgent, status, latestActivity, size = 3
 export function presenceLabel(status?: PresenceStatus, latestActivity?: AgentActivity, isAgent = true): string {
   if (!isAgent) return t('presence.you');
   if (latestActivity?.type === 'thinking') return t('presence.thinking');
+  if (latestActivity?.type === 'working') return t('presence.working');
   if (status === 'working') return t('presence.working');
   if (status === 'starting') return t('presence.starting');
   if (status === 'running') return t('presence.online');
@@ -86,6 +100,7 @@ export function presenceLabel(status?: PresenceStatus, latestActivity?: AgentAct
 function presenceColor(status?: PresenceStatus, latestActivity?: AgentActivity, isAgent = true): string {
   if (!isAgent) return '#00c853';
   if (latestActivity?.type === 'thinking') return '#2196f3';
+  if (latestActivity?.type === 'working') return '#7c3aed';
   if (status === 'working') return '#7c3aed';
   if (status === 'starting') return '#ffb300';
   if (status === 'running') return '#00c853';
