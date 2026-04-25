@@ -456,7 +456,9 @@ export class SqliteStore {
     const byId = await this.getAgent(value);
     if (byId) return byId;
     const [agent] = await getDb().select().from(agents).where(eq(agents.name, value)).limit(1);
-    return agent ? toAgent(agent) : undefined;
+    if (agent) return toAgent(agent);
+    const normalized = value.toLowerCase();
+    return (await this.listAgents()).find((candidate) => candidate.name.toLowerCase() === normalized);
   }
 
   async createAgent(agent: Agent): Promise<Agent> {

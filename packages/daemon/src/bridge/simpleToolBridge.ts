@@ -78,5 +78,10 @@ export function buildDmInstruction(): string {
 }
 
 export function buildDelegateInstruction(): string {
-  return `To delegate work to another agent and wake it if needed, output exactly one line:\n${DELEGATE_BRIDGE_MARKER} {"to":"agentId or agentName","content":"task details","startIfInactive":true}`;
+  return [
+    'When the user asks you to ask, call, wake, delegate to, hand off to, or assign work to another xoxiang agent, do not do the task yourself.',
+    'Output exactly one delegation line and no extra prose:',
+    `${DELEGATE_BRIDGE_MARKER} {"to":"agentId or agentName","content":"task details","startIfInactive":true}`,
+    'Use the agent name the user gave, preserving it as the target even if the casing differs.',
+  ].join('\n');
 }

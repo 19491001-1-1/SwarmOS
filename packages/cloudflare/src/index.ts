@@ -754,7 +754,7 @@ export class XoxiangHub extends DurableObject<Env> {
   private findAgentByNameOrId(value: string): Agent | undefined {
     const byId = this.getAgent(value);
     if (byId) return byId;
-    const row = this.ctx.storage.sql.exec<Row>('SELECT * FROM agents WHERE name = ? LIMIT 1', value).toArray()[0];
+    const row = this.ctx.storage.sql.exec<Row>('SELECT * FROM agents WHERE name = ? OR lower(name) = lower(?) LIMIT 1', value, value).toArray()[0];
     return row ? toAgent(row) : undefined;
   }
 

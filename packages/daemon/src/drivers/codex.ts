@@ -14,12 +14,17 @@ export const codexDriver: RuntimeDriver = {
       .filter(Boolean)
       .join('\n\n');
 
-    // codex exec <prompt> -c system_prompt="..." --skip-git-repo-check
+    const prompt = [
+      systemPrompt,
+      'Current user message:',
+      ctx.userMessage,
+    ].join('\n\n');
+
+    // codex exec does not expose a stable system prompt flag, so put bridge rules in the prompt.
     const args = [
       'exec',
-      ctx.userMessage,
+      prompt,
       '--skip-git-repo-check',
-      '-c', `system_prompt=${JSON.stringify(systemPrompt)}`,
     ];
     if (ctx.config.model) {
       args.push('-c', `model=${JSON.stringify(ctx.config.model)}`);
