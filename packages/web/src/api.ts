@@ -1,11 +1,14 @@
 export const API_BASE = (import.meta.env.VITE_API_BASE ?? '').replace(/\/$/, '');
 export const WEB_AUTH_TOKEN = (import.meta.env.VITE_WEB_AUTH_TOKEN ?? '').trim();
+export const WEB_VERSION = (import.meta.env.VITE_APP_VERSION ?? '0.1.0').trim();
+export const WEB_COMMIT_SHA = (import.meta.env.VITE_COMMIT_SHA ?? '').trim();
 
 export type Channel = { id: string; name: string; createdAt: string };
 export type Message = { id: string; channelId: string; senderName: string; content: string; agentId?: string; createdAt: string };
 export type Agent = { id: string; name: string; displayName?: string; description?: string; runtime: string; model?: string; systemPrompt?: string; status: string; machineId?: string; createdAt: string };
 export type AgentActivity = { id: string; agentId: string; type: 'thinking' | 'working' | 'output' | 'idle' | 'sending' | 'error'; detail?: string; createdAt: string };
 export type Machine = { id: string; hostname: string; os: string; runtimes: string[]; status: string; connectedAt: string };
+export type VersionInfo = { component: string; version: string; commit?: string; build?: string };
 
 function authHeaders(extra?: Record<string, string>): Record<string, string> {
   const headers: Record<string, string> = { ...(extra ?? {}) };
@@ -25,6 +28,11 @@ export function buildWsUrl(path: string): string {
 
 export async function getChannels(): Promise<Channel[]> {
   const r = await fetch(`${API_BASE}/api/channels`, { headers: authHeaders() });
+  return r.json();
+}
+
+export async function getHubVersion(): Promise<VersionInfo> {
+  const r = await fetch(`${API_BASE}/api/version`, { headers: authHeaders() });
   return r.json();
 }
 

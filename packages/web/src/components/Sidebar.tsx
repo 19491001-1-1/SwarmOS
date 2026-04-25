@@ -1,4 +1,4 @@
-import type { Channel, Agent, Machine } from '../api.js';
+import type { Channel, Agent, Machine, VersionInfo } from '../api.js';
 
 type Props = {
   channels: Channel[];
@@ -6,6 +6,8 @@ type Props = {
   machines: Machine[];
   selectedChannel: string;
   selectedAgentId?: string;
+  webVersion: VersionInfo;
+  hubVersion?: VersionInfo;
   onSelectChannel: (id: string) => void;
   onSelectAgent: (id: string) => void;
 };
@@ -44,12 +46,14 @@ const S = {
   },
 };
 
-export function Sidebar({ channels, agents, machines, selectedChannel, selectedAgentId, onSelectChannel, onSelectAgent }: Props) {
+export function Sidebar({ channels, agents, machines, selectedChannel, selectedAgentId, webVersion, hubVersion, onSelectChannel, onSelectAgent }: Props) {
   return (
     <div style={S.sidebar}>
       <div style={S.workspaceName}>
         <span>▶ WORKSPACE</span>
-        <span style={{ fontSize: 10, fontWeight: 400, opacity: 0.6 }}>v0.1</span>
+        <span title={versionTitle(webVersion, hubVersion)} style={{ fontSize: 10, fontWeight: 400, opacity: 0.65 }}>
+          web {shortVersion(webVersion.version)}
+        </span>
       </div>
 
       <div style={{ padding: '4px 0' }}>
@@ -123,8 +127,22 @@ export function Sidebar({ channels, agents, machines, selectedChannel, selectedA
           </div>
         ))}
       </div>
+      <div style={{ marginTop: 'auto', padding: '8px 14px 12px', fontSize: 10, lineHeight: 1.5, opacity: 0.72 }}>
+        <div>WEB {shortVersion(webVersion.version)}</div>
+        <div>HUB {hubVersion ? shortVersion(hubVersion.version) : '...'}</div>
+      </div>
     </div>
   );
+}
+
+function shortVersion(version: string): string {
+  return version.length > 12 ? `${version.slice(0, 12)}` : version;
+}
+
+function versionTitle(webVersion: VersionInfo, hubVersion?: VersionInfo): string {
+  const web = `web ${webVersion.version}${webVersion.commit ? ` (${webVersion.commit})` : ''}`;
+  const hub = hubVersion ? `hub ${hubVersion.version}${hubVersion.commit ? ` (${hubVersion.commit})` : ''}` : 'hub loading';
+  return `${web}\n${hub}`;
 }
 
 function SectionHeader({ label, count, style }: { label: string; count: number; style?: React.CSSProperties }) {

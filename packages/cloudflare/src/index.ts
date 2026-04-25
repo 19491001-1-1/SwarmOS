@@ -11,6 +11,7 @@ import type {
   ServerToDaemon,
 } from '@mini-slock/shared';
 import {
+  createVersionInfo,
   CreateAgentRequestSchema,
   CreateMessageRequestSchema,
   PatchAgentRequestSchema,
@@ -51,6 +52,14 @@ export class XoxiangHub extends DurableObject<Env> {
     if (request.method === 'OPTIONS') return new Response(null, { headers: JSON_HEADERS });
 
     const url = new URL(request.url);
+    if (request.method === 'GET' && url.pathname === '/api/version') {
+      return json(createVersionInfo('cloudflare-hub', {
+        version: this.env.XOXIANG_VERSION,
+        commit: this.env.XOXIANG_COMMIT_SHA,
+        build: this.env.XOXIANG_BUILD_ID,
+      }));
+    }
+
     if (url.pathname === '/ws') {
       const authResp = await requireBrowserAuthForWs(url, this.env);
       if (authResp) return authResp;

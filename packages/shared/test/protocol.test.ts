@@ -7,6 +7,7 @@ import {
   PatchAgentRequestSchema,
   CreateMessageRequestSchema,
 } from '../src/validation.js';
+import { APP_VERSION, createVersionInfo } from '../src/version.js';
 
 describe('DaemonToServer protocol', () => {
   it('parses a valid ready message', () => {
@@ -195,5 +196,20 @@ describe('CreateMessageRequestSchema', () => {
     expect(
       CreateMessageRequestSchema.safeParse({ senderName: 'u', content: '' }).success,
     ).toBe(false);
+  });
+});
+
+describe('version info', () => {
+  it('uses the shared app version by default', () => {
+    expect(createVersionInfo('daemon')).toEqual({ component: 'daemon', version: APP_VERSION });
+  });
+
+  it('keeps injected build metadata', () => {
+    expect(createVersionInfo('web', { version: 'abc123', commit: 'abc123', build: '42' })).toEqual({
+      component: 'web',
+      version: 'abc123',
+      commit: 'abc123',
+      build: '42',
+    });
   });
 });

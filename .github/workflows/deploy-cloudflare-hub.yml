@@ -12,6 +12,9 @@ jobs:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       DAEMON_API_KEY: ${{ secrets.DAEMON_API_KEY }}
+      XOXIANG_VERSION: ${{ github.sha }}
+      XOXIANG_COMMIT_SHA: ${{ github.sha }}
+      XOXIANG_BUILD_ID: ${{ github.run_id }}
     steps:
       - uses: actions/checkout@v4
 

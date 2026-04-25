@@ -7,6 +7,8 @@ on:
 
 env:
   VITE_API_BASE: https://xoxiang-hub.xingke0.workers.dev
+  VITE_APP_VERSION: ${{ github.sha }}
+  VITE_COMMIT_SHA: ${{ github.sha }}
 
 jobs:
   deploy:
@@ -45,6 +47,8 @@ jobs:
         env:
           VITE_API_BASE: ${{ env.VITE_API_BASE }}
           VITE_WEB_AUTH_TOKEN: ${{ secrets.WEB_AUTH_TOKEN }}
+          VITE_APP_VERSION: ${{ env.VITE_APP_VERSION }}
+          VITE_COMMIT_SHA: ${{ env.VITE_COMMIT_SHA }}
 
       - name: Deploy to Cloudflare Pages
         id: pages_deploy

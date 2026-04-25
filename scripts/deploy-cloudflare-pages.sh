@@ -7,6 +7,8 @@ PROJECT_NAME="${CLOUDFLARE_PAGES_PROJECT:-xoxiang-web}"
 BRANCH="${CLOUDFLARE_PAGES_BRANCH:-main}"
 API_BASE="${VITE_API_BASE:-https://xoxiang-hub.xingke0.workers.dev}"
 WEB_TOKEN="${VITE_WEB_AUTH_TOKEN:-}"
+APP_VERSION="${VITE_APP_VERSION:-$(git -C "$ROOT" rev-parse --short=12 HEAD 2>/dev/null || printf '0.1.0')}"
+COMMIT_SHA="${VITE_COMMIT_SHA:-$(git -C "$ROOT" rev-parse HEAD 2>/dev/null || true)}"
 DIST_DIR="$ROOT/packages/web/dist"
 
 log() {
@@ -16,6 +18,7 @@ log() {
 log "Project: $PROJECT_NAME"
 log "Branch: $BRANCH"
 log "API base: $API_BASE"
+log "Web version: $APP_VERSION"
 
 if [[ "$API_BASE" == *workers.dev* || "$API_BASE" == https://* ]]; then
   if [[ -z "$WEB_TOKEN" ]]; then
@@ -30,7 +33,7 @@ log "Checking Cloudflare authentication..."
 pnpm --dir "$ROOT" --filter @mini-slock/cloudflare exec wrangler whoami >/dev/null
 
 log "Building web UI..."
-VITE_API_BASE="$API_BASE" VITE_WEB_AUTH_TOKEN="$WEB_TOKEN" pnpm --dir "$ROOT" --filter @mini-slock/web build
+VITE_API_BASE="$API_BASE" VITE_WEB_AUTH_TOKEN="$WEB_TOKEN" VITE_APP_VERSION="$APP_VERSION" VITE_COMMIT_SHA="$COMMIT_SHA" pnpm --dir "$ROOT" --filter @mini-slock/web build
 
 log "Deploying $DIST_DIR to Cloudflare Pages..."
 set +e

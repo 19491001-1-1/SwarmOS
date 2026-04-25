@@ -18,6 +18,16 @@ describe('GET /api/channels', () => {
   });
 });
 
+describe('GET /api/version', () => {
+  it('returns server version info', async () => {
+    const app = await buildApp();
+    const res = await app.inject({ method: 'GET', url: '/api/version' });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({ component: 'server', version: '0.1.0' });
+    await app.close();
+  });
+});
+
 describe('POST /api/channels/:id/messages', () => {
   it('creates a message', async () => {
     const app = await buildApp();
