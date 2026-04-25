@@ -31,11 +31,10 @@ export function ChannelView({
 }: Props) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
-  const scrollPositions = useRef<Record<string, number>>({});
+  const scrollStateByChannel = useRef<Record<string, { scrollTop: number; nearBottom: boolean }>>({});
+  const messageCountByChannel = useRef<Record<string, number>>({});
   const lastChannelId = useRef(channelId);
-  const lastMessageCount = useRef(messages.length);
-  const wasNearBottom = useRef(true);
-  const [showJumpToLatest, setShowJumpToLatest] = useState(false);
+  const [showJumpByChannel, setShowJumpByChannel] = useState<Record<string, boolean>>({});
   const [threadsOpen, setThreadsOpen] = useState(false);
   const threadRoots = messages
     .filter((message) => (message.replyCount ?? 0) > 0)
@@ -47,9 +46,10 @@ export function ChannelView({
 
     if (lastChannelId.current !== channelId) {
       lastChannelId.current = channelId;
-      lastMessageCount.current = messages.length;
-      scrollEl.scrollTop = scrollPositions.current[channelId] ?? 0;
-      setShowJumpToLatest(!isNearBottom(scrollEl));
+      const savedState = scrollStateByChannel.current[channelId] ?? { scrollTop: 0, nearBottom: true };
+      scrollEl.scrollTop = Math.min(savedState.scrollTop, Math.max(0, scrollEl.scrollHeight - scrollEl.clientHeight));
+      setShowJumpByChannel((prev) => ({ ...prev, [channelId]: !savedState.nearBottom }));
+      messageCountByChannel.current[channelId] = messages.length;
       return;
     }
 
@@ -61,34 +61,41 @@ export function ChannelView({
         window.setTimeout(() => target.classList.remove('message-row-target'), 1800);
         onTargetMessageSettled?.();
       }
-      lastMessageCount.current = messages.length;
-      setShowJumpToLatest(!isNearBottom(scrollEl));
+      messageCountByChannel.current[channelId] = messages.length;
+      const nearBottom = isNearBottom(scrollEl);
+      scrollStateByChannel.current[channelId] = { scrollTop: scrollEl.scrollTop, nearBottom };
+      setShowJumpByChannel((prev) => ({ ...prev, [channelId]: !nearBottom }));
       return;
     }
 
-    if (messages.length > lastMessageCount.current) {
-      if (wasNearBottom.current) {
+    const previousCount = messageCountByChannel.current[channelId] ?? 0;
+    if (messages.length > previousCount) {
+      const savedState = scrollStateByChannel.current[channelId] ?? { scrollTop: 0, nearBottom: true };
+      if (savedState.nearBottom) {
         scrollEl.scrollTop = scrollEl.scrollHeight;
+        scrollStateByChannel.current[channelId] = { scrollTop: scrollEl.scrollTop, nearBottom: true };
+        setShowJumpByChannel((prev) => ({ ...prev, [channelId]: false }));
       } else {
-        setShowJumpToLatest(true);
+        setShowJumpByChannel((prev) => ({ ...prev, [channelId]: true }));
       }
     }
-    lastMessageCount.current = messages.length;
+    messageCountByChannel.current[channelId] = messages.length;
   }, [channelId, messages, targetMessageId, onTargetMessageSettled]);
 
   const handleScroll = () => {
     const scrollEl = scrollRef.current;
     if (!scrollEl) return;
-    scrollPositions.current[channelId] = scrollEl.scrollTop;
-    wasNearBottom.current = isNearBottom(scrollEl);
-    if (wasNearBottom.current) setShowJumpToLatest(false);
+    const nearBottom = isNearBottom(scrollEl);
+    scrollStateByChannel.current[channelId] = { scrollTop: scrollEl.scrollTop, nearBottom };
+    setShowJumpByChannel((prev) => ({ ...prev, [channelId]: !nearBottom }));
   };
 
   const jumpToLatest = () => {
     const scrollEl = scrollRef.current;
     if (!scrollEl) return;
     scrollEl.scrollTo({ top: scrollEl.scrollHeight, behavior: 'smooth' });
-    setShowJumpToLatest(false);
+    scrollStateByChannel.current[channelId] = { scrollTop: scrollEl.scrollHeight, nearBottom: true };
+    setShowJumpByChannel((prev) => ({ ...prev, [channelId]: false }));
   };
 
   return (
@@ -262,7 +269,7 @@ export function ChannelView({
           );
         })}
         <div ref={bottomRef} />
-        {showJumpToLatest ? (
+        {showJumpByChannel[channelId] ? (
           <button type="button" onClick={jumpToLatest} style={jumpButtonStyle}>
             Jump to latest
           </button>

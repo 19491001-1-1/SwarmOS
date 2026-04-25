@@ -11,7 +11,7 @@ import { WEB_COMMIT_SHA, WEB_VERSION, buildWsUrl, getChannels, getMessages, getM
 
 export function App() {
   const [channels, setChannels] = useState<Channel[]>([]);
-  const [messages, setMessages] = useState<Message[]>([]);
+  const [messagesByChannel, setMessagesByChannel] = useState<Record<string, Message[]>>({});
   const [agents, setAgents] = useState<Agent[]>([]);
   const [machines, setMachines] = useState<Machine[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -35,7 +35,7 @@ export function App() {
 
   const loadMessages = useCallback(async (channelId: string) => {
     const data = await getMessages(channelId);
-    setMessages(data);
+    setMessagesByChannel((prev) => ({ ...prev, [channelId]: data }));
   }, []);
 
   const loadAgents = useCallback(async () => {
@@ -54,13 +54,25 @@ export function App() {
   }, []);
 
   const upsertMessage = useCallback((message: Message) => {
-    setMessages((prev) => prev.some((candidate) => candidate.id === message.id)
-      ? prev.map((candidate) => (candidate.id === message.id ? message : candidate))
-      : [...prev, message]);
+    setMessagesByChannel((prev) => {
+      const current = prev[message.channelId] ?? [];
+      return {
+        ...prev,
+        [message.channelId]: current.some((candidate) => candidate.id === message.id)
+          ? current.map((candidate) => (candidate.id === message.id ? message : candidate))
+          : [...current, message],
+      };
+    });
   }, []);
 
   const updateThreadRoot = useCallback((root: Message) => {
-    setMessages((prev) => prev.map((message) => (message.id === root.id ? root : message)));
+    setMessagesByChannel((prev) => {
+      const current = prev[root.channelId] ?? [];
+      return {
+        ...prev,
+        [root.channelId]: current.map((message) => (message.id === root.id ? root : message)),
+      };
+    });
     setThread((current) => current?.root.id === root.id ? { ...current, root } : current);
   }, []);
 
@@ -277,6 +289,7 @@ export function App() {
 
   const selectedChannelObj = channels.find((c) => c.id === selectedChannel);
   const selectedAgent = selectedAgentId ? agents.find((a) => a.id === selectedAgentId) : undefined;
+  const currentMessages = messagesByChannel[selectedChannel] ?? [];
 
   const handleSearchSelect = async (result: SearchMessageResult) => {
     setSelectedView('channel');
@@ -333,7 +346,7 @@ export function App() {
             <ChannelView
               channelId={selectedChannel}
               channelName={selectedChannelObj?.name ?? selectedChannel}
-              messages={messages}
+              messages={currentMessages}
               agents={agents}
               activitiesByAgent={activitiesByAgent}
               targetMessageId={targetMessageId}
