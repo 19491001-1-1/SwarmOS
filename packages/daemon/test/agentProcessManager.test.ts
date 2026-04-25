@@ -3,6 +3,7 @@ import { AgentProcessManager } from '../src/agentProcessManager.js';
 import { BRIDGE_MARKER } from '../src/bridge/simpleToolBridge.js';
 import { EventEmitter } from 'events';
 import { appendFile, writeFile } from 'fs/promises';
+import { delimiter } from 'path';
 
 // Mock child_process.spawn
 vi.mock('child_process', () => ({
@@ -140,6 +141,7 @@ describe('AgentProcessManager', () => {
     );
     const spawnOptions = mockSpawn.mock.calls[0]?.[2] as { env?: Record<string, string> };
     expect(spawnOptions.env?.XOXIANG_AGENT_TOKEN).toBeUndefined();
+    expect(spawnOptions.env?.PATH?.startsWith(`/tmp/test-workspaces/agent-1/.xoxiang${delimiter}`)).toBe(true);
     expect(activities.some((a) => a.agentId === 'agent-1' && a.type === 'working' && a.detail === 'Message received')).toBe(true);
     expect(activities.some((a) => a.agentId === 'agent-1' && a.type === 'thinking')).toBe(true);
   });
