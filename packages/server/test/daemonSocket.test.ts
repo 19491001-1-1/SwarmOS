@@ -205,6 +205,58 @@ describe('daemon WebSocket', () => {
     daemon.close();
   });
 
+  it('stores, broadcasts, and delivers agent dm from daemon', async () => {
+    const daemon = await connectDaemon('dev-machine-key');
+    const browser = await connectBrowser();
+    await sendAndWait(daemon, {
+      type: 'ready',
+      machineId: 'machine-1',
+      hostname: 'h',
+      os: 'linux',
+      daemonVersion: '0.1.0',
+      runtimes: ['claude'],
+      runtimeVersions: { claude: '1.0' },
+      runningAgents: [],
+      capabilities: [],
+    });
+
+    const store = getStore();
+    await store.createAgent({
+      id: 'agent-1',
+      name: 'sender',
+      runtime: 'claude',
+      status: 'running',
+      machineId: 'machine-1',
+      createdAt: new Date().toISOString(),
+    });
+    await store.createAgent({
+      id: 'agent-2',
+      name: 'receiver',
+      runtime: 'claude',
+      status: 'running',
+      machineId: 'machine-1',
+      createdAt: new Date().toISOString(),
+    });
+
+    const eventPromise = waitForBrowserEvent(browser, 'dm:new');
+    const deliverPromise = waitForDaemonMessage(daemon, 'agent:deliver');
+    await sendAndWait(daemon, {
+      type: 'agent:dm',
+      fromAgentId: 'agent-1',
+      toAgentId: 'receiver',
+      content: 'secret hello',
+    });
+
+    const event = await eventPromise;
+    expect(event.dm).toMatchObject({ fromAgentId: 'agent-1', toAgentId: 'agent-2', content: 'secret hello' });
+    const deliver = await deliverPromise;
+    expect(deliver.agentId).toBe('agent-2');
+    expect(deliver.message.content).toBe('secret hello');
+    expect(await store.listDirectMessages('agent-2', 'agent-1')).toHaveLength(1);
+    browser.close();
+    daemon.close();
+  });
+
   it('reuses machine id after daemon reconnect and can start a bound agent', async () => {
     const first = await connectDaemon('dev-machine-key');
     await sendAndWait(first, {

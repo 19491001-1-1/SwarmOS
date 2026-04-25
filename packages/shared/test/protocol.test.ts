@@ -6,6 +6,7 @@ import {
   CreateAgentRequestSchema,
   PatchAgentRequestSchema,
   CreateMessageRequestSchema,
+  CreateDirectMessageRequestSchema,
 } from '../src/validation.js';
 import { APP_VERSION, createVersionInfo } from '../src/version.js';
 
@@ -71,6 +72,16 @@ describe('DaemonToServer protocol', () => {
       activityType: 'planning',
     });
     expect(result.success).toBe(false);
+  });
+
+  it('parses agent:dm', () => {
+    const result = DaemonToServerSchema.safeParse({
+      type: 'agent:dm',
+      fromAgentId: 'agent-1',
+      toAgentId: 'agent-2',
+      content: 'private hello',
+    });
+    expect(result.success).toBe(true);
   });
 });
 
@@ -141,6 +152,7 @@ describe('CreateAgentRequestSchema', () => {
       model: 'sonnet',
       systemPrompt: 'be helpful',
       machineId: 'm-1',
+      envVars: { FOO: 'bar' },
     });
     expect(result.success).toBe(true);
   });
@@ -162,13 +174,26 @@ describe('PatchAgentRequestSchema', () => {
   it('accepts single field update', () => {
     expect(PatchAgentRequestSchema.safeParse({ displayName: 'New' }).success).toBe(true);
     expect(PatchAgentRequestSchema.safeParse({ machineId: 'm-2' }).success).toBe(true);
+    expect(PatchAgentRequestSchema.safeParse({ description: 'desc' }).success).toBe(true);
     expect(PatchAgentRequestSchema.safeParse({ model: 'sonnet' }).success).toBe(true);
     expect(PatchAgentRequestSchema.safeParse({ systemPrompt: 'sp' }).success).toBe(true);
     expect(PatchAgentRequestSchema.safeParse({ autoStart: true }).success).toBe(true);
+    expect(PatchAgentRequestSchema.safeParse({ envVars: { A: 'B' } }).success).toBe(true);
   });
 
   it('rejects empty body', () => {
     expect(PatchAgentRequestSchema.safeParse({}).success).toBe(false);
+  });
+});
+
+describe('CreateDirectMessageRequestSchema', () => {
+  it('accepts a direct message body', () => {
+    expect(CreateDirectMessageRequestSchema.safeParse({ content: 'hello' }).success).toBe(true);
+    expect(CreateDirectMessageRequestSchema.safeParse({ fromAgentId: 'user', content: 'hello' }).success).toBe(true);
+  });
+
+  it('rejects empty content', () => {
+    expect(CreateDirectMessageRequestSchema.safeParse({ content: '' }).success).toBe(false);
   });
 });
 

@@ -111,6 +111,47 @@ describe('input validation', () => {
     });
     expect(res.status).toBe(400);
   });
+
+  it('updates profile fields and stores direct messages', async () => {
+    const created = await SELF.fetch('https://hub.test/api/agents', {
+      method: 'POST',
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ name: `dm-target-${crypto.randomUUID()}`, runtime: 'claude' }),
+    });
+    const agent = (await created.json()) as { id: string };
+
+    const patched = await SELF.fetch(`https://hub.test/api/agents/${agent.id}`, {
+      method: 'PATCH',
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ displayName: 'Direct Target', description: 'DM ready', envVars: { A: 'B' } }),
+    });
+    expect(patched.status).toBe(200);
+    const updated = (await patched.json()) as { displayName?: string; description?: string; envVars?: Record<string, string> };
+    expect(updated.displayName).toBe('Direct Target');
+    expect(updated.description).toBe('DM ready');
+    expect(updated.envVars?.A).toBe('B');
+
+    const dmRes = await SELF.fetch(`https://hub.test/api/agents/${agent.id}/dms/user`, {
+      method: 'POST',
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ content: 'private hello' }),
+    });
+    expect(dmRes.status).toBe(201);
+    const dm = (await dmRes.json()) as { fromAgentId: string; toAgentId: string; content: string };
+    expect(dm.fromAgentId).toBe('user');
+    expect(dm.toAgentId).toBe(agent.id);
+    expect(dm.content).toBe('private hello');
+
+    const threadsRes = await SELF.fetch(`https://hub.test/api/agents/${agent.id}/dms`, { headers: authHeaders() });
+    expect(threadsRes.status).toBe(200);
+    const threads = (await threadsRes.json()) as Array<{ otherAgentId: string }>;
+    expect(threads.find((thread) => thread.otherAgentId === 'user')).toBeTruthy();
+
+    const messagesRes = await SELF.fetch(`https://hub.test/api/agents/${agent.id}/dms/user`, { headers: authHeaders() });
+    expect(messagesRes.status).toBe(200);
+    const messages = (await messagesRes.json()) as Array<{ content: string }>;
+    expect(messages.map((message) => message.content)).toContain('private hello');
+  });
 });
 
 describe('agent recovery', () => {

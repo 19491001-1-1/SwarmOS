@@ -3,12 +3,18 @@ import { nanoid } from 'nanoid';
 import { getStore } from '../db.js';
 import { daemonRegistry } from '../daemonRegistry.js';
 import { eventBus } from '../events.js';
-import { CreateAgentRequestSchema, PatchAgentRequestSchema } from '@mini-slock/shared';
+import { CreateAgentRequestSchema, CreateDirectMessageRequestSchema, PatchAgentRequestSchema, type Agent, type DirectMessage } from '@mini-slock/shared';
 import { resolveStartMachineId, toRuntimeConfig } from '@mini-slock/hub-core';
 
 export async function agentRoutes(app: FastifyInstance) {
   app.get('/api/agents', async () => {
     return getStore().listAgents();
+  });
+
+  app.get<{ Params: { id: string } }>('/api/agents/:id', async (req, reply) => {
+    const agent = await getStore().getAgent(req.params.id);
+    if (!agent) return reply.status(404).send({ error: 'Agent not found' });
+    return agent;
   });
 
   app.get<{ Params: { id: string } }>('/api/agents/:id/activities', async (req, reply) => {
@@ -50,8 +56,45 @@ export async function agentRoutes(app: FastifyInstance) {
       return reply.status(400).send({ error: 'Invalid request body', issues: parsed.error.issues });
     }
     const updated = await store.updateAgent(agent.id, parsed.data);
-    if (updated) eventBus.emit({ type: 'agent:update', agent: updated });
+    if (updated) {
+      eventBus.emit({ type: 'agent:update', agent: updated });
+      eventBus.emit({ type: 'agent:updated', agent: updated });
+    }
     return updated;
+  });
+
+  app.get<{ Params: { id: string } }>('/api/agents/:id/dms', async (req, reply) => {
+    const store = getStore();
+    const agent = await store.getAgent(req.params.id);
+    if (!agent) return reply.status(404).send({ error: 'Agent not found' });
+    return store.listDirectMessageThreads(agent.id);
+  });
+
+  app.get<{ Params: { id: string; otherId: string } }>('/api/agents/:id/dms/:otherId', async (req, reply) => {
+    const store = getStore();
+    const agent = await store.getAgent(req.params.id);
+    if (!agent) return reply.status(404).send({ error: 'Agent not found' });
+    return store.listDirectMessages(agent.id, req.params.otherId);
+  });
+
+  app.post<{ Params: { id: string; otherId: string } }>('/api/agents/:id/dms/:otherId', async (req, reply) => {
+    const store = getStore();
+    const target = await store.getAgent(req.params.id);
+    if (!target) return reply.status(404).send({ error: 'Agent not found' });
+    const parsed = CreateDirectMessageRequestSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: 'Invalid request body', issues: parsed.error.issues });
+    }
+
+    const dm = await store.createDirectMessage({
+      id: nanoid(),
+      fromAgentId: parsed.data.fromAgentId ?? req.params.otherId,
+      toAgentId: target.id,
+      content: parsed.data.content,
+    });
+    eventBus.emit({ type: 'dm:new', dm });
+    deliverDirectMessage(target, dm);
+    return reply.status(201).send(dm);
   });
 
   app.post<{ Params: { id: string } }>('/api/agents/:id/start', async (req, reply) => {
@@ -90,5 +133,24 @@ export async function agentRoutes(app: FastifyInstance) {
     const updated = (await store.updateAgent(agent.id, { status: 'inactive', autoStart: false }))!;
     eventBus.emit({ type: 'agent:update', agent: updated });
     return updated;
+  });
+}
+
+function deliverDirectMessage(target: Agent, dm: DirectMessage): void {
+  if (!target.machineId || target.status === 'inactive') return;
+  daemonRegistry.send(target.machineId, {
+    type: 'agent:deliver',
+    agentId: target.id,
+    seq: Date.now(),
+    channelId: `dm:${dm.fromAgentId}:${dm.toAgentId}`,
+    config: toRuntimeConfig(target),
+    message: {
+      id: dm.id,
+      channelId: `dm:${dm.fromAgentId}:${dm.toAgentId}`,
+      channelName: `DM from ${dm.fromAgentId}`,
+      senderName: dm.fromAgentId,
+      content: dm.content,
+      createdAt: dm.createdAt,
+    },
   });
 }

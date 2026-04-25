@@ -6,7 +6,7 @@ import { DaemonToServerSchema } from '@mini-slock/shared';
 import { getStore } from '../db.js';
 import { daemonRegistry } from '../daemonRegistry.js';
 import { eventBus } from '../events.js';
-import { findDuplicateMachineIds, findExistingMachineId } from '@mini-slock/hub-core';
+import { findDuplicateMachineIds, findExistingMachineId, toRuntimeConfig } from '@mini-slock/hub-core';
 
 const VALID_KEYS = new Set(['dev-machine-key']);
 const VOLATILE_AGENT_STATUSES = new Set(['starting', 'running', 'working', 'idle']);
@@ -94,6 +94,36 @@ export async function daemonSocketHandler(app: FastifyInstance) {
             detail: msg.detail,
           });
           eventBus.emit({ type: 'agent:activity', agentId: msg.agentId, activity });
+          return;
+        }
+
+        if (msg.type === 'agent:dm') {
+          const target = await store.findAgentByNameOrId(msg.toAgentId);
+          if (!target) return;
+          const dm = await store.createDirectMessage({
+            id: nanoid(),
+            fromAgentId: msg.fromAgentId,
+            toAgentId: target.id,
+            content: msg.content,
+          });
+          eventBus.emit({ type: 'dm:new', dm });
+          if (target.machineId && target.status !== 'inactive') {
+            daemonRegistry.send(target.machineId, {
+              type: 'agent:deliver',
+              agentId: target.id,
+              seq: Date.now(),
+              channelId: `dm:${dm.fromAgentId}:${dm.toAgentId}`,
+              config: toRuntimeConfig(target),
+              message: {
+                id: dm.id,
+                channelId: `dm:${dm.fromAgentId}:${dm.toAgentId}`,
+                channelName: `DM from ${dm.fromAgentId}`,
+                senderName: dm.fromAgentId,
+                content: dm.content,
+                createdAt: dm.createdAt,
+              },
+            });
+          }
           return;
         }
 

@@ -20,6 +20,19 @@ export type AgentRuntimeConfig = {
   envVars?: Record<string, string>;
 };
 
+export type DirectMessage = {
+  id: string;
+  fromAgentId: string;
+  toAgentId: string;
+  content: string;
+  createdAt: string;
+};
+
+export type DirectMessageThread = {
+  otherAgentId: string;
+  lastMessage: DirectMessage;
+};
+
 export type AgentDelivery = {
   id: string;
   channelId: string;
@@ -45,6 +58,7 @@ export type DaemonToServer =
   | { type: 'agent:status'; agentId: string; status: AgentStatus; launchId?: string }
   | { type: 'agent:activity'; agentId: string; activityType: AgentActivity['type']; detail?: string; launchId?: string }
   | { type: 'agent:session'; agentId: string; sessionId: string; launchId?: string }
+  | { type: 'agent:dm'; fromAgentId: string; toAgentId: string; content: string }
   | { type: 'agent:message'; agentId: string; channelId: string; content: string; inReplyToMessageId?: string }
   | { type: 'agent:deliver:ack'; agentId: string; seq: number }
   | { type: 'machine:runtime_models:result'; requestId: string; models?: string[]; default?: string; error?: string };
@@ -91,6 +105,7 @@ export type Agent = {
   runtime: RuntimeId;
   model?: string;
   systemPrompt?: string;
+  envVars?: Record<string, string>;
   machineId?: string;
   status: AgentStatus;
   autoStart?: boolean;
@@ -100,5 +115,7 @@ export type Agent = {
 export type BrowserEvent =
   | { type: 'message:new'; message: Message }
   | { type: 'agent:update'; agent: Agent }
+  | { type: 'agent:updated'; agent: Agent }
   | { type: 'agent:activity'; agentId: string; activity: AgentActivity }
+  | { type: 'dm:new'; dm: DirectMessage }
   | { type: 'machine:update'; machine: Machine };

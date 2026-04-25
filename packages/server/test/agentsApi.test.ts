@@ -153,6 +153,39 @@ describe('PATCH /api/agents/:id', () => {
     });
     expect(res.statusCode).toBe(200);
     expect(res.json().displayName).toBe('New');
+    const fetched = await app.inject({ method: 'GET', url: `/api/agents/${agentId}` });
+    expect(fetched.statusCode).toBe(200);
+    expect(fetched.json().displayName).toBe('New');
+    await app.close();
+  });
+});
+
+describe('agent direct messages API', () => {
+  it('creates a DM and lists it in threads and conversation', async () => {
+    const app = await buildApp();
+    await getStore().createAgent({
+      id: 'agent-1',
+      name: 'bot',
+      runtime: 'claude',
+      status: 'idle',
+      createdAt: new Date().toISOString(),
+    });
+
+    const created = await app.inject({
+      method: 'POST',
+      url: '/api/agents/agent-1/dms/user',
+      payload: { content: 'private hello' },
+    });
+    expect(created.statusCode).toBe(201);
+    expect(created.json()).toMatchObject({ fromAgentId: 'user', toAgentId: 'agent-1', content: 'private hello' });
+
+    const threads = await app.inject({ method: 'GET', url: '/api/agents/agent-1/dms' });
+    expect(threads.statusCode).toBe(200);
+    expect(threads.json()[0].otherAgentId).toBe('user');
+
+    const conversation = await app.inject({ method: 'GET', url: '/api/agents/agent-1/dms/user' });
+    expect(conversation.statusCode).toBe(200);
+    expect(conversation.json()).toHaveLength(1);
     await app.close();
   });
 });

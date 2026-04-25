@@ -68,7 +68,7 @@ export function App() {
         if (msg.message.channelId === selectedChannel) {
           setMessages((prev) => [...prev, msg.message]);
         }
-      } else if (msg.type === 'agent:update') {
+      } else if (msg.type === 'agent:update' || msg.type === 'agent:updated') {
         setAgents((prev) => prev.map((a) => (a.id === msg.agent.id ? msg.agent : a)));
       } else if (msg.type === 'agent:activity') {
         setActivitiesByAgent((prev) => {
@@ -119,6 +119,7 @@ export function App() {
         <AgentDetailPanel
           agent={selectedAgent}
           activities={activitiesByAgent[selectedAgent.id] ?? []}
+          onAgentUpdated={(updated) => setAgents((prev) => prev.map((agent) => (agent.id === updated.id ? updated : agent)))}
           onClose={() => setSelectedAgentId(undefined)}
         />
       ) : (

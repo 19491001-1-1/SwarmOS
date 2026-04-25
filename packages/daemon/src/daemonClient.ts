@@ -30,7 +30,8 @@ export class DaemonClient {
       workspaceBase,
       (agentId, channelId, content) => this.sendMessage({ type: 'agent:message', agentId, channelId, content }),
       (agentId, status) => this.sendMessage({ type: 'agent:status', agentId, status: status as any }),
-      (agentId, activityType, detail) => this.sendActivity(agentId, activityType, detail)
+      (agentId, activityType, detail) => this.sendActivity(agentId, activityType, detail),
+      (fromAgentId, toAgentId, content) => this.sendMessage({ type: 'agent:dm', fromAgentId, toAgentId, content })
     );
   }
 

@@ -3,9 +3,9 @@ import { dirname, join } from 'node:path';
 import { homedir } from 'node:os';
 import { drizzle, type LibSQLDatabase } from 'drizzle-orm/libsql';
 import { createClient, type Client } from '@libsql/client';
-import { asc, desc, eq, inArray } from 'drizzle-orm';
-import type { Channel, Message, Machine, Agent, RuntimeId, AgentStatus, AgentActivity } from '@mini-slock/shared';
-import { activities, agents, channels, machines, messages } from './schema.js';
+import { asc, desc, eq, inArray, or } from 'drizzle-orm';
+import type { Channel, Message, Machine, Agent, RuntimeId, AgentStatus, AgentActivity, DirectMessage, DirectMessageThread } from '@mini-slock/shared';
+import { activities, agents, channels, directMessages, machines, messages } from './schema.js';
 
 type Database = LibSQLDatabase<typeof import('./schema.js')>;
 
@@ -32,7 +32,7 @@ async function ensureDbDirectory(path: string): Promise<void> {
 function createDatabase(): Database {
   const path = getDbPath();
   client = createClient({ url: getDbUrl(path) });
-  db = drizzle(client, { schema: { activities, agents, channels, machines, messages } });
+  db = drizzle(client, { schema: { activities, agents, channels, directMessages, machines, messages } });
   return db;
 }
 
@@ -76,6 +76,15 @@ export async function initDb(): Promise<void> {
       )
     `);
     await database.run(`
+      CREATE TABLE IF NOT EXISTS direct_messages (
+        id TEXT PRIMARY KEY,
+        from_agent_id TEXT NOT NULL,
+        to_agent_id TEXT NOT NULL,
+        content TEXT NOT NULL,
+        created_at TEXT NOT NULL
+      )
+    `);
+    await database.run(`
       CREATE TABLE IF NOT EXISTS agents (
         id TEXT PRIMARY KEY,
         name TEXT NOT NULL,
@@ -84,6 +93,7 @@ export async function initDb(): Promise<void> {
         runtime TEXT NOT NULL,
         model TEXT,
         system_prompt TEXT,
+        env_vars TEXT,
         machine_id TEXT,
         status TEXT NOT NULL,
         auto_start INTEGER NOT NULL DEFAULT 0,
@@ -98,6 +108,7 @@ export async function initDb(): Promise<void> {
         .toLowerCase();
       if (!message.includes('duplicate column')) throw err;
     }
+    await database.run(`ALTER TABLE agents ADD COLUMN env_vars TEXT`).catch(() => undefined);
     await database.run(`
       CREATE TABLE IF NOT EXISTS machines (
         id TEXT PRIMARY KEY,
@@ -141,6 +152,7 @@ function toAgent(row: typeof agents.$inferSelect): Agent {
     runtime: row.runtime as RuntimeId,
     model: row.model ?? undefined,
     systemPrompt: row.systemPrompt ?? undefined,
+    envVars: row.envVars ? JSON.parse(row.envVars) as Record<string, string> : undefined,
     machineId: row.machineId ?? undefined,
     status: row.status as AgentStatus,
     autoStart: row.autoStart,
@@ -165,6 +177,16 @@ function toActivity(row: typeof activities.$inferSelect): AgentActivity {
     agentId: row.agentId,
     type: row.type as AgentActivity['type'],
     detail: row.detail ?? undefined,
+    createdAt: row.createdAt,
+  };
+}
+
+function toDirectMessage(row: typeof directMessages.$inferSelect): DirectMessage {
+  return {
+    id: row.id,
+    fromAgentId: row.fromAgentId,
+    toAgentId: row.toAgentId,
+    content: row.content,
     createdAt: row.createdAt,
   };
 }
@@ -262,6 +284,53 @@ export class SqliteStore {
     return message ? toMessage(message) : undefined;
   }
 
+  async createDirectMessage(dm: Omit<DirectMessage, 'createdAt'>): Promise<DirectMessage> {
+    await initDb();
+    const created: DirectMessage = { ...dm, createdAt: new Date().toISOString() };
+    await getDb().insert(directMessages).values(created);
+    return created;
+  }
+
+  async listDirectMessages(agentId: string, otherId: string): Promise<DirectMessage[]> {
+    await initDb();
+    const rows = await getDb()
+      .select()
+      .from(directMessages)
+      .where(
+        or(
+          eq(directMessages.fromAgentId, agentId),
+          eq(directMessages.toAgentId, agentId),
+        ),
+      )
+      .orderBy(asc(directMessages.createdAt));
+    return rows
+      .map(toDirectMessage)
+      .filter((dm) => [dm.fromAgentId, dm.toAgentId].includes(otherId));
+  }
+
+  async listDirectMessageThreads(agentId: string): Promise<DirectMessageThread[]> {
+    await initDb();
+    const rows = await getDb()
+      .select()
+      .from(directMessages)
+      .where(
+        or(
+          eq(directMessages.fromAgentId, agentId),
+          eq(directMessages.toAgentId, agentId),
+        ),
+      )
+      .orderBy(desc(directMessages.createdAt));
+    const seen = new Set<string>();
+    const threads: DirectMessageThread[] = [];
+    for (const row of rows.map(toDirectMessage)) {
+      const otherAgentId = row.fromAgentId === agentId ? row.toAgentId : row.fromAgentId;
+      if (seen.has(otherAgentId)) continue;
+      seen.add(otherAgentId);
+      threads.push({ otherAgentId, lastMessage: row });
+    }
+    return threads;
+  }
+
   async listMachines(): Promise<Machine[]> {
     await initDb();
     const rows = await getDb().select().from(machines).orderBy(asc(machines.connectedAt));
@@ -324,6 +393,14 @@ export class SqliteStore {
     return agent ? toAgent(agent) : undefined;
   }
 
+  async findAgentByNameOrId(value: string): Promise<Agent | undefined> {
+    await initDb();
+    const byId = await this.getAgent(value);
+    if (byId) return byId;
+    const [agent] = await getDb().select().from(agents).where(eq(agents.name, value)).limit(1);
+    return agent ? toAgent(agent) : undefined;
+  }
+
   async createAgent(agent: Agent): Promise<Agent> {
     await initDb();
     await getDb().insert(agents).values({
@@ -332,6 +409,7 @@ export class SqliteStore {
       description: agent.description ?? null,
       model: agent.model ?? null,
       systemPrompt: agent.systemPrompt ?? null,
+      envVars: agent.envVars ? JSON.stringify(agent.envVars) : null,
       machineId: agent.machineId ?? null,
       autoStart: agent.autoStart ?? false,
     });
@@ -356,6 +434,7 @@ export class SqliteStore {
         runtime: updated.runtime,
         model: updated.model ?? null,
         systemPrompt: updated.systemPrompt ?? null,
+        envVars: updated.envVars ? JSON.stringify(updated.envVars) : null,
         machineId: updated.machineId ?? null,
         status: updated.status,
         autoStart: updated.autoStart ?? false,
@@ -376,6 +455,7 @@ export async function resetStore(): Promise<void> {
   const database = getDb();
   await database.delete(messages);
   await database.delete(activities);
+  await database.delete(directMessages);
   await database.delete(agents);
   await database.delete(machines);
   await database.delete(channels);
