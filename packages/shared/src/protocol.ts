@@ -216,6 +216,15 @@ export type Agent = {
   model?: string;
   systemPrompt?: string;
   envVars?: Record<string, string>;
+  organization?: {
+    department?: string;
+    roles?: string[];
+    capabilities?: string[];
+    responsibilities?: string[];
+    managerId?: string;
+    backupAgentIds?: string[];
+    availability?: 'available' | 'unavailable' | 'overloaded';
+  };
   machineId?: string;
   status: AgentStatus;
   autoStart?: boolean;

@@ -19,6 +19,16 @@ export const AgentRuntimeConfigSchema = z.object({
   agentToken: z.string().optional(),
 });
 
+export const AgentOrganizationSchema = z.object({
+  department: z.string().optional(),
+  roles: z.array(z.string()).optional(),
+  capabilities: z.array(z.string()).optional(),
+  responsibilities: z.array(z.string()).optional(),
+  managerId: z.string().optional(),
+  backupAgentIds: z.array(z.string()).optional(),
+  availability: z.enum(['available', 'unavailable', 'overloaded']).optional(),
+}).partial();
+
 export const AgentDeliverySchema = z.object({
   id: z.string(),
   channelId: z.string(),
@@ -197,6 +207,7 @@ export const CreateAgentRequestSchema = z.object({
   systemPrompt: z.string().optional(),
   machineId: z.string().optional(),
   envVars: z.record(z.string()).optional(),
+  organization: AgentOrganizationSchema.optional(),
 });
 
 export const PatchAgentRequestSchema = z
@@ -208,6 +219,7 @@ export const PatchAgentRequestSchema = z
     systemPrompt: z.string().optional(),
     autoStart: z.boolean().optional(),
     envVars: z.record(z.string()).optional(),
+    organization: AgentOrganizationSchema.optional(),
   })
   .refine(
     (val) =>
@@ -217,7 +229,8 @@ export const PatchAgentRequestSchema = z
       val.model !== undefined ||
       val.systemPrompt !== undefined ||
       val.autoStart !== undefined ||
-      val.envVars !== undefined,
+      val.envVars !== undefined ||
+      val.organization !== undefined,
     { message: 'At least one field must be provided' },
   );
 

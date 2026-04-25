@@ -547,6 +547,7 @@ export class XoxiangHub extends DurableObject<Env> {
         model TEXT,
         system_prompt TEXT,
         env_vars TEXT,
+        organization TEXT,
         machine_id TEXT,
         status TEXT NOT NULL,
         auto_start INTEGER NOT NULL DEFAULT 0,
@@ -563,6 +564,11 @@ export class XoxiangHub extends DurableObject<Env> {
     }
     try {
       this.ctx.storage.sql.exec('ALTER TABLE agents ADD COLUMN env_vars TEXT');
+    } catch {
+      // Existing Durable Objects may already have the column.
+    }
+    try {
+      this.ctx.storage.sql.exec('ALTER TABLE agents ADD COLUMN organization TEXT');
     } catch {
       // Existing Durable Objects may already have the column.
     }
@@ -982,6 +988,7 @@ export class XoxiangHub extends DurableObject<Env> {
       model: payload.model,
       systemPrompt: payload.systemPrompt,
       envVars: payload.envVars,
+      organization: payload.organization,
       machineId: payload.machineId,
       status: 'inactive',
       autoStart: false,
@@ -989,8 +996,8 @@ export class XoxiangHub extends DurableObject<Env> {
     };
     this.ctx.storage.sql.exec(
       `INSERT INTO agents
-       (id, name, display_name, description, runtime, model, system_prompt, env_vars, machine_id, status, auto_start, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       (id, name, display_name, description, runtime, model, system_prompt, env_vars, organization, machine_id, status, auto_start, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       agent.id,
       agent.name,
       agent.displayName ?? null,
@@ -999,6 +1006,7 @@ export class XoxiangHub extends DurableObject<Env> {
       agent.model ?? null,
       agent.systemPrompt ?? null,
       agent.envVars ? JSON.stringify(agent.envVars) : null,
+      agent.organization ? JSON.stringify(agent.organization) : null,
       agent.machineId ?? null,
       agent.status,
       agent.autoStart ? 1 : 0,
@@ -1425,7 +1433,7 @@ export class XoxiangHub extends DurableObject<Env> {
     this.ctx.storage.sql.exec(
       `UPDATE agents
        SET name = ?, display_name = ?, description = ?, runtime = ?, model = ?,
-           system_prompt = ?, env_vars = ?, machine_id = ?, status = ?, auto_start = ?, created_at = ?
+           system_prompt = ?, env_vars = ?, organization = ?, machine_id = ?, status = ?, auto_start = ?, created_at = ?
        WHERE id = ?`,
       updated.name,
       updated.displayName ?? null,
@@ -1434,6 +1442,7 @@ export class XoxiangHub extends DurableObject<Env> {
       updated.model ?? null,
       updated.systemPrompt ?? null,
       updated.envVars ? JSON.stringify(updated.envVars) : null,
+      updated.organization ? JSON.stringify(updated.organization) : null,
       updated.machineId ?? null,
       updated.status,
       updated.autoStart ? 1 : 0,
@@ -1895,6 +1904,7 @@ function toAgent(row: Row): Agent {
     model: row.model ? String(row.model) : undefined,
     systemPrompt: row.system_prompt ? String(row.system_prompt) : undefined,
     envVars: row.env_vars ? JSON.parse(String(row.env_vars)) as Record<string, string> : undefined,
+    organization: row.organization ? JSON.parse(String(row.organization)) as Agent['organization'] : undefined,
     machineId: row.machine_id ? String(row.machine_id) : undefined,
     status: String(row.status) as Agent['status'],
     autoStart: Boolean(Number(row.auto_start ?? 0)),

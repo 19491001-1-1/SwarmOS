@@ -83,7 +83,7 @@ export async function agentRoutes(app: FastifyInstance) {
     if (!parsed.success) {
       return reply.status(400).send({ error: 'Invalid request body', issues: parsed.error.issues });
     }
-    const { name, displayName, description, runtime, model, systemPrompt, machineId } = parsed.data;
+    const { name, displayName, description, runtime, model, systemPrompt, machineId, organization } = parsed.data;
 
     const agent = await getStore().createAgent({
       id: nanoid(),
@@ -93,6 +93,7 @@ export async function agentRoutes(app: FastifyInstance) {
       runtime,
       model,
       systemPrompt,
+      organization,
       machineId,
       status: 'inactive',
       autoStart: false,

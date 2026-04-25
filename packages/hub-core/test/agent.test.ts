@@ -105,4 +105,12 @@ describe('resolveAgentReference', () => {
     expect(result.match?.id).toBe('agent-111');
     expect(result.confidence).toBe('description_hint');
   });
+
+  it('resolves by organization role and capability fields', () => {
+    const result = resolveAgentReference('quality gate', [
+      { ...agent, id: 'agent-333', name: 'qa', organization: { department: 'delivery', roles: ['QA'], capabilities: ['quality gate'] } },
+    ]);
+    expect(result.match?.id).toBe('agent-333');
+    expect(result.confidence).toBe('description_hint');
+  });
 });

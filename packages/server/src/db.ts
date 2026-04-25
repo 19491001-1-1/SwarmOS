@@ -139,6 +139,7 @@ export async function initDb(): Promise<void> {
         model TEXT,
         system_prompt TEXT,
         env_vars TEXT,
+        organization TEXT,
         machine_id TEXT,
         status TEXT NOT NULL,
         auto_start INTEGER NOT NULL DEFAULT 0,
@@ -154,6 +155,7 @@ export async function initDb(): Promise<void> {
       if (!message.includes('duplicate column')) throw err;
     }
     await database.run(`ALTER TABLE agents ADD COLUMN env_vars TEXT`).catch(() => undefined);
+    await database.run(`ALTER TABLE agents ADD COLUMN organization TEXT`).catch(() => undefined);
     await database.run(`
       CREATE TABLE IF NOT EXISTS machines (
         id TEXT PRIMARY KEY,
@@ -198,6 +200,7 @@ function toAgent(row: typeof agents.$inferSelect): Agent {
     model: row.model ?? undefined,
     systemPrompt: row.systemPrompt ?? undefined,
     envVars: row.envVars ? JSON.parse(row.envVars) as Record<string, string> : undefined,
+    organization: row.organization ? JSON.parse(row.organization) as Agent['organization'] : undefined,
     machineId: row.machineId ?? undefined,
     status: row.status as AgentStatus,
     autoStart: row.autoStart,
@@ -653,6 +656,7 @@ export class SqliteStore {
       model: agent.model ?? null,
       systemPrompt: agent.systemPrompt ?? null,
       envVars: agent.envVars ? JSON.stringify(agent.envVars) : null,
+      organization: agent.organization ? JSON.stringify(agent.organization) : null,
       machineId: agent.machineId ?? null,
       autoStart: agent.autoStart ?? false,
     });
@@ -699,6 +703,7 @@ export class SqliteStore {
         model: updated.model ?? null,
         systemPrompt: updated.systemPrompt ?? null,
         envVars: updated.envVars ? JSON.stringify(updated.envVars) : null,
+        organization: updated.organization ? JSON.stringify(updated.organization) : null,
         machineId: updated.machineId ?? null,
         status: updated.status,
         autoStart: updated.autoStart ?? false,

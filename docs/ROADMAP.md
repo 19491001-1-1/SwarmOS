@@ -50,4 +50,5 @@
 - [v0.6 — Task Board](./v0.6-task-board.md)
 - [v0.7 — Reminders](./v0.7-reminders.md)
 - [v0.8 — 多 Channel + 搜索](./v0.8-channels-search.md)
+- [v1.0 — Organization Graph](./v1.0-organization-graph.md)
 - [v1.x — Phase Two Roadmap: Agent-Native Company](./v1-phase-two-roadmap.md)

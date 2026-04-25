@@ -21,7 +21,16 @@ export function resolveAgentReference(query: string, agents: Agent[]): AgentReso
   if (ciDisplay) return result(value, ciDisplay, 'case_insensitive_display_name', [ciDisplay]);
 
   const candidates = agents.filter((agent) => {
-    const fields = [agent.name, agent.displayName, agent.description].filter(Boolean).map((field) => normalize(field!));
+    const org = agent.organization;
+    const fields = [
+      agent.name,
+      agent.displayName,
+      agent.description,
+      org?.department,
+      ...(org?.roles ?? []),
+      ...(org?.capabilities ?? []),
+      ...(org?.responsibilities ?? []),
+    ].filter(Boolean).map((field) => normalize(field!));
     return fields.some((field) => field.includes(normalized) || normalized.includes(field));
   });
   return result(value, candidates.length === 1 ? candidates[0] : undefined, candidates.length === 1 ? 'description_hint' : undefined, candidates);
