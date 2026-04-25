@@ -74,6 +74,32 @@ function parseCommand(argv: string[]): ParsedCommand {
       body: { to: required(opts.to, '--to'), content: required(opts.content, '--content'), startIfInactive: Boolean(opts['start-if-inactive']) },
     };
   }
+  if (group === 'task' && action === 'list') {
+    const opts = parseFlags(rest);
+    const params = new URLSearchParams();
+    if (typeof opts.channel === 'string') params.set('channel', opts.channel);
+    if (typeof opts.status === 'string') params.set('status', opts.status);
+    if (opts.all === true) params.set('all', 'true');
+    const query = params.toString();
+    return { method: 'GET', path: `/tasks${query ? `?${query}` : ''}` };
+  }
+  if (group === 'task' && action === 'read') {
+    const taskId = required(rest[0], 'task id');
+    if (rest.length > 1) throw new Error(`unexpected argument: ${rest[1]}`);
+    return { method: 'GET', path: `/tasks/${encodeURIComponent(taskId)}` };
+  }
+  if (group === 'task' && action === 'update') {
+    const taskId = required(rest[0], 'task id');
+    const opts = parseFlags(rest.slice(1));
+    return {
+      method: 'POST',
+      path: `/tasks/${encodeURIComponent(taskId)}/update`,
+      body: {
+        status: typeof opts.status === 'string' ? opts.status : undefined,
+        assigneeId: typeof opts.assignee === 'string' ? opts.assignee : undefined,
+      },
+    };
+  }
   throw new Error('unknown command');
 }
 

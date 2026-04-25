@@ -394,12 +394,16 @@ export class SqliteStore {
     return rows.map(toAgentDelegation);
   }
 
-  async listTasks(filter: { channelId?: string; status?: TaskStatus } = {}): Promise<Task[]> {
+  async listTasks(filter: { channelId?: string; status?: TaskStatus; assigneeId?: string } = {}): Promise<Task[]> {
     await initDb();
     const rows = await getDb().select().from(tasks).orderBy(asc(tasks.createdAt));
     return rows
       .map(toTask)
-      .filter((task) => (!filter.channelId || task.channelId === filter.channelId) && (!filter.status || task.status === filter.status));
+      .filter((task) =>
+        (!filter.channelId || task.channelId === filter.channelId) &&
+        (!filter.status || task.status === filter.status) &&
+        (!filter.assigneeId || task.assigneeId === filter.assigneeId)
+      );
   }
 
   async getTask(id: string): Promise<Task | undefined> {

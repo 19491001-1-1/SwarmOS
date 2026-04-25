@@ -343,6 +343,48 @@ describe('agent internal API', () => {
     expect(delegation.json()).toMatchObject({ fromAgentId: 'agent-1', toAgentId: 'agent-2', status: 'queued' });
     await app.close();
   });
+
+  it('lists, reads, and updates assigned tasks', async () => {
+    const { app, store, headers } = await createInternalAgent();
+    const assigned = await store.createTask({
+      id: 'task-1',
+      channelId: 'general',
+      title: 'agent task',
+      status: 'todo',
+      creatorName: 'user',
+      assigneeId: 'agent-1',
+    });
+    await store.createTask({
+      id: 'task-2',
+      channelId: 'general',
+      title: 'someone else task',
+      status: 'todo',
+      creatorName: 'user',
+      assigneeId: 'agent-2',
+    });
+
+    const listed = await app.inject({ method: 'GET', url: '/internal/agent/agent-1/tasks', headers });
+    expect(listed.statusCode).toBe(200);
+    expect(listed.json()).toHaveLength(1);
+    expect(listed.json()[0].id).toBe(assigned.id);
+
+    const read = await app.inject({ method: 'GET', url: '/internal/agent/agent-1/tasks/task-1', headers });
+    expect(read.statusCode).toBe(200);
+    expect(read.json().title).toBe('agent task');
+
+    const forbidden = await app.inject({ method: 'GET', url: '/internal/agent/agent-1/tasks/task-2', headers });
+    expect(forbidden.statusCode).toBe(403);
+
+    const updated = await app.inject({
+      method: 'POST',
+      url: '/internal/agent/agent-1/tasks/task-1/update',
+      headers,
+      payload: { status: 'in_progress' },
+    });
+    expect(updated.statusCode).toBe(200);
+    expect(updated.json().status).toBe('in_progress');
+    await app.close();
+  });
 });
 
 describe('GET /api/machines', () => {

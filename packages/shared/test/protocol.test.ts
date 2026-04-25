@@ -13,6 +13,8 @@ import {
   InternalDmSendRequestSchema,
   InternalMessageReadRequestSchema,
   InternalMessageSendRequestSchema,
+  InternalTaskListRequestSchema,
+  InternalTaskUpdateRequestSchema,
   MessageToTaskRequestSchema,
   PatchTaskRequestSchema,
   TaskSchema,
@@ -195,12 +197,15 @@ describe('Internal agent API schemas', () => {
     expect(InternalMessageReadRequestSchema.safeParse({ channel: 'general', limit: '10' }).success).toBe(true);
     expect(InternalDmSendRequestSchema.safeParse({ to: 'agent-2', content: 'secret' }).success).toBe(true);
     expect(InternalAgentDelegateRequestSchema.safeParse({ to: 'agent-2', content: 'work', startIfInactive: true }).success).toBe(true);
+    expect(InternalTaskListRequestSchema.safeParse({ status: 'todo', all: 'true' }).success).toBe(true);
+    expect(InternalTaskUpdateRequestSchema.safeParse({ status: 'in_progress' }).success).toBe(true);
   });
 
   it('rejects empty internal agent API content', () => {
     expect(InternalMessageSendRequestSchema.safeParse({ channel: 'general', content: '' }).success).toBe(false);
     expect(InternalDmSendRequestSchema.safeParse({ to: 'agent-2', content: '' }).success).toBe(false);
     expect(InternalAgentDelegateRequestSchema.safeParse({ to: '', content: 'work' }).success).toBe(false);
+    expect(InternalTaskUpdateRequestSchema.safeParse({}).success).toBe(false);
   });
 });
 

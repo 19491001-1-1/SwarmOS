@@ -3,6 +3,7 @@ import { nanoid } from 'nanoid';
 import { CreateTaskRequestSchema, MessageToTaskRequestSchema, PatchTaskRequestSchema, TaskStatusSchema } from '@mini-slock/shared';
 import { getStore } from '../db.js';
 import { eventBus } from '../events.js';
+import { notifyTaskAssignee } from '../taskDelivery.js';
 
 export async function taskRoutes(app: FastifyInstance) {
   app.get<{ Querystring: { channelId?: string; status?: string } }>('/api/tasks', async (req, reply) => {
@@ -30,6 +31,7 @@ export async function taskRoutes(app: FastifyInstance) {
       assigneeId: parsed.data.assigneeId,
     });
     eventBus.emit({ type: 'task:update', task });
+    await notifyTaskAssignee(task);
     return reply.status(201).send(task);
   });
 
@@ -39,6 +41,7 @@ export async function taskRoutes(app: FastifyInstance) {
     const task = await getStore().updateTask(req.params.id, parsed.data);
     if (!task) return reply.status(404).send({ error: 'Task not found' });
     eventBus.emit({ type: 'task:update', task });
+    await notifyTaskAssignee(task);
     return task;
   });
 
@@ -65,6 +68,7 @@ export async function taskRoutes(app: FastifyInstance) {
       assigneeId: parsed.data.assigneeId,
     });
     eventBus.emit({ type: 'task:update', task });
+    await notifyTaskAssignee(task);
     return reply.status(201).send(task);
   });
 }

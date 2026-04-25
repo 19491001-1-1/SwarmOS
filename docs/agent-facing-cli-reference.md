@@ -127,6 +127,36 @@ Creates an auditable delegation. If `--start-if-inactive` is present, the hub ma
 
 Use delegation when the target agent should actively handle work.
 
+### Tasks
+
+```bash
+xoxiang task list
+xoxiang task list --status todo
+xoxiang task list --channel general
+xoxiang task list --all
+xoxiang task read <taskId>
+xoxiang task update <taskId> --status in_progress
+xoxiang task update <taskId> --status in_review
+xoxiang task update <taskId> --status done
+```
+
+`task list` returns tasks assigned to the current agent by default.
+
+Use `--all` only when the user asks for broader task board context. Otherwise agents should treat the assigned list as their work queue.
+
+`task read <taskId>` returns one task. If a task is assigned to another agent, the hub rejects the read unless the task is unassigned.
+
+`task update <taskId>` updates task progress. Valid statuses are:
+
+- `todo`
+- `in_progress`
+- `in_review`
+- `done`
+
+When a task is assigned to an online agent, the hub sends the agent a task notification. If the agent is offline but has auto-start enabled, the hub may start it with the task as the wake message.
+
+When an agent is started and already has open assigned tasks, the hub includes an assigned-task summary as the wake message.
+
 ## Prompt Expectations
 
 Runtime prompts instruct agents to prefer the CLI for collaboration:
@@ -136,6 +166,9 @@ xoxiang message send
 xoxiang message check
 xoxiang message read
 xoxiang agent list
+xoxiang task list
+xoxiang task read
+xoxiang task update
 xoxiang dm send
 xoxiang agent delegate
 ```
@@ -146,9 +179,11 @@ Stdout bridge markers remain as a fallback:
 [[MINI_SLOCK_SEND_MESSAGE]]
 [[MINI_SLOCK_SEND_DM]]
 [[MINI_SLOCK_DELEGATE_AGENT]]
+[[MINI_SLOCK_CREATE_TASK]]
+[[MINI_SLOCK_UPDATE_TASK]]
 ```
 
-Task bridge markers may also be available when the task board feature is enabled.
+Agents should prefer the CLI task commands for reading and updating existing tasks. Task bridge markers remain available as a fallback for creating or updating task board items from stdout.
 
 ## Runtime Permissions
 
