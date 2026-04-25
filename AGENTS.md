@@ -57,6 +57,14 @@ VITE_API_BASE=https://xoxiang-hub.xingke0.workers.dev pnpm --filter @mini-slock/
 
 If a test or command fails, fix it on the task branch and rerun the failing command. Do not merge a failing branch.
 
+## Version Propagation
+
+Every deployable iteration must carry a version across components.
+
+- Keep the default source version in `packages/shared/src/version.ts` aligned with the project version when doing a named release.
+- CI/CD should inject the current commit SHA through `XOXIANG_VERSION` for hub/server/daemon-style runtimes and `VITE_APP_VERSION` for the web build.
+- Do not hardcode a new component-local version if it can use the shared version helper or the build-time environment variable.
+
 ## Merge Procedure
 
 After verification passes:

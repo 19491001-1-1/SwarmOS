@@ -2,12 +2,12 @@ import WebSocket from 'ws';
 import os from 'os';
 import { join } from 'path';
 import type { AgentActivity, DaemonToServer, ServerToDaemon } from '@mini-slock/shared';
-import { ServerToDaemonSchema } from '@mini-slock/shared';
+import { APP_VERSION, ServerToDaemonSchema } from '@mini-slock/shared';
 import { detectRuntimes } from './runtimeDetector.js';
 import { AgentProcessManager } from './agentProcessManager.js';
 import { getMachineId } from './machineIdentity.js';
 
-const DAEMON_VERSION = '0.1.0';
+export const DAEMON_VERSION = process.env.XOXIANG_VERSION?.trim() || APP_VERSION;
 
 export type DaemonClientOptions = {
   serverUrl: string;

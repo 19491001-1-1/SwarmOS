@@ -5,7 +5,7 @@
   "private": true,
   "scripts": {
     "dev": "pnpm --filter @mini-slock/hub-core build && wrangler dev",
-    "deploy": "pnpm --filter @mini-slock/hub-core build && wrangler deploy",
+    "deploy": "pnpm --filter @mini-slock/hub-core build && wrangler deploy --keep-vars --var XOXIANG_VERSION:${XOXIANG_VERSION:-0.1.0} --var XOXIANG_COMMIT_SHA:${XOXIANG_COMMIT_SHA:-} --var XOXIANG_BUILD_ID:${XOXIANG_BUILD_ID:-}",
     "typecheck": "pnpm --filter @mini-slock/hub-core build && tsc --noEmit",
     "test": "pnpm --filter @mini-slock/hub-core build && vitest run"
   },

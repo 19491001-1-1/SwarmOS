@@ -4,14 +4,15 @@ import { ChannelView } from './components/ChannelView.js';
 import { Composer } from './components/Composer.js';
 import { AgentPanel } from './components/AgentPanel.js';
 import { AgentDetailPanel } from './components/AgentDetailPanel.js';
-import type { Channel, Message, Agent, Machine, AgentActivity } from './api.js';
-import { buildWsUrl, getChannels, getMessages, sendMessage, getAgents, getMachines, getAgentActivities } from './api.js';
+import type { Channel, Message, Agent, Machine, AgentActivity, VersionInfo } from './api.js';
+import { WEB_COMMIT_SHA, WEB_VERSION, buildWsUrl, getChannels, getMessages, sendMessage, getAgents, getMachines, getAgentActivities, getHubVersion } from './api.js';
 
 export function App() {
   const [channels, setChannels] = useState<Channel[]>([]);
   const [messages, setMessages] = useState<Message[]>([]);
   const [agents, setAgents] = useState<Agent[]>([]);
   const [machines, setMachines] = useState<Machine[]>([]);
+  const [hubVersion, setHubVersion] = useState<VersionInfo | undefined>();
   const [activitiesByAgent, setActivitiesByAgent] = useState<Record<string, AgentActivity[]>>({});
   const [selectedChannel, setSelectedChannel] = useState('general');
   const [selectedAgentId, setSelectedAgentId] = useState<string | undefined>();
@@ -41,6 +42,7 @@ export function App() {
     loadChannels();
     loadAgents();
     loadMachines();
+    getHubVersion().then(setHubVersion).catch(() => undefined);
   }, []);
 
   useEffect(() => {
@@ -101,6 +103,8 @@ export function App() {
         machines={machines}
         selectedChannel={selectedChannel}
         selectedAgentId={selectedAgentId}
+        webVersion={{ component: 'web', version: WEB_VERSION, commit: WEB_COMMIT_SHA || undefined }}
+        hubVersion={hubVersion}
         onSelectChannel={(id) => { setSelectedChannel(id); setSelectedAgentId(undefined); }}
         onSelectAgent={(id) => { setSelectedAgentId(id); }}
       />

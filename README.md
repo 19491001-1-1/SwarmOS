@@ -93,6 +93,16 @@ gh workflow run deploy-cloudflare-pages.yml
 
 See `docs/cloudflare-central-hub.md` for the full workflow and production notes.
 
+## Versioning
+
+All components expose or carry a version:
+
+- Web: build-time `VITE_APP_VERSION`, shown in the sidebar.
+- Server and Cloudflare hub: `GET /api/version`.
+- Daemon: `--version`, and the same value is sent as `daemonVersion` in the ready handshake.
+
+Local defaults use `0.1.0`. CI/CD injects the Git commit SHA into `XOXIANG_VERSION` and `VITE_APP_VERSION` so every deployed iteration is identifiable.
+
 ## Verify (typecheck + tests)
 
 ```bash

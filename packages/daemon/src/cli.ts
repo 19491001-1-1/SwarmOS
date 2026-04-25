@@ -1,4 +1,5 @@
 import { DaemonClient } from './daemonClient.js';
+import { DAEMON_VERSION } from './daemonClient.js';
 
 const args = process.argv.slice(2);
 
@@ -11,7 +12,12 @@ function getArg(flag: string): string | undefined {
 const serverUrl = getArg('--server-url') ?? 'http://localhost:3000';
 const apiKey = getArg('--api-key') ?? 'dev-machine-key';
 
-console.log(`[daemon] Starting with server=${serverUrl}`);
+if (args.includes('--version') || args.includes('-v')) {
+  console.log(DAEMON_VERSION);
+  process.exit(0);
+}
+
+console.log(`[daemon] Starting version=${DAEMON_VERSION} server=${serverUrl}`);
 
 const client = new DaemonClient({ serverUrl, apiKey });
 client.connect();

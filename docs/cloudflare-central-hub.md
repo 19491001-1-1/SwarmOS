@@ -212,6 +212,13 @@ Configure in repo **Settings → Secrets and variables → Actions**:
 | `deploy-cloudflare-hub.yml` | push to `main` + manual | verify, upload `DAEMON_API_KEY`, deploy Worker |
 | `deploy-cloudflare-pages.yml` | push to `main` + manual | build web, deploy to Cloudflare Pages |
 
+The deploy workflows inject the current Git commit SHA as the runtime/build version:
+
+- Worker hub: `XOXIANG_VERSION`, `XOXIANG_COMMIT_SHA`, `XOXIANG_BUILD_ID`
+- Web UI: `VITE_APP_VERSION`, `VITE_COMMIT_SHA`
+
+The web sidebar displays the web and hub versions. The hub exposes its value at `GET /api/version`.
+
 ### First-time Setup: Configure GitHub Secrets
 
 Go to repo **Settings → Secrets and variables → Actions → New repository secret**, or use `gh`:
@@ -350,6 +357,7 @@ The Worker currently mirrors the local server endpoints needed by the existing w
 
 ```text
 GET    /api/channels
+GET    /api/version
 GET    /api/channels/:id/messages
 POST   /api/channels/:id/messages
 

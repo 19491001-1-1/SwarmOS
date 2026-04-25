@@ -9,6 +9,14 @@ function authHeaders(extra?: Record<string, string>): Record<string, string> {
 }
 
 describe('browser auth', () => {
+  it('returns public hub version info', async () => {
+    const res = await SELF.fetch('https://hub.test/api/version');
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { component: string; version: string };
+    expect(body.component).toBe('cloudflare-hub');
+    expect(body.version).toBeTruthy();
+  });
+
   it('rejects /api/* without token', async () => {
     const res = await SELF.fetch('https://hub.test/api/channels');
     expect(res.status).toBe(401);
