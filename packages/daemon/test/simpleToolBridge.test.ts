@@ -61,6 +61,13 @@ describe('parseDelegateLine', () => {
   it('includes the delegation marker in the generated instruction', () => {
     expect(buildDelegateInstruction()).toContain(DELEGATE_BRIDGE_MARKER);
   });
+
+  it('instructs agents to delegate user handoff requests instead of doing them locally', () => {
+    const instruction = buildDelegateInstruction();
+    expect(instruction).toContain('do not do the task yourself');
+    expect(instruction).toContain('wake');
+    expect(instruction).toContain('delegate');
+  });
 });
 
 describe('parseDmLine', () => {

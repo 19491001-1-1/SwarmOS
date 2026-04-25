@@ -77,6 +77,18 @@ describe('agents', () => {
     await store.updateAgentStatus('agent-1', 'running');
     expect((await store.getAgent('agent-1'))?.status).toBe('running');
   });
+
+  it('finds agents by name ignoring case', async () => {
+    await store.createAgent({
+      id: 'agent-1',
+      name: 'Lydia',
+      runtime: 'gemini',
+      status: 'inactive',
+      createdAt: new Date().toISOString(),
+    });
+
+    expect((await store.findAgentByNameOrId('lydia'))?.id).toBe('agent-1');
+  });
 });
 
 describe('machines', () => {

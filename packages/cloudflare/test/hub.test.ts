@@ -196,7 +196,7 @@ describe('input validation', () => {
       });
     });
 
-    const delegationRes = await SELF.fetch(`https://hub.test/api/agents/${sender.id}/delegate/${targetName}`, {
+    const delegationRes = await SELF.fetch(`https://hub.test/api/agents/${sender.id}/delegate/${targetName.toLowerCase()}`, {
       method: 'POST',
       headers: authHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({ content: 'please handle cloudflare work' }),

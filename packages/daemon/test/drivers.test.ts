@@ -58,11 +58,12 @@ describe('Codex driver', () => {
     expect(cmd.cmd).toBe('codex');
   });
 
-  it('includes bridge prompt in -c system_prompt', () => {
+  it('prepends bridge prompt to the Codex user prompt', () => {
     const ctx = { ...baseCtx, config: { ...baseCtx.config, runtime: 'codex' as const } };
     const cmd = codexDriver.buildCommand(ctx);
-    const configArg = cmd.args.find((a) => a.startsWith('system_prompt='));
-    expect(configArg).toContain(BRIDGE_MARKER);
+    expect(cmd.args[1]).toContain(BRIDGE_MARKER);
+    expect(cmd.args[1]).toContain('Current user message:');
+    expect(cmd.args[1]).toContain('hello');
   });
 
   it('includes model when specified', () => {
