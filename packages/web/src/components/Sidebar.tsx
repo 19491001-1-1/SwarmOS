@@ -8,13 +8,14 @@ type Props = {
   agents: Agent[];
   activitiesByAgent?: Record<string, AgentActivity[]>;
   machines: Machine[];
-  selectedView: 'channel' | 'tasks';
+  selectedView: 'channel' | 'tasks' | 'knowledge';
   selectedChannel: string;
   selectedAgentId?: string;
   webVersion: VersionInfo;
   hubVersion?: VersionInfo;
   taskCount: number;
   onSelectTasks: () => void;
+  onSelectKnowledge: () => void;
   onOpenSearch: () => void;
   onSelectChannel: (id: string) => void;
   onCreateChannel: (name: string) => Promise<void>;
@@ -60,7 +61,7 @@ const S = {
   },
 };
 
-export function Sidebar({ channels, agents, activitiesByAgent = {}, machines, selectedView, selectedChannel, selectedAgentId, webVersion, hubVersion, taskCount, onSelectTasks, onOpenSearch, onSelectChannel, onCreateChannel, onDeleteChannel, onSelectAgent, onOpenAgents, className, onNavigate, onSignOut }: Props) {
+export function Sidebar({ channels, agents, activitiesByAgent = {}, machines, selectedView, selectedChannel, selectedAgentId, webVersion, hubVersion, taskCount, onSelectTasks, onSelectKnowledge, onOpenSearch, onSelectChannel, onCreateChannel, onDeleteChannel, onSelectAgent, onOpenAgents, className, onNavigate, onSignOut }: Props) {
   const [creating, setCreating] = useState(false);
   const [channelName, setChannelName] = useState('');
   const [channelError, setChannelError] = useState('');
@@ -119,6 +120,26 @@ export function Sidebar({ channels, agents, activitiesByAgent = {}, machines, se
         }}>
           <span style={{ flex: 1 }}>{t('nav.tasks')}</span>
           <span style={{ fontSize: 10 }}>{taskCount}</span>
+        </button>
+        <button className={`sidebar-item${selectedView === 'knowledge' ? ' sidebar-item-active' : ''}`} onClick={() => { onSelectKnowledge(); onNavigate?.(); }} style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 7,
+          width: 'calc(100% - 8px)',
+          margin: '0 4px 8px',
+          padding: '7px 10px',
+          fontSize: 13,
+          fontFamily: "'Courier New', monospace",
+          fontWeight: 700,
+          border: 'none',
+          borderLeft: selectedView === 'knowledge' ? '3px solid #000' : '3px solid transparent',
+          borderRight: selectedView === 'knowledge' ? '3px solid #000' : '3px solid transparent',
+          background: selectedView === 'knowledge' ? '#000' : '#fff',
+          color: selectedView === 'knowledge' ? '#FFD700' : '#000',
+          cursor: 'pointer',
+          textAlign: 'left',
+        }}>
+          <span style={{ flex: 1 }}>{t('nav.knowledge')}</span>
         </button>
 
         <SectionHeader label={t('nav.channels')} count={channels.length} action={<button onClick={() => setCreating(true)} style={miniButtonStyle}>+</button>} />

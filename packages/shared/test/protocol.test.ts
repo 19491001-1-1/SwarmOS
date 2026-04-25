@@ -33,6 +33,9 @@ import {
   MessageToGoalBriefRequestSchema,
   MessageToTaskRequestSchema,
   PatchGoalBriefRequestSchema,
+  CreateKnowledgeEntryRequestSchema,
+  PatchKnowledgeEntryRequestSchema,
+  SearchKnowledgeRequestSchema,
   PatchTaskRequestSchema,
   StartGoalAlignmentRequestSchema,
   TaskSchema,
@@ -421,6 +424,21 @@ describe('Goal schemas', () => {
       createdAt: now,
       updatedAt: now,
     }).taskDrafts[0].role).toBe('owner');
+  });
+
+  it('accepts knowledge entry request bodies and filters', () => {
+    const created = CreateKnowledgeEntryRequestSchema.parse({
+      kind: 'decision',
+      title: 'Use v1 test environment',
+      summary: 'v1 work uses the test Cloudflare instance.',
+      body: 'Keep main and production isolated until V1 is accepted.',
+      tags: ['v1', 'cloudflare'],
+      sourceRefs: ['goal:v1'],
+    });
+    expect(created.status).toBe('active');
+    expect(PatchKnowledgeEntryRequestSchema.safeParse({ status: 'stale' }).success).toBe(true);
+    expect(PatchKnowledgeEntryRequestSchema.safeParse({}).success).toBe(false);
+    expect(SearchKnowledgeRequestSchema.parse({ query: 'test env', kind: 'decision', tag: 'v1' }).tags).toEqual(['v1']);
   });
 });
 

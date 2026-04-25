@@ -3,6 +3,7 @@ import { nanoid } from 'nanoid';
 import {
   createVersionInfo,
   ConfirmGoalAlignmentRequestSchema,
+  CreateKnowledgeEntryRequestSchema,
   CreateReminderRequestSchema,
   CreateTaskReviewRequestSchema,
   InternalGoalCreateRequestSchema,
@@ -25,6 +26,7 @@ import {
   InternalReviewListRequestSchema,
   PatchReminderRequestSchema,
   ReviewDecisionRequestSchema,
+  SearchKnowledgeRequestSchema,
   type GoalAlignment,
   type AgentInboxItem,
   type Agent,
@@ -39,6 +41,7 @@ import { eventBus } from '../events.js';
 import { daemonRegistry } from '../daemonRegistry.js';
 import { delegateAgent } from '../delegation.js';
 import { notifyTaskAssignee } from '../taskDelivery.js';
+import { archiveGoal } from './knowledge.js';
 
 export async function internalAgentRoutes(app: FastifyInstance) {
   app.addHook('preHandler', async (req, reply) => {
@@ -210,6 +213,53 @@ export async function internalAgentRoutes(app: FastifyInstance) {
     const parsed = InternalInboxRequestSchema.safeParse(req.query);
     if (!parsed.success) return reply.status(400).send({ error: 'Invalid query', issues: parsed.error.issues });
     return { inbox: await buildInbox(agent, parsed.data.limit), next: 'Work assigned tasks first, claim only matching open tasks, and report blockers with task block/escalate.' };
+  });
+
+  app.get<{ Params: { agentId: string }; Querystring: { query?: string; kind?: string; tag?: string; limit?: string } }>('/internal/agent/:agentId/knowledge', async (req, reply) => {
+    const agent = await getStore().getAgent(req.params.agentId);
+    if (!agent) return reply.status(404).send({ error: 'Agent not found' });
+    const parsed = SearchKnowledgeRequestSchema.safeParse(req.query);
+    if (!parsed.success) return reply.status(400).send({ error: 'Invalid query', issues: parsed.error.issues });
+    return getStore().searchKnowledge(parsed.data);
+  });
+
+  app.get<{ Params: { agentId: string; knowledgeId: string } }>('/internal/agent/:agentId/knowledge/:knowledgeId', async (req, reply) => {
+    const agent = await getStore().getAgent(req.params.agentId);
+    if (!agent) return reply.status(404).send({ error: 'Agent not found' });
+    const entry = await getStore().getKnowledgeEntry(req.params.knowledgeId);
+    if (!entry) return reply.status(404).send({ error: 'Knowledge entry not found' });
+    return entry;
+  });
+
+  app.post<{ Params: { agentId: string } }>('/internal/agent/:agentId/knowledge', async (req, reply) => {
+    const store = getStore();
+    const agent = await store.getAgent(req.params.agentId);
+    if (!agent) return reply.status(404).send({ error: 'Agent not found' });
+    const parsed = CreateKnowledgeEntryRequestSchema.safeParse({ ...((req.body ?? {}) as object), ownerAgentId: (req.body as { ownerAgentId?: string } | undefined)?.ownerAgentId ?? agent.id });
+    if (!parsed.success) return reply.status(400).send({ error: 'Invalid request body', issues: parsed.error.issues });
+    if (parsed.data.sourceRefs.length === 0 && !parsed.data.allowNoSource) return reply.status(400).send({ error: 'sourceRefs are required unless allowNoSource is true' });
+    const entry = await store.createKnowledgeEntry({
+      id: nanoid(),
+      kind: parsed.data.kind,
+      title: parsed.data.title,
+      summary: parsed.data.summary,
+      body: parsed.data.body,
+      tags: parsed.data.tags,
+      sourceRefs: parsed.data.sourceRefs,
+      ownerAgentId: parsed.data.ownerAgentId,
+      reviewerAgentId: parsed.data.reviewerAgentId,
+      status: parsed.data.status,
+    });
+    eventBus.emit({ type: 'knowledge:update', entry });
+    return reply.status(201).send(entry);
+  });
+
+  app.post<{ Params: { agentId: string; goalId: string } }>('/internal/agent/:agentId/goals/:goalId/archive', async (req, reply) => {
+    const agent = await getStore().getAgent(req.params.agentId);
+    if (!agent) return reply.status(404).send({ error: 'Agent not found' });
+    const entry = await archiveGoal(req.params.goalId, agent.id);
+    if (!entry) return reply.status(404).send({ error: 'Goal not found' });
+    return reply.status(201).send(entry);
   });
 
   app.get<{ Params: { agentId: string }; Querystring: { channel?: string; status?: string } }>('/internal/agent/:agentId/goals', async (req, reply) => {

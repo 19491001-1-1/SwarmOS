@@ -207,6 +207,11 @@ function parseCommand(argv: string[]): ParsedCommand {
     if (rest.length > 1) throw new Error(`unexpected argument: ${rest[1]}`);
     return { method: 'GET', path: `/goals/${encodeURIComponent(goalId)}` };
   }
+  if (group === 'goal' && action === 'archive') {
+    const goalId = required(rest[0], 'goal id');
+    if (rest.length > 1) throw new Error(`unexpected argument: ${rest[1]}`);
+    return { method: 'POST', path: `/goals/${encodeURIComponent(goalId)}/archive`, body: {} };
+  }
   if (group === 'goal' && action === 'create') {
     const opts = parseFlags(rest);
     return {
@@ -260,6 +265,36 @@ function parseCommand(argv: string[]): ParsedCommand {
       return { method: 'POST', path: `/goal-alignments/${encodeURIComponent(alignmentId)}/confirm`, body: {} };
     }
     throw new Error(`unknown goal alignment action: ${subaction}`);
+  }
+  if (group === 'knowledge' && action === 'search') {
+    const query = required(rest[0], 'query');
+    const opts = parseFlags(rest.slice(1));
+    const params = new URLSearchParams({ query });
+    if (typeof opts.kind === 'string') params.set('kind', opts.kind);
+    for (const tag of splitList(opts.tag)) params.append('tag', tag);
+    return { method: 'GET', path: `/knowledge?${params.toString()}` };
+  }
+  if (group === 'knowledge' && action === 'read') {
+    const id = required(rest[0], 'knowledge id');
+    if (rest.length > 1) throw new Error(`unexpected argument: ${rest[1]}`);
+    return { method: 'GET', path: `/knowledge/${encodeURIComponent(id)}` };
+  }
+  if (group === 'knowledge' && action === 'write') {
+    const opts = parseFlags(rest);
+    return {
+      method: 'POST',
+      path: '/knowledge',
+      body: {
+        kind: required(opts.kind, '--kind'),
+        title: required(opts.title, '--title'),
+        summary: required(opts.summary, '--summary'),
+        body: required(opts.body, '--body'),
+        tags: splitList(opts.tag),
+        sourceRefs: splitList(opts.source ?? opts['source-ref']),
+        allowNoSource: opts['allow-no-source'] === true,
+        reviewerAgentId: typeof opts.reviewer === 'string' ? opts.reviewer : undefined,
+      },
+    };
   }
   throw new Error('unknown command');
 }

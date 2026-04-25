@@ -88,6 +88,8 @@ describe('parseBridgeLine', () => {
     expect(instruction).toContain('xoxiang task progress');
     expect(instruction).toContain('xoxiang task block');
     expect(instruction).toContain('xoxiang task escalate');
+    expect(instruction).toContain('xoxiang knowledge search');
+    expect(instruction).toContain('xoxiang goal archive');
   });
 });
 

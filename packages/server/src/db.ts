@@ -4,9 +4,9 @@ import { homedir } from 'node:os';
 import { drizzle, type LibSQLDatabase } from 'drizzle-orm/libsql';
 import { createClient, type Client } from '@libsql/client';
 import { asc, desc, eq, inArray, or } from 'drizzle-orm';
-import type { Channel, Message, MessageThread, Machine, Agent, RuntimeId, AgentStatus, AgentActivity, DirectMessage, DirectMessageThread, AgentDelegation, AgentTokenInfo, Task, TaskStatus, GoalBrief, GoalBriefStatus, GoalAlignment, GoalAlignmentStatus, Reminder, ReminderStatus, SearchMessageResult } from '@mini-slock/shared';
+import type { Channel, Message, MessageThread, Machine, Agent, RuntimeId, AgentStatus, AgentActivity, DirectMessage, DirectMessageThread, AgentDelegation, AgentTokenInfo, Task, TaskStatus, GoalBrief, GoalBriefStatus, GoalAlignment, GoalAlignmentStatus, Reminder, ReminderStatus, SearchMessageResult, KnowledgeEntry, KnowledgeKind, KnowledgeSearchResult, KnowledgeStatus } from '@mini-slock/shared';
 import { resolveAgentReference } from '@mini-slock/hub-core';
-import { activities, agentDelegations, agentTokens, agents, channels, directMessages, goalAlignments, goals, machines, messages, reminders, tasks } from './schema.js';
+import { activities, agentDelegations, agentTokens, agents, channels, directMessages, goalAlignments, goals, knowledgeEntries, machines, messages, reminders, tasks } from './schema.js';
 
 type Database = LibSQLDatabase<typeof import('./schema.js')>;
 
@@ -33,7 +33,7 @@ async function ensureDbDirectory(path: string): Promise<void> {
 function createDatabase(): Database {
   const path = getDbPath();
   client = createClient({ url: getDbUrl(path) });
-  db = drizzle(client, { schema: { activities, agentDelegations, agentTokens, agents, channels, directMessages, goalAlignments, goals, machines, messages, reminders, tasks } });
+  db = drizzle(client, { schema: { activities, agentDelegations, agentTokens, agents, channels, directMessages, goalAlignments, goals, knowledgeEntries, machines, messages, reminders, tasks } });
   return db;
 }
 
@@ -171,6 +171,22 @@ export async function initDb(): Promise<void> {
         trigger_at TEXT NOT NULL,
         status TEXT NOT NULL,
         created_at TEXT NOT NULL
+      )
+    `);
+    await database.run(`
+      CREATE TABLE IF NOT EXISTS knowledge_entries (
+        id TEXT PRIMARY KEY,
+        kind TEXT NOT NULL,
+        title TEXT NOT NULL,
+        summary TEXT NOT NULL,
+        body TEXT NOT NULL,
+        tags TEXT NOT NULL,
+        source_refs TEXT NOT NULL,
+        owner_agent_id TEXT,
+        reviewer_agent_id TEXT,
+        status TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
       )
     `);
     await database.run(`ALTER TABLE tasks ADD COLUMN context TEXT`).catch(() => undefined);
@@ -376,6 +392,33 @@ function toReminder(row: typeof reminders.$inferSelect): Reminder {
     status: row.status as ReminderStatus,
     createdAt: row.createdAt,
   };
+}
+
+function toKnowledgeEntry(row: typeof knowledgeEntries.$inferSelect): KnowledgeEntry {
+  return {
+    id: row.id,
+    kind: row.kind as KnowledgeKind,
+    title: row.title,
+    summary: row.summary,
+    body: row.body,
+    tags: JSON.parse(row.tags) as string[],
+    sourceRefs: JSON.parse(row.sourceRefs) as string[],
+    ownerAgentId: row.ownerAgentId ?? undefined,
+    reviewerAgentId: row.reviewerAgentId ?? undefined,
+    status: row.status as KnowledgeStatus,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+  };
+}
+
+function scoreKnowledge(entry: KnowledgeEntry, query: string): number {
+  if (!query) return 1;
+  let score = 0;
+  if (entry.title.toLowerCase().includes(query)) score += 8;
+  if (entry.summary.toLowerCase().includes(query)) score += 5;
+  if (entry.body.toLowerCase().includes(query)) score += 2;
+  score += entry.tags.filter((tag) => tag.toLowerCase().includes(query)).length * 4;
+  return score;
 }
 
 function toMachine(row: typeof machines.$inferSelect): Machine {
@@ -782,6 +825,60 @@ export class SqliteStore {
     return updated;
   }
 
+  async searchKnowledge(filter: { query?: string; kind?: KnowledgeKind; tags?: string[]; limit?: number } = {}): Promise<KnowledgeSearchResult[]> {
+    await initDb();
+    const rows = await getDb().select().from(knowledgeEntries).orderBy(desc(knowledgeEntries.updatedAt));
+    const query = (filter.query ?? '').trim().toLowerCase();
+    const tags = filter.tags ?? [];
+    return rows
+      .map(toKnowledgeEntry)
+      .map((entry) => ({ entry, score: scoreKnowledge(entry, query), reason: query ? `Matched "${query}"` : 'Recent knowledge' }))
+      .filter((result) => (!filter.kind || result.entry.kind === filter.kind) && tags.every((tag) => result.entry.tags.includes(tag)))
+      .filter((result) => !query || result.score > 0)
+      .sort((a, b) => (b.score ?? 0) - (a.score ?? 0) || new Date(b.entry.updatedAt).getTime() - new Date(a.entry.updatedAt).getTime())
+      .slice(0, filter.limit ?? 20);
+  }
+
+  async getKnowledgeEntry(id: string): Promise<KnowledgeEntry | undefined> {
+    await initDb();
+    const [entry] = await getDb().select().from(knowledgeEntries).where(eq(knowledgeEntries.id, id)).limit(1);
+    return entry ? toKnowledgeEntry(entry) : undefined;
+  }
+
+  async createKnowledgeEntry(entry: Omit<KnowledgeEntry, 'createdAt' | 'updatedAt'>): Promise<KnowledgeEntry> {
+    await initDb();
+    const now = new Date().toISOString();
+    const created: KnowledgeEntry = { ...entry, createdAt: now, updatedAt: now };
+    await getDb().insert(knowledgeEntries).values({
+      ...created,
+      tags: JSON.stringify(created.tags),
+      sourceRefs: JSON.stringify(created.sourceRefs),
+      ownerAgentId: created.ownerAgentId ?? null,
+      reviewerAgentId: created.reviewerAgentId ?? null,
+    });
+    return created;
+  }
+
+  async updateKnowledgeEntry(id: string, patch: Partial<Omit<KnowledgeEntry, 'id' | 'createdAt' | 'updatedAt'>>): Promise<KnowledgeEntry | undefined> {
+    await initDb();
+    const existing = await this.getKnowledgeEntry(id);
+    if (!existing) return undefined;
+    const updated: KnowledgeEntry = { ...existing, ...patch, updatedAt: new Date().toISOString() };
+    await getDb().update(knowledgeEntries).set({
+      kind: updated.kind,
+      title: updated.title,
+      summary: updated.summary,
+      body: updated.body,
+      tags: JSON.stringify(updated.tags),
+      sourceRefs: JSON.stringify(updated.sourceRefs),
+      ownerAgentId: updated.ownerAgentId ?? null,
+      reviewerAgentId: updated.reviewerAgentId ?? null,
+      status: updated.status,
+      updatedAt: updated.updatedAt,
+    }).where(eq(knowledgeEntries.id, id));
+    return updated;
+  }
+
   async listDirectMessages(agentId: string, otherId: string): Promise<DirectMessage[]> {
     await initDb();
     const rows = await getDb()
@@ -978,6 +1075,7 @@ export async function resetStore(): Promise<void> {
   await database.delete(goals);
   await database.delete(goalAlignments);
   await database.delete(reminders);
+  await database.delete(knowledgeEntries);
   await database.delete(agents);
   await database.delete(machines);
   await database.delete(channels);

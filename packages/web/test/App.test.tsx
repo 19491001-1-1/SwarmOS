@@ -285,6 +285,55 @@ describe('App', () => {
       expect(screen.getByText('Checklist: 2')).toBeTruthy();
     });
   });
+
+  it('lets users search and create knowledge entries from the web UI', async () => {
+    vi.mocked(api.searchKnowledge).mockResolvedValueOnce([{
+      entry: {
+        id: 'knowledge-1',
+        kind: 'decision',
+        title: 'V1 test environment',
+        summary: 'Use the test Cloudflare instance.',
+        body: 'Keep production isolated until V1 is accepted.',
+        tags: ['v1'],
+        sourceRefs: ['goal:v1'],
+        status: 'active',
+        createdAt: '2026-04-25T00:00:00.000Z',
+        updatedAt: '2026-04-25T00:00:00.000Z',
+      },
+    }]);
+    vi.mocked(api.createKnowledge).mockResolvedValueOnce({
+      id: 'knowledge-2',
+      kind: 'runbook',
+      title: 'Run browser checks',
+      summary: 'Use web tests for UI changes.',
+      body: 'Run pnpm --filter @mini-slock/web test.',
+      tags: ['web'],
+      sourceRefs: ['task:web'],
+      status: 'active',
+      createdAt: '2026-04-25T00:00:01.000Z',
+      updatedAt: '2026-04-25T00:00:01.000Z',
+    });
+    vi.mocked(api.searchKnowledge).mockResolvedValueOnce([]);
+
+    render(<App />);
+
+    fireEvent.click(await screen.findByText('Knowledge'));
+    await waitFor(() => {
+      expect(screen.getAllByText('V1 test environment').length).toBeGreaterThan(0);
+      expect(screen.getAllByText('Use the test Cloudflare instance.').length).toBeGreaterThan(0);
+    });
+
+    fireEvent.change(screen.getByPlaceholderText('Title'), { target: { value: 'Run browser checks' } });
+    fireEvent.change(screen.getByPlaceholderText('Summary'), { target: { value: 'Use web tests for UI changes.' } });
+    fireEvent.change(screen.getByPlaceholderText('Body'), { target: { value: 'Run pnpm --filter @mini-slock/web test.' } });
+    fireEvent.change(screen.getByPlaceholderText('tags, comma separated'), { target: { value: 'web' } });
+    fireEvent.change(screen.getByPlaceholderText('source refs, comma separated'), { target: { value: 'task:web' } });
+    fireEvent.click(screen.getByText('CREATE'));
+
+    await waitFor(() => {
+      expect(api.createKnowledge).toHaveBeenCalledWith(expect.objectContaining({ title: 'Run browser checks', sourceRefs: ['task:web'] }));
+    });
+  });
 });
 
 vi.mock('../src/api.js', () => ({
@@ -315,6 +364,9 @@ vi.mock('../src/api.js', () => ({
   confirmGoalAlignment: vi.fn(),
   patchGoal: vi.fn(),
   createGoalTasks: vi.fn(),
+  searchKnowledge: vi.fn(async () => []),
+  createKnowledge: vi.fn(),
+  patchKnowledge: vi.fn(),
   getAgentReminders: vi.fn(async () => []),
   createChannel: vi.fn(),
   deleteChannel: vi.fn(),

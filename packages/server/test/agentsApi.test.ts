@@ -643,6 +643,51 @@ describe('agent internal API', () => {
     expect((await store.getTask('task-review'))?.status).toBe('done');
     await app.close();
   });
+
+  it('lets agents search, write, read knowledge, and archive goals', async () => {
+    const { app, store, headers } = await createInternalAgent();
+    const written = await app.inject({
+      method: 'POST',
+      url: '/internal/agent/agent-1/knowledge',
+      headers,
+      payload: {
+        kind: 'runbook',
+        title: 'Run web verification',
+        summary: 'Use web tests before acceptance.',
+        body: 'Run pnpm --filter @mini-slock/web test for UI-impacting changes.',
+        tags: ['web', 'test'],
+        sourceRefs: ['task:test'],
+      },
+    });
+    expect(written.statusCode).toBe(201);
+    expect(written.json()).toMatchObject({ ownerAgentId: 'agent-1', kind: 'runbook' });
+
+    const searched = await app.inject({ method: 'GET', url: '/internal/agent/agent-1/knowledge?query=verification&tag=web', headers });
+    expect(searched.statusCode).toBe(200);
+    expect(searched.json()).toContainEqual(expect.objectContaining({ entry: expect.objectContaining({ id: written.json().id }) }));
+
+    const read = await app.inject({ method: 'GET', url: `/internal/agent/agent-1/knowledge/${written.json().id}`, headers });
+    expect(read.statusCode).toBe(200);
+    expect(read.json().title).toBe('Run web verification');
+
+    const goal = await store.createGoal({
+      id: 'goal-internal',
+      channelId: 'general',
+      requesterName: 'user',
+      objective: 'Internal archive',
+      background: [],
+      successCriteria: ['Archived'],
+      constraints: [],
+      assumptions: [],
+      risks: [],
+      status: 'completed',
+    });
+    await store.createTask({ id: 'task-internal', channelId: 'general', title: 'Done task', status: 'done', creatorName: 'user', context: { goalId: goal.id } });
+    const archived = await app.inject({ method: 'POST', url: '/internal/agent/agent-1/goals/goal-internal/archive', headers });
+    expect(archived.statusCode).toBe(201);
+    expect(archived.json()).toMatchObject({ kind: 'project_archive', ownerAgentId: 'agent-1' });
+    await app.close();
+  });
 });
 
 describe('GET /api/machines', () => {

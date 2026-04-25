@@ -36,6 +36,10 @@ export type ReminderStatus = 'pending' | 'triggered' | 'cancelled';
 export type Reminder = { id: string; agentId: string; channelId: string; message: string; triggerAt: string; status: ReminderStatus; createdAt: string };
 export type AuthWhoami = { authenticated: boolean; mode: 'token' | 'anonymous' };
 export type AgentInboxItem = { id: string; kind: 'mention' | 'dm' | 'assigned_task' | 'claimable_task' | 'reminder' | 'review_request' | 'blocked_escalation'; agentId: string; channelId?: string; messageId?: string; taskId?: string; goalId?: string; priority: 'low' | 'normal' | 'high' | 'urgent'; summary: string; dueAt?: string; createdAt: string };
+export type KnowledgeKind = 'decision' | 'project_archive' | 'user_preference' | 'runbook' | 'learning' | 'artifact';
+export type KnowledgeStatus = 'active' | 'stale' | 'conflict' | 'archived';
+export type KnowledgeEntry = { id: string; kind: KnowledgeKind; title: string; summary: string; body: string; tags: string[]; sourceRefs: string[]; ownerAgentId?: string; reviewerAgentId?: string; status: KnowledgeStatus; createdAt: string; updatedAt: string };
+export type KnowledgeSearchResult = { entry: KnowledgeEntry; score?: number; reason?: string };
 
 export class AuthError extends Error {
   constructor(message = 'Unauthorized') {
@@ -344,5 +348,34 @@ export async function cancelReminder(reminderId: string): Promise<Reminder> {
     headers: authHeaders({ 'Content-Type': 'application/json' }),
     body: JSON.stringify({ status: 'cancelled' }),
   });
+  return r.json();
+}
+
+export async function searchKnowledge(query = '', filters: { kind?: KnowledgeKind; tag?: string } = {}): Promise<KnowledgeSearchResult[]> {
+  const params = new URLSearchParams();
+  if (query) params.set('query', query);
+  if (filters.kind) params.set('kind', filters.kind);
+  if (filters.tag) params.set('tag', filters.tag);
+  const r = await apiFetch(`${API_BASE}/api/knowledge${params.toString() ? `?${params.toString()}` : ''}`, { headers: authHeaders() });
+  return r.json();
+}
+
+export async function createKnowledge(data: Omit<KnowledgeEntry, 'id' | 'createdAt' | 'updatedAt'> & { allowNoSource?: boolean }): Promise<KnowledgeEntry> {
+  const r = await apiFetch(`${API_BASE}/api/knowledge`, {
+    method: 'POST',
+    headers: authHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(data),
+  });
+  if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error ?? 'Create knowledge failed');
+  return r.json();
+}
+
+export async function patchKnowledge(id: string, data: Partial<Pick<KnowledgeEntry, 'kind' | 'title' | 'summary' | 'body' | 'tags' | 'sourceRefs' | 'ownerAgentId' | 'reviewerAgentId' | 'status'>>): Promise<KnowledgeEntry> {
+  const r = await apiFetch(`${API_BASE}/api/knowledge/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    headers: authHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(data),
+  });
+  if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error ?? 'Update knowledge failed');
   return r.json();
 }
