@@ -186,6 +186,10 @@ export type Message = {
   createdAt: string;
 };
 
+export type SearchMessageResult = Message & {
+  channelName: string;
+};
+
 export type Channel = {
   id: string;
   name: string;
@@ -220,6 +224,8 @@ export type Agent = {
 
 export type BrowserEvent =
   | { type: 'message:new'; message: Message }
+  | { type: 'channel:created'; channel: Channel }
+  | { type: 'channel:deleted'; channelId: string }
   | { type: 'agent:update'; agent: Agent }
   | { type: 'agent:updated'; agent: Agent }
   | { type: 'agent:activity'; agentId: string; activity: AgentActivity }

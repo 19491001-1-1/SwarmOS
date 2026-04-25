@@ -5,8 +5,8 @@ import { Composer } from './components/Composer.js';
 import { AgentPanel } from './components/AgentPanel.js';
 import { AgentDetailPanel } from './components/AgentDetailPanel.js';
 import { TaskBoard } from './components/TaskBoard.js';
-import type { Channel, Message, Agent, Machine, AgentActivity, VersionInfo, Task, Reminder } from './api.js';
-import { WEB_COMMIT_SHA, WEB_VERSION, buildWsUrl, getChannels, getMessages, sendMessage, getAgents, getMachines, getAgentActivities, getHubVersion, getTasks, messageToTask, getAgentReminders } from './api.js';
+import type { Channel, Message, Agent, Machine, AgentActivity, VersionInfo, Task, Reminder, SearchMessageResult } from './api.js';
+import { WEB_COMMIT_SHA, WEB_VERSION, buildWsUrl, getChannels, getMessages, sendMessage, getAgents, getMachines, getAgentActivities, getHubVersion, getTasks, messageToTask, getAgentReminders, createChannel, deleteChannel, searchMessages } from './api.js';
 
 export function App() {
   const [channels, setChannels] = useState<Channel[]>([]);
@@ -20,6 +20,7 @@ export function App() {
   const [selectedView, setSelectedView] = useState<'channel' | 'tasks'>('channel');
   const [selectedChannel, setSelectedChannel] = useState('general');
   const [selectedAgentId, setSelectedAgentId] = useState<string | undefined>();
+  const [searchOpen, setSearchOpen] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
 
   const loadChannels = useCallback(async () => {
@@ -58,6 +59,17 @@ export function App() {
   useEffect(() => {
     loadMessages(selectedChannel);
   }, [selectedChannel]);
+
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
+        event.preventDefault();
+        setSearchOpen(true);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
 
   useEffect(() => {
     if (!selectedAgentId) return;
@@ -101,6 +113,11 @@ export function App() {
           if (exists) return prev.map((task) => (task.id === msg.task.id ? msg.task : task));
           return [...prev, msg.task];
         });
+      } else if (msg.type === 'channel:created') {
+        setChannels((prev) => prev.some((channel) => channel.id === msg.channel.id) ? prev : [...prev, msg.channel]);
+      } else if (msg.type === 'channel:deleted') {
+        setChannels((prev) => prev.filter((channel) => channel.id !== msg.channelId));
+        if (selectedChannel === msg.channelId) setSelectedChannel('general');
       } else if (msg.type === 'reminder:update') {
         setRemindersByAgent((prev) => {
           const current = prev[msg.reminder.agentId] ?? [];
@@ -144,6 +161,19 @@ export function App() {
     upsertTask(await messageToTask(messageId, { creatorName: 'user' }));
   };
 
+  const handleCreateChannel = async (name: string) => {
+    const channel = await createChannel(name);
+    setChannels((prev) => prev.some((candidate) => candidate.id === channel.id) ? prev : [...prev, channel]);
+    setSelectedView('channel');
+    setSelectedChannel(channel.id);
+  };
+
+  const handleDeleteChannel = async (id: string) => {
+    await deleteChannel(id);
+    setChannels((prev) => prev.filter((channel) => channel.id !== id));
+    if (selectedChannel === id) setSelectedChannel('general');
+  };
+
   const selectedChannelObj = channels.find((c) => c.id === selectedChannel);
   const selectedAgent = selectedAgentId ? agents.find((a) => a.id === selectedAgentId) : undefined;
 
@@ -160,7 +190,10 @@ export function App() {
         hubVersion={hubVersion}
         taskCount={tasks.filter((task) => task.status !== 'done').length}
         onSelectTasks={() => { setSelectedView('tasks'); setSelectedAgentId(undefined); }}
+        onOpenSearch={() => setSearchOpen(true)}
         onSelectChannel={(id) => { setSelectedView('channel'); setSelectedChannel(id); setSelectedAgentId(undefined); }}
+        onCreateChannel={handleCreateChannel}
+        onDeleteChannel={handleDeleteChannel}
         onSelectAgent={(id) => { setSelectedAgentId(id); }}
       />
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, minHeight: 0 }}>
@@ -195,6 +228,72 @@ export function App() {
       ) : (
         <AgentPanel agents={agents} machines={machines} onAgentsChange={loadAgents} />
       )}
+      {searchOpen ? (
+        <SearchOverlay
+          onClose={() => setSearchOpen(false)}
+          onSelect={(result) => {
+            setSelectedView('channel');
+            setSelectedChannel(result.channelId);
+            setSearchOpen(false);
+          }}
+        />
+      ) : null}
     </div>
+  );
+}
+
+function SearchOverlay({ onClose, onSelect }: { onClose: () => void; onSelect: (result: SearchMessageResult) => void }) {
+  const [query, setQuery] = useState('');
+  const [results, setResults] = useState<SearchMessageResult[]>([]);
+
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  useEffect(() => {
+    const trimmed = query.trim();
+    if (!trimmed) {
+      setResults([]);
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      searchMessages(trimmed, 20).then((data) => setResults(data.messages)).catch(() => setResults([]));
+    }, 300);
+    return () => window.clearTimeout(timer);
+  }, [query]);
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.35)', display: 'grid', placeItems: 'start center', paddingTop: 80, zIndex: 10 }}>
+      <div style={{ width: 'min(720px, calc(100vw - 32px))', maxHeight: 'calc(100vh - 120px)', overflow: 'auto', background: '#fafaf5', border: '3px solid #000', fontFamily: "'Courier New', monospace" }}>
+        <input autoFocus value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search messages" style={{ width: '100%', boxSizing: 'border-box', border: 'none', borderBottom: '3px solid #000', padding: 14, fontSize: 18, fontFamily: "'Courier New', monospace", fontWeight: 700 }} />
+        <div style={{ padding: 10, display: 'grid', gap: 8 }}>
+          {results.length === 0 ? <div style={{ border: '2px dashed #999', padding: 18, textAlign: 'center', fontSize: 12 }}>[ NO RESULTS ]</div> : null}
+          {results.map((result) => (
+            <button key={result.id} onClick={() => onSelect(result)} style={{ border: '2px solid #000', background: '#fff', padding: 10, textAlign: 'left', fontFamily: "'Courier New', monospace", cursor: 'pointer' }}>
+              <div style={{ fontSize: 11, fontWeight: 700, marginBottom: 6 }}>#{result.channelName} / {new Date(result.createdAt).toLocaleString()}</div>
+              <div style={{ fontSize: 13, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{highlightText(result.content, query)}</div>
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function highlightText(text: string, query: string) {
+  const trimmed = query.trim();
+  if (!trimmed) return text;
+  const index = text.toLowerCase().indexOf(trimmed.toLowerCase());
+  if (index === -1) return text;
+  return (
+    <>
+      {text.slice(0, index)}
+      <mark style={{ background: '#FFD700', color: '#000' }}>{text.slice(index, index + trimmed.length)}</mark>
+      {text.slice(index + trimmed.length)}
+    </>
   );
 }

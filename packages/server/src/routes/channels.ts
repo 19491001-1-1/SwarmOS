@@ -1,9 +1,36 @@
 import type { FastifyInstance } from 'fastify';
+import { nanoid } from 'nanoid';
+import { CreateChannelRequestSchema, SearchRequestSchema } from '@mini-slock/shared';
 import { getStore } from '../db.js';
+import { eventBus } from '../events.js';
 
 export async function channelRoutes(app: FastifyInstance) {
   app.get('/api/channels', async () => {
     return getStore().listChannels();
+  });
+
+  app.post('/api/channels', async (req, reply) => {
+    const parsed = CreateChannelRequestSchema.safeParse(req.body);
+    if (!parsed.success) return reply.status(400).send({ error: 'Invalid request body', issues: parsed.error.issues });
+    const existing = (await getStore().listChannels()).find((channel) => channel.name === parsed.data.name);
+    if (existing) return reply.status(409).send({ error: 'Channel name already exists' });
+    const channel = await getStore().createChannel(nanoid(), parsed.data.name);
+    eventBus.emit({ type: 'channel:created', channel });
+    return reply.status(201).send(channel);
+  });
+
+  app.delete<{ Params: { id: string } }>('/api/channels/:id', async (req, reply) => {
+    if (req.params.id === 'general') return reply.status(400).send({ error: 'Cannot delete general channel' });
+    const deleted = await getStore().deleteChannel(req.params.id);
+    if (!deleted) return reply.status(404).send({ error: 'Channel not found' });
+    eventBus.emit({ type: 'channel:deleted', channelId: req.params.id });
+    return reply.status(204).send();
+  });
+
+  app.get<{ Querystring: { q?: string; limit?: string } }>('/api/search', async (req, reply) => {
+    const parsed = SearchRequestSchema.safeParse(req.query);
+    if (!parsed.success) return reply.status(400).send({ error: 'Invalid query', issues: parsed.error.issues });
+    return { messages: await getStore().searchMessages(parsed.data.q, parsed.data.limit) };
   });
 
   app.get<{ Params: { id: string } }>('/api/channels/:id/messages', async (req, reply) => {

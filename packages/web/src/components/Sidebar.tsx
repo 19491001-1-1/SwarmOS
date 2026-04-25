@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import type { Channel, Agent, Machine, VersionInfo } from '../api.js';
 
 type Props = {
@@ -11,7 +12,10 @@ type Props = {
   hubVersion?: VersionInfo;
   taskCount: number;
   onSelectTasks: () => void;
+  onOpenSearch: () => void;
   onSelectChannel: (id: string) => void;
+  onCreateChannel: (name: string) => Promise<void>;
+  onDeleteChannel: (id: string) => Promise<void>;
   onSelectAgent: (id: string) => void;
 };
 
@@ -49,7 +53,18 @@ const S = {
   },
 };
 
-export function Sidebar({ channels, agents, machines, selectedView, selectedChannel, selectedAgentId, webVersion, hubVersion, taskCount, onSelectTasks, onSelectChannel, onSelectAgent }: Props) {
+export function Sidebar({ channels, agents, machines, selectedView, selectedChannel, selectedAgentId, webVersion, hubVersion, taskCount, onSelectTasks, onOpenSearch, onSelectChannel, onCreateChannel, onDeleteChannel, onSelectAgent }: Props) {
+  const [creating, setCreating] = useState(false);
+  const [channelName, setChannelName] = useState('');
+
+  const submitChannel = async () => {
+    const name = channelName.trim();
+    if (!name) return;
+    await onCreateChannel(name);
+    setChannelName('');
+    setCreating(false);
+  };
+
   return (
     <div style={S.sidebar}>
       <div style={S.workspaceName}>
@@ -60,6 +75,10 @@ export function Sidebar({ channels, agents, machines, selectedView, selectedChan
       </div>
 
       <div style={{ padding: '4px 0' }}>
+        <button onClick={onOpenSearch} style={navButtonStyle(false)}>
+          <span style={{ flex: 1 }}>SEARCH</span>
+          <span style={{ fontSize: 10 }}>⌘K</span>
+        </button>
         <button onClick={onSelectTasks} style={{
           display: 'flex',
           alignItems: 'center',
@@ -82,13 +101,32 @@ export function Sidebar({ channels, agents, machines, selectedView, selectedChan
           <span style={{ fontSize: 10 }}>{taskCount}</span>
         </button>
 
-        <SectionHeader label="CHANNELS" count={channels.length} />
+        <SectionHeader label="CHANNELS" count={channels.length} action={<button onClick={() => setCreating(true)} style={miniButtonStyle}>+</button>} />
+        {creating ? (
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 4, margin: '2px 8px 6px' }}>
+            <input
+              autoFocus
+              value={channelName}
+              onChange={(event) => setChannelName(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') submitChannel();
+                if (event.key === 'Escape') setCreating(false);
+              }}
+              style={{ border: '2px solid #000', padding: '5px 6px', fontFamily: "'Courier New', monospace", fontSize: 12 }}
+            />
+            <button onClick={submitChannel} style={miniButtonStyle}>OK</button>
+          </div>
+        ) : null}
         {channels.map((ch) => (
           <ChannelItem
             key={ch.id}
+            id={ch.id}
             name={ch.name}
             active={selectedView === 'channel' && selectedChannel === ch.id}
             onClick={() => onSelectChannel(ch.id)}
+            onDelete={ch.id === 'general' ? undefined : async () => {
+              if (window.confirm(`Delete #${ch.name}?`)) await onDeleteChannel(ch.id);
+            }}
           />
         ))}
 
@@ -170,11 +208,43 @@ function versionTitle(webVersion: VersionInfo, hubVersion?: VersionInfo): string
   return `${web}\n${hub}`;
 }
 
-function SectionHeader({ label, count, style }: { label: string; count: number; style?: React.CSSProperties }) {
+const miniButtonStyle: React.CSSProperties = {
+  border: '2px solid #000',
+  background: '#fff',
+  color: '#000',
+  fontFamily: "'Courier New', monospace",
+  fontWeight: 700,
+  cursor: 'pointer',
+  minWidth: 24,
+  height: 22,
+};
+
+function navButtonStyle(active: boolean): React.CSSProperties {
+  return {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 7,
+    width: 'calc(100% - 8px)',
+    margin: '6px 4px 4px',
+    padding: '7px 10px',
+    fontSize: 13,
+    fontFamily: "'Courier New', monospace",
+    fontWeight: 700,
+    border: 'none',
+    borderLeft: active ? '3px solid #000' : '3px solid transparent',
+    borderRight: active ? '3px solid #000' : '3px solid transparent',
+    background: active ? '#000' : '#fff',
+    color: active ? '#FFD700' : '#000',
+    cursor: 'pointer',
+    textAlign: 'left',
+  };
+}
+
+function SectionHeader({ label, count, action, style }: { label: string; count: number; action?: React.ReactNode; style?: React.CSSProperties }) {
   return (
     <div style={{ ...S.sectionHeader, ...style }}>
       <span>{label}</span>
-      {count > 0 && (
+      {action ?? (count > 0 && (
         <span style={{
           fontSize: 10,
           fontWeight: 700,
@@ -186,12 +256,12 @@ function SectionHeader({ label, count, style }: { label: string; count: number; 
         }}>
           {count}
         </span>
-      )}
+      ))}
     </div>
   );
 }
 
-function ChannelItem({ name, active, onClick }: { name: string; active: boolean; onClick: () => void }) {
+function ChannelItem({ id, name, active, onClick, onDelete }: { id: string; name: string; active: boolean; onClick: () => void; onDelete?: () => void }) {
   return (
     <div
       onClick={onClick}
@@ -211,7 +281,19 @@ function ChannelItem({ name, active, onClick }: { name: string; active: boolean;
       }}
     >
       <span style={{ fontSize: 14, opacity: 0.7 }}>#</span>
-      {name}
+      <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{name}</span>
+      {onDelete ? (
+        <button
+          onClick={(event) => {
+            event.stopPropagation();
+            onDelete();
+          }}
+          title={`Delete ${id}`}
+          style={{ border: '1.5px solid #000', background: '#fff', color: '#000', fontWeight: 700, cursor: 'pointer', height: 20, minWidth: 20 }}
+        >
+          x
+        </button>
+      ) : null}
     </div>
   );
 }
