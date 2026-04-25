@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Agent, Machine } from '@mini-slock/shared';
 import { resetAgentStatusForRestart, resolveStartMachineId, toRuntimeConfig } from '../src/agent.js';
+import { resolveAgentReference } from '../src/agentResolve.js';
 
 const agent: Agent = {
   id: 'agent-1',
@@ -83,5 +84,25 @@ describe('resetAgentStatusForRestart', () => {
   it('keeps stable statuses unchanged', () => {
     expect(resetAgentStatusForRestart('inactive')).toBe('inactive');
     expect(resetAgentStatusForRestart('error')).toBe('error');
+  });
+});
+
+describe('resolveAgentReference', () => {
+  const directory: Agent[] = [
+    agent,
+    { ...agent, id: 'agent-111', name: 'pm-111', displayName: '产品经理', description: 'Product manager for task triage' },
+    { ...agent, id: 'agent-222', name: 'engineer', displayName: '工程师', description: 'Implementation specialist' },
+  ];
+
+  it('resolves by display name before fallback candidates', () => {
+    const result = resolveAgentReference('产品经理', directory);
+    expect(result.match?.id).toBe('agent-111');
+    expect(result.confidence).toBe('exact_display_name');
+  });
+
+  it('returns description hint candidates for role-like queries', () => {
+    const result = resolveAgentReference('task triage', directory);
+    expect(result.match?.id).toBe('agent-111');
+    expect(result.confidence).toBe('description_hint');
   });
 });

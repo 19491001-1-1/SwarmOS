@@ -23,7 +23,10 @@ export async function delegateAgent(input: {
       toAgentId: input.toAgentId,
       content: input.content,
       status: 'failed',
-      error: 'Target agent not found',
+      error: JSON.stringify({
+        message: 'Target agent not found',
+        resolve: await store.resolveAgent(input.toAgentId),
+      }),
     });
     eventBus.emit({ type: 'agent:delegation', delegation: failed });
     return failed;

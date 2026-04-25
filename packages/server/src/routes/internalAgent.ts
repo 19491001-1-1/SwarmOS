@@ -3,6 +3,7 @@ import { nanoid } from 'nanoid';
 import {
   createVersionInfo,
   InternalAgentDelegateRequestSchema,
+  InternalAgentResolveRequestSchema,
   InternalDmSendRequestSchema,
   InternalMessageReadRequestSchema,
   InternalMessageSendRequestSchema,
@@ -52,6 +53,14 @@ export async function internalAgentRoutes(app: FastifyInstance) {
         build: process.env.XOXIANG_BUILD_ID ?? process.env.GITHUB_RUN_ID,
       }),
     };
+  });
+
+  app.get<{ Params: { agentId: string }; Querystring: { query?: string } }>('/internal/agent/:agentId/agents/resolve', async (req, reply) => {
+    const agent = await getStore().getAgent(req.params.agentId);
+    if (!agent) return reply.status(404).send({ error: 'Agent not found' });
+    const parsed = InternalAgentResolveRequestSchema.safeParse(req.query);
+    if (!parsed.success) return reply.status(400).send({ error: 'Invalid query', issues: parsed.error.issues });
+    return getStore().resolveAgent(parsed.data.query);
   });
 
   app.post<{ Params: { agentId: string } }>('/internal/agent/:agentId/messages/send', async (req, reply) => {

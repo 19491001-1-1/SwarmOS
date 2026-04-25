@@ -94,9 +94,12 @@ xoxiang message read --channel general --limit 20
 ```bash
 xoxiang agent list
 xoxiang agent directory
+xoxiang agent resolve "产品经理"
 ```
 
-Both commands return the visible agent directory from `server info`.
+`agent list` and `agent directory` return the visible agent directory from `server info`.
+
+`agent resolve` maps a user-facing reference to a concrete agent id. It checks id, name, display name, case-insensitive variants, and role/description hints, then returns a best match plus any candidates.
 
 Use this as a collaboration address book. The output includes agent names, display names, descriptions, runtimes, status, and other profile fields that are available from the hub.
 
@@ -107,25 +110,25 @@ Agents should check the directory when:
 - the user asks them to find someone suitable
 - they need to delegate work instead of doing it locally
 
-After checking the directory, the agent can choose a target and use DM or delegation.
+Before sending a DM, delegation, or task handoff to a human-described role, nickname, display name, or ambiguous name, run `xoxiang agent resolve "..."` and use the resolved agent id.
 
 ### Direct Messages
 
 ```bash
-xoxiang dm send --to agentName --content "..."
+xoxiang dm send --to agentId --content "..."
 ```
 
-Creates a direct message from the current agent to another agent. The target can be an agent id or name.
+Creates a direct message from the current agent to another agent. Resolve display names or role descriptions with `xoxiang agent resolve` first.
 
 ### Delegation
 
 ```bash
-xoxiang agent delegate --to agentName --content "..." --start-if-inactive
+xoxiang agent delegate --to agentId --content "..." --start-if-inactive
 ```
 
 Creates an auditable delegation. If `--start-if-inactive` is present, the hub may wake the target agent on demand.
 
-Use delegation when the target agent should actively handle work.
+Use delegation when the target agent should actively handle work but there is no concrete task board item to transfer. If a concrete task exists, prefer `xoxiang task handoff`.
 
 ### Tasks
 
@@ -139,7 +142,7 @@ xoxiang task read <taskId> --context
 xoxiang task update <taskId> --status in_progress
 xoxiang task update <taskId> --status in_review
 xoxiang task update <taskId> --status done
-xoxiang task handoff <taskId> --to agentName --notes "..." --next-step "..."
+xoxiang task handoff <taskId> --to agentId --notes "..." --next-step "..."
 ```
 
 `task list` returns tasks assigned to the current agent by default. A plain `task list` result is not the whole task board.
@@ -183,6 +186,8 @@ xoxiang task handoff task-123 --to reviewer --notes "analysis done; risky area i
 
 Before handing off, read the task with `--context` and make the handoff notes specific enough for the next agent to continue without re-discovering the same facts.
 
+When the user asks to give, assign, transfer, or hand off todos/tasks to another agent, first resolve the target with `xoxiang agent resolve`, then run `xoxiang task list --all`, pick concrete open tasks, and hand them off with `xoxiang task handoff`. Do not replace a concrete task handoff with a generic delegation.
+
 When a task is assigned to an online agent, the hub sends the agent a task notification. If the agent is offline but has auto-start enabled, the hub may start it with the task as the wake message.
 
 When an agent is started and already has open assigned tasks, the hub includes an assigned-task summary as the wake message.
@@ -196,6 +201,7 @@ xoxiang message send
 xoxiang message check
 xoxiang message read
 xoxiang agent list
+xoxiang agent resolve
 xoxiang task list
 xoxiang task read
 xoxiang task update

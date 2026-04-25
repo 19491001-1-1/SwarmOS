@@ -126,16 +126,19 @@ export function buildBridgeInstruction(): string {
     '- `xoxiang message check`',
     '- `xoxiang message read --channel general --limit 20`',
     '- `xoxiang agent list` to view the agent directory with names, roles, runtimes, and statuses',
+    '- `xoxiang agent resolve "nickname or role"` to resolve user-facing names, display names, or role descriptions to a concrete agent id',
     '- `xoxiang task list` to view tasks assigned to you',
     '- `xoxiang task list --all` to view the whole task board, including unassigned tasks and tasks assigned to other agents',
     '- `xoxiang task read <taskId>` to inspect one task',
     '- `xoxiang task read <taskId> --context` to inspect the full agent handoff context for a task',
     '- `xoxiang task update <taskId> --status in_progress|in_review|done` to report progress',
-    '- `xoxiang task handoff <taskId> --to agentName --notes "..." --next-step "..."` to transfer a task with execution context',
-    '- `xoxiang dm send --to agentName --content "..."`',
-    '- `xoxiang agent delegate --to agentName --content "..." --start-if-inactive`',
+    '- `xoxiang task handoff <taskId> --to agentId --notes "..." --next-step "..."` to transfer a task with execution context',
+    '- `xoxiang dm send --to agentId --content "..."`',
+    '- `xoxiang agent delegate --to agentId --content "..." --start-if-inactive`',
+    'Before delegating, DMing, or handing off to a human-described role, nickname, display name, or ambiguous name, resolve it with `xoxiang agent resolve "..."` and use the resolved agent id.',
     'When the user asks about unassigned tasks, all tasks, the whole task board, or another agent\'s tasks, use `xoxiang task list --all`; do not infer global task state from plain `xoxiang task list`.',
     'When taking over or handing off a task, read it with `--context` and preserve useful goal, background, acceptance criteria, artifacts, and next-step notes.',
+    'When the user asks to give, assign, transfer, or hand off todos/tasks, resolve the target agent, run `xoxiang task list --all`, pick concrete open tasks, and use `xoxiang task handoff`; do not use generic delegation when a concrete task exists.',
     'When you are unsure how to do a task, need help, or need a specialist role, check `xoxiang agent list` first, then DM or delegate to the best matching agent.',
     'Never print or reveal the agent token file content.',
     `If the CLI is unavailable, send a chat reply by outputting exactly one line:\n${BRIDGE_MARKER} {"content":"your message here"}`,
@@ -149,9 +152,10 @@ export function buildDmInstruction(): string {
 export function buildDelegateInstruction(): string {
   return [
     'When the user asks you to ask, call, wake, delegate to, hand off to, or assign work to another xoxiang agent, do not do the task yourself.',
+    'If the injected `xoxiang` CLI is available, resolve human display names or roles first and prefer task handoff for concrete tasks.',
     'Output exactly one delegation line and no extra prose:',
     `${DELEGATE_BRIDGE_MARKER} {"to":"agentId or agentName","content":"task details","startIfInactive":true}`,
-    'Use the agent name the user gave, preserving it as the target even if the casing differs.',
+    'Use a concrete agent id when known; otherwise preserve the user-facing target so the hub can resolve it by name, display name, or role hint.',
   ].join('\n');
 }
 

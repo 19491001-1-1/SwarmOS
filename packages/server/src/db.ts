@@ -5,6 +5,7 @@ import { drizzle, type LibSQLDatabase } from 'drizzle-orm/libsql';
 import { createClient, type Client } from '@libsql/client';
 import { asc, desc, eq, inArray, or } from 'drizzle-orm';
 import type { Channel, Message, Machine, Agent, RuntimeId, AgentStatus, AgentActivity, DirectMessage, DirectMessageThread, AgentDelegation, AgentTokenInfo, Task, TaskStatus } from '@mini-slock/shared';
+import { resolveAgentReference } from '@mini-slock/hub-core';
 import { activities, agentDelegations, agentTokens, agents, channels, directMessages, machines, messages, tasks } from './schema.js';
 
 type Database = LibSQLDatabase<typeof import('./schema.js')>;
@@ -557,12 +558,12 @@ export class SqliteStore {
 
   async findAgentByNameOrId(value: string): Promise<Agent | undefined> {
     await initDb();
-    const byId = await this.getAgent(value);
-    if (byId) return byId;
-    const [agent] = await getDb().select().from(agents).where(eq(agents.name, value)).limit(1);
-    if (agent) return toAgent(agent);
-    const normalized = value.toLowerCase();
-    return (await this.listAgents()).find((candidate) => candidate.name.toLowerCase() === normalized);
+    return resolveAgentReference(value, await this.listAgents()).match;
+  }
+
+  async resolveAgent(value: string) {
+    await initDb();
+    return resolveAgentReference(value, await this.listAgents());
   }
 
   async createAgent(agent: Agent): Promise<Agent> {
