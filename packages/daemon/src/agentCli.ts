@@ -135,6 +135,47 @@ function parseCommand(argv: string[]): ParsedCommand {
       },
     };
   }
+  if (group === 'goal' && action === 'list') {
+    const opts = parseFlags(rest);
+    const params = new URLSearchParams();
+    if (typeof opts.channel === 'string') params.set('channel', opts.channel);
+    if (typeof opts.status === 'string') params.set('status', opts.status);
+    const query = params.toString();
+    return { method: 'GET', path: `/goals${query ? `?${query}` : ''}` };
+  }
+  if (group === 'goal' && action === 'read') {
+    const goalId = required(rest[0], 'goal id');
+    if (rest.length > 1) throw new Error(`unexpected argument: ${rest[1]}`);
+    return { method: 'GET', path: `/goals/${encodeURIComponent(goalId)}` };
+  }
+  if (group === 'goal' && action === 'create') {
+    const opts = parseFlags(rest);
+    return {
+      method: 'POST',
+      path: '/goals',
+      body: {
+        channel: opts.channel ?? 'general',
+        objective: required(opts.objective, '--objective'),
+        background: splitList(opts.background),
+        successCriteria: splitList(opts.success ?? opts['success-criteria']),
+        constraints: splitList(opts.constraint ?? opts.constraints),
+        assumptions: splitList(opts.assumption ?? opts.assumptions),
+        risks: splitList(opts.risk ?? opts.risks),
+      },
+    };
+  }
+  if (group === 'goal' && action === 'create-tasks') {
+    const goalId = required(rest[0], 'goal id');
+    const opts = parseFlags(rest.slice(1));
+    return {
+      method: 'POST',
+      path: `/goals/${encodeURIComponent(goalId)}/tasks`,
+      body: {
+        creatorName: typeof opts.creator === 'string' ? opts.creator : 'user',
+        tasks: parseJsonArray(required(opts['tasks-json'], '--tasks-json')),
+      },
+    };
+  }
   throw new Error('unknown command');
 }
 
@@ -177,6 +218,17 @@ function required(value: string | boolean | undefined, flag: string): string {
 
 function stringFlag(value: string | boolean | undefined, fallback: string): string {
   return typeof value === 'string' ? value : fallback;
+}
+
+function splitList(value: string | boolean | undefined): string[] {
+  if (typeof value !== 'string') return [];
+  return value.split('|').map((item) => item.trim()).filter(Boolean);
+}
+
+function parseJsonArray(value: string): unknown[] {
+  const parsed = JSON.parse(value) as unknown;
+  if (!Array.isArray(parsed)) throw new Error('--tasks-json must be a JSON array');
+  return parsed;
 }
 
 function formatOutput(value: unknown): string {

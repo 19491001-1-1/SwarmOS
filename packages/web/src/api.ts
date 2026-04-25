@@ -22,7 +22,10 @@ export type AgentDelegation = { id: string; fromAgentId: string; toAgentId: stri
 export type Machine = { id: string; hostname: string; os: string; runtimes: string[]; status: string; connectedAt: string };
 export type VersionInfo = { component: string; version: string; commit?: string; build?: string };
 export type TaskStatus = 'todo' | 'in_progress' | 'in_review' | 'done';
-export type Task = { id: string; channelId: string; messageId?: string; title: string; status: TaskStatus; creatorName: string; assigneeId?: string; createdAt: string; updatedAt: string };
+export type GoalBriefStatus = 'draft' | 'confirmed' | 'cancelled' | 'completed';
+export type TaskContext = { goalId?: string; goalObjective?: string; goal?: string; background?: string; acceptanceCriteria?: string[]; constraints?: string[]; assumptions?: string[]; risks?: string[]; dependencies?: string[]; sourceMessageIds?: string[]; artifacts?: string[]; requesterAgentId?: string; previousAgentId?: string; handoffNotes?: string[]; privateNotes?: string[] };
+export type Task = { id: string; channelId: string; messageId?: string; title: string; status: TaskStatus; creatorName: string; assigneeId?: string; context?: TaskContext; createdAt: string; updatedAt: string };
+export type GoalBrief = { id: string; channelId: string; sourceMessageId?: string; requesterName: string; objective: string; background: string[]; successCriteria: string[]; constraints: string[]; assumptions: string[]; risks: string[]; status: GoalBriefStatus; createdAt: string; updatedAt: string };
 export type ReminderStatus = 'pending' | 'triggered' | 'cancelled';
 export type Reminder = { id: string; agentId: string; channelId: string; message: string; triggerAt: string; status: ReminderStatus; createdAt: string };
 export type AuthWhoami = { authenticated: boolean; mode: 'token' | 'anonymous' };
@@ -251,6 +254,36 @@ export async function messageToTask(messageId: string, data: { assigneeId?: stri
     headers: authHeaders({ 'Content-Type': 'application/json' }),
     body: JSON.stringify(data),
   });
+  return r.json();
+}
+
+export async function messageToGoal(messageId: string, data: { requesterName?: string; objective?: string; background?: string[]; successCriteria?: string[]; constraints?: string[]; assumptions?: string[]; risks?: string[] } = {}): Promise<GoalBrief> {
+  const r = await apiFetch(`${API_BASE}/api/messages/${messageId}/to-goal`, {
+    method: 'POST',
+    headers: authHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(data),
+  });
+  if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error ?? 'Create goal failed');
+  return r.json();
+}
+
+export async function patchGoal(goalId: string, data: Partial<Pick<GoalBrief, 'objective' | 'background' | 'successCriteria' | 'constraints' | 'assumptions' | 'risks' | 'status'>>): Promise<GoalBrief> {
+  const r = await apiFetch(`${API_BASE}/api/goals/${goalId}`, {
+    method: 'PATCH',
+    headers: authHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(data),
+  });
+  if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error ?? 'Update goal failed');
+  return r.json();
+}
+
+export async function createGoalTasks(goalId: string, data: { creatorName?: string; tasks: Array<{ title: string; assigneeId?: string; dependencies?: string[]; acceptanceCriteria?: string[]; artifacts?: string[] }> }): Promise<{ tasks: Task[] }> {
+  const r = await apiFetch(`${API_BASE}/api/goals/${goalId}/tasks`, {
+    method: 'POST',
+    headers: authHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(data),
+  });
+  if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error ?? 'Create goal tasks failed');
   return r.json();
 }
 

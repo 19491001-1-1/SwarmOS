@@ -163,7 +163,16 @@ function TaskCard({ task, agents, channels, onStatus, onDelete, compact = false 
       <div style={{ display: 'flex', gap: 8, marginTop: 8, flexWrap: 'wrap', fontSize: 11 }}>
         <span>#{channel?.name ?? task.channelId}</span>
         <span>{assignee ? `@${assignee.displayName ?? assignee.name}` : '@unassigned'}</span>
+        {task.context?.goalObjective ? <span style={{ fontWeight: 700 }}>GOAL: {task.context.goalObjective}</span> : null}
       </div>
+      {task.context?.acceptanceCriteria?.length ? (
+        <div style={{ marginTop: 8, border: '1.5px dashed #777', padding: 7, fontSize: 11, lineHeight: 1.35 }}>
+          <strong>ACCEPTANCE</strong>
+          <ul style={{ margin: '4px 0 0 16px', padding: 0 }}>
+            {task.context.acceptanceCriteria.slice(0, 3).map((item) => <li key={item}>{item}</li>)}
+          </ul>
+        </div>
+      ) : null}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 4, marginTop: 10 }}>
         {STATUSES.map((status) => (
           <button

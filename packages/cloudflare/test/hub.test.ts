@@ -193,6 +193,28 @@ describe('agent internal API', () => {
         handoffNotes: [expect.stringContaining('cloudflare handoff')],
       },
     });
+
+    const internalGoalCreated = await SELF.fetch(`https://hub.test/internal/agent/${agent.id}/goals`, {
+      method: 'POST',
+      headers: internalHeaders,
+      body: JSON.stringify({ channel: 'general', objective: 'cloudflare internal goal', successCriteria: ['tasks have context'] }),
+    });
+    expect(internalGoalCreated.status).toBe(201);
+    const internalGoal = (await internalGoalCreated.json()) as { id: string };
+
+    const internalGoals = await SELF.fetch(`https://hub.test/internal/agent/${agent.id}/goals?status=draft`, { headers: internalHeaders });
+    expect(internalGoals.status).toBe(200);
+    expect((await internalGoals.json()) as Array<{ id: string }>).toContainEqual(expect.objectContaining({ id: internalGoal.id }));
+
+    const internalGoalTasks = await SELF.fetch(`https://hub.test/internal/agent/${agent.id}/goals/${internalGoal.id}/tasks`, {
+      method: 'POST',
+      headers: internalHeaders,
+      body: JSON.stringify({ tasks: [{ title: 'cloudflare goal task', acceptanceCriteria: ['tasks have context'] }] }),
+    });
+    expect(internalGoalTasks.status).toBe(201);
+    expect(await internalGoalTasks.json()).toMatchObject({
+      tasks: [expect.objectContaining({ context: expect.objectContaining({ goalId: internalGoal.id, acceptanceCriteria: ['tasks have context'] }) })],
+    });
     daemon.close();
   });
 });
@@ -323,6 +345,45 @@ describe('input validation', () => {
     });
     expect(converted.status).toBe(201);
     expect(await converted.json()).toMatchObject({ messageId: msg.id, title: msg.content });
+  });
+
+  it('supports goal brief CRUD, message conversion, and task breakdown', async () => {
+    const message = await SELF.fetch('https://hub.test/api/channels/general/messages', {
+      method: 'POST',
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ senderName: 'user', content: `plan v1 goal ${crypto.randomUUID()}` }),
+    });
+    const msg = (await message.json()) as { id: string; content: string };
+    const goalCreated = await SELF.fetch(`https://hub.test/api/messages/${msg.id}/to-goal`, {
+      method: 'POST',
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ requesterName: 'user', successCriteria: ['agent tasks are ready'] }),
+    });
+    expect(goalCreated.status).toBe(201);
+    const goal = (await goalCreated.json()) as { id: string; objective: string };
+    expect(goal.objective).toBe(msg.content);
+
+    const patched = await SELF.fetch(`https://hub.test/api/goals/${goal.id}`, {
+      method: 'PATCH',
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ status: 'confirmed', constraints: ['test env only'] }),
+    });
+    expect(patched.status).toBe(200);
+    expect(await patched.json()).toMatchObject({ status: 'confirmed', constraints: ['test env only'] });
+
+    const breakdown = await SELF.fetch(`https://hub.test/api/goals/${goal.id}/tasks`, {
+      method: 'POST',
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ creatorName: 'user', tasks: [{ title: 'write v1 goal plan' }] }),
+    });
+    expect(breakdown.status).toBe(201);
+    expect(await breakdown.json()).toMatchObject({
+      tasks: [expect.objectContaining({ context: expect.objectContaining({ goalId: goal.id, goalObjective: msg.content }) })],
+    });
+
+    const read = await SELF.fetch(`https://hub.test/api/goals/${goal.id}`, { headers: authHeaders() });
+    expect(read.status).toBe(200);
+    expect((await read.json()) as { tasks: Array<{ title: string }> }).toMatchObject({ tasks: [expect.objectContaining({ title: 'write v1 goal plan' })] });
   });
 
   it('updates profile fields and stores direct messages', async () => {

@@ -3,6 +3,9 @@ import { nanoid } from 'nanoid';
 import {
   createVersionInfo,
   CreateReminderRequestSchema,
+  InternalGoalCreateRequestSchema,
+  InternalGoalCreateTasksRequestSchema,
+  InternalGoalListRequestSchema,
   InternalAgentDelegateRequestSchema,
   InternalAgentResolveRequestSchema,
   InternalDmSendRequestSchema,
@@ -174,6 +177,90 @@ export async function internalAgentRoutes(app: FastifyInstance) {
       assigneeId: parsed.data.all ? undefined : agent.id,
     });
     return tasks;
+  });
+
+  app.get<{ Params: { agentId: string }; Querystring: { channel?: string; status?: string } }>('/internal/agent/:agentId/goals', async (req, reply) => {
+    const store = getStore();
+    const agent = await store.getAgent(req.params.agentId);
+    if (!agent) return reply.status(404).send({ error: 'Agent not found' });
+    const parsed = InternalGoalListRequestSchema.safeParse(req.query);
+    if (!parsed.success) return reply.status(400).send({ error: 'Invalid query', issues: parsed.error.issues });
+    const channel = parsed.data.channel ? await findChannel(parsed.data.channel) : undefined;
+    if (parsed.data.channel && !channel) return reply.status(404).send({ error: 'Channel not found' });
+    return store.listGoals({ channelId: channel?.id, status: parsed.data.status });
+  });
+
+  app.post<{ Params: { agentId: string } }>('/internal/agent/:agentId/goals', async (req, reply) => {
+    const store = getStore();
+    const agent = await store.getAgent(req.params.agentId);
+    if (!agent) return reply.status(404).send({ error: 'Agent not found' });
+    const parsed = InternalGoalCreateRequestSchema.safeParse(req.body);
+    if (!parsed.success) return reply.status(400).send({ error: 'Invalid request body', issues: parsed.error.issues });
+    const channel = await findChannel(parsed.data.channel);
+    if (!channel) return reply.status(404).send({ error: 'Channel not found' });
+    const goal = await store.createGoal({
+      id: nanoid(),
+      channelId: channel.id,
+      requesterName: agent.displayName ?? agent.name,
+      objective: parsed.data.objective,
+      background: parsed.data.background,
+      successCriteria: parsed.data.successCriteria,
+      constraints: parsed.data.constraints,
+      assumptions: parsed.data.assumptions,
+      risks: parsed.data.risks,
+      status: 'draft',
+    });
+    eventBus.emit({ type: 'goal:update', goal });
+    return reply.status(201).send(goal);
+  });
+
+  app.get<{ Params: { agentId: string; goalId: string } }>('/internal/agent/:agentId/goals/:goalId', async (req, reply) => {
+    const store = getStore();
+    const agent = await store.getAgent(req.params.agentId);
+    if (!agent) return reply.status(404).send({ error: 'Agent not found' });
+    const goal = await store.getGoal(req.params.goalId);
+    if (!goal) return reply.status(404).send({ error: 'Goal not found' });
+    const tasks = (await store.listTasks({ channelId: goal.channelId })).filter((task) => task.context?.goalId === goal.id);
+    return { goal, tasks };
+  });
+
+  app.post<{ Params: { agentId: string; goalId: string } }>('/internal/agent/:agentId/goals/:goalId/tasks', async (req, reply) => {
+    const store = getStore();
+    const agent = await store.getAgent(req.params.agentId);
+    if (!agent) return reply.status(404).send({ error: 'Agent not found' });
+    const goal = await store.getGoal(req.params.goalId);
+    if (!goal) return reply.status(404).send({ error: 'Goal not found' });
+    const parsed = InternalGoalCreateTasksRequestSchema.safeParse(req.body);
+    if (!parsed.success) return reply.status(400).send({ error: 'Invalid request body', issues: parsed.error.issues });
+    const tasks = [];
+    for (const draft of parsed.data.tasks) {
+      const task = await store.createTask({
+        id: nanoid(),
+        channelId: goal.channelId,
+        messageId: goal.sourceMessageId,
+        title: draft.title,
+        status: 'todo',
+        creatorName: parsed.data.creatorName,
+        assigneeId: draft.assigneeId,
+        context: {
+          goalId: goal.id,
+          goalObjective: goal.objective,
+          goal: goal.objective,
+          background: goal.background.join('\n'),
+          acceptanceCriteria: draft.acceptanceCriteria.length > 0 ? draft.acceptanceCriteria : goal.successCriteria,
+          constraints: goal.constraints,
+          assumptions: goal.assumptions,
+          risks: goal.risks,
+          dependencies: draft.dependencies,
+          artifacts: draft.artifacts,
+          sourceMessageIds: goal.sourceMessageId ? [goal.sourceMessageId] : undefined,
+        },
+      });
+      eventBus.emit({ type: 'task:update', task });
+      await notifyTaskAssignee(task);
+      tasks.push(task);
+    }
+    return reply.status(201).send({ tasks });
   });
 
   app.get<{ Params: { agentId: string } }>('/internal/agent/:agentId/reminders', async (req, reply) => {

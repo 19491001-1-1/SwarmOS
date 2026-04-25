@@ -47,12 +47,42 @@ export type AgentDelegation = {
 };
 
 export type TaskStatus = 'todo' | 'in_progress' | 'in_review' | 'done';
+export type GoalBriefStatus = 'draft' | 'confirmed' | 'cancelled' | 'completed';
+
+export type GoalBrief = {
+  id: string;
+  channelId: string;
+  sourceMessageId?: string;
+  requesterName: string;
+  objective: string;
+  background: string[];
+  successCriteria: string[];
+  constraints: string[];
+  assumptions: string[];
+  risks: string[];
+  status: GoalBriefStatus;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type GoalTaskDraft = {
+  title: string;
+  assigneeId?: string;
+  dependencies?: string[];
+  acceptanceCriteria?: string[];
+  artifacts?: string[];
+};
 
 export type TaskContext = {
+  goalId?: string;
+  goalObjective?: string;
   goal?: string;
   background?: string;
   acceptanceCriteria?: string[];
   constraints?: string[];
+  assumptions?: string[];
+  risks?: string[];
+  dependencies?: string[];
   sourceMessageIds?: string[];
   artifacts?: string[];
   requesterAgentId?: string;
@@ -257,6 +287,7 @@ export type BrowserEvent =
   | { type: 'agent:activity'; agentId: string; activity: AgentActivity }
   | { type: 'dm:new'; dm: DirectMessage }
   | { type: 'agent:delegation'; delegation: AgentDelegation }
+  | { type: 'goal:update'; goal: GoalBrief }
   | { type: 'task:update'; task: Task }
   | { type: 'reminder:update'; reminder: Reminder }
   | { type: 'machine:update'; machine: Machine };

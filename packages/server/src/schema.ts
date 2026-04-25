@@ -62,6 +62,22 @@ export const tasks = sqliteTable('tasks', {
   updatedAt: text('updated_at').notNull(),
 });
 
+export const goals = sqliteTable('goals', {
+  id: text('id').primaryKey(),
+  channelId: text('channel_id').notNull(),
+  sourceMessageId: text('source_message_id'),
+  requesterName: text('requester_name').notNull(),
+  objective: text('objective').notNull(),
+  background: text('background').notNull(),
+  successCriteria: text('success_criteria').notNull(),
+  constraints: text('constraints').notNull(),
+  assumptions: text('assumptions').notNull(),
+  risks: text('risks').notNull(),
+  status: text('status').notNull(),
+  createdAt: text('created_at').notNull(),
+  updatedAt: text('updated_at').notNull(),
+});
+
 export const reminders = sqliteTable('reminders', {
   id: text('id').primaryKey(),
   agentId: text('agent_id').notNull(),
