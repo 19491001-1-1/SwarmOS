@@ -44,6 +44,8 @@ export type AgentDmCallback = (fromAgentId: string, toAgentId: string, content: 
 export type AgentDelegateCallback = (fromAgentId: string, toAgentId: string, content: string, startIfInactive?: boolean) => void;
 export type AgentCreateTaskCallback = (agentId: string, title: string, channelId?: string, assigneeId?: string) => void;
 export type AgentUpdateTaskCallback = (agentId: string, taskId: string, status: TaskStatus) => void;
+export type AgentSetReminderCallback = (agentId: string, message: string, triggerAt: string, channelId?: string) => void;
+export type AgentCancelReminderCallback = (agentId: string, reminderId: string) => void;
 export type AgentSessionCallback = (agentId: string, sessionId: string) => void;
 
 interface AgentEntry {
@@ -72,6 +74,8 @@ export class AgentProcessManager {
   private onDelegate: AgentDelegateCallback;
   private onCreateTask: AgentCreateTaskCallback;
   private onUpdateTask: AgentUpdateTaskCallback;
+  private onSetReminder: AgentSetReminderCallback;
+  private onCancelReminder: AgentCancelReminderCallback;
   private onSession: AgentSessionCallback;
   private serverUrl: string;
 
@@ -84,6 +88,8 @@ export class AgentProcessManager {
     onDelegate: AgentDelegateCallback = () => {},
     onCreateTask: AgentCreateTaskCallback = () => {},
     onUpdateTask: AgentUpdateTaskCallback = () => {},
+    onSetReminder: AgentSetReminderCallback = () => {},
+    onCancelReminder: AgentCancelReminderCallback = () => {},
     onSession: AgentSessionCallback = () => {},
     serverUrl = 'http://localhost:3000'
   ) {
@@ -95,6 +101,8 @@ export class AgentProcessManager {
     this.onDelegate = onDelegate;
     this.onCreateTask = onCreateTask;
     this.onUpdateTask = onUpdateTask;
+    this.onSetReminder = onSetReminder;
+    this.onCancelReminder = onCancelReminder;
     this.onSession = onSession;
     this.serverUrl = serverUrl;
   }
@@ -378,6 +386,20 @@ export class AgentProcessManager {
       this.appendTranscriptLater(entry, `${this.agentTranscriptName(entry)} -> task:${parsed.taskId}`, parsed.status);
       this.onUpdateTask(entry.agentId, parsed.taskId, parsed.status);
       this.onActivity(entry.agentId, 'sending', `task:${parsed.taskId}`);
+      return true;
+    }
+    if (parsed?.type === 'set_reminder') {
+      console.log(`[daemon] agent ${entry.agentId} set reminder: ${parsed.triggerAt}`);
+      this.appendTranscriptLater(entry, `${this.agentTranscriptName(entry)} -> reminder:set`, `${parsed.triggerAt} ${parsed.message}`);
+      this.onSetReminder(entry.agentId, parsed.message, parsed.triggerAt, parsed.channelId ?? entry.channelId);
+      this.onActivity(entry.agentId, 'sending', 'setting reminder');
+      return true;
+    }
+    if (parsed?.type === 'cancel_reminder') {
+      console.log(`[daemon] agent ${entry.agentId} cancel reminder ${parsed.reminderId}`);
+      this.appendTranscriptLater(entry, `${this.agentTranscriptName(entry)} -> reminder:cancel`, parsed.reminderId);
+      this.onCancelReminder(entry.agentId, parsed.reminderId);
+      this.onActivity(entry.agentId, 'sending', `reminder:${parsed.reminderId}`);
       return true;
     }
     if (parsed?.type === 'session_init') {

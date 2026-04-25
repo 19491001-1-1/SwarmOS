@@ -48,6 +48,8 @@ export type AgentOutputEvent =
   | { type: 'delegate'; toAgentId: string; content: string; startIfInactive?: boolean }
   | { type: 'create_task'; title: string; assigneeId?: string; channelId?: string }
   | { type: 'update_task'; taskId: string; status: TaskStatus }
+  | { type: 'set_reminder'; channelId?: string; message: string; triggerAt: string }
+  | { type: 'cancel_reminder'; reminderId: string }
   | { type: 'activity'; detail: string }
   | { type: 'session_init'; sessionId: string }
   | { type: 'turn_end'; sessionId?: string };

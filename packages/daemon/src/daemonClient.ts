@@ -35,6 +35,8 @@ export class DaemonClient {
       (fromAgentId, toAgentId, content, startIfInactive) => this.sendMessage({ type: 'agent:delegate', fromAgentId, toAgentId, content, startIfInactive }),
       (agentId, title, channelId, assigneeId) => this.sendMessage({ type: 'agent:create_task', agentId, title, channelId, assigneeId }),
       (agentId, taskId, status) => this.sendMessage({ type: 'agent:update_task', agentId, taskId, status }),
+      (agentId, message, triggerAt, channelId) => this.sendMessage({ type: 'agent:set_reminder', agentId, channelId, message, triggerAt }),
+      (agentId, reminderId) => this.sendMessage({ type: 'agent:cancel_reminder', agentId, reminderId }),
       (agentId, sessionId) => this.sendMessage({ type: 'agent:session', agentId, sessionId }),
       options.serverUrl
     );
@@ -100,7 +102,7 @@ export class DaemonClient {
       runtimes: runtimeIds,
       runtimeVersions,
       runningAgents: this.processManager.listRunningAgentIds(),
-      capabilities: ['agent:start', 'agent:stop', 'agent:deliver', 'workspace:read'],
+      capabilities: ['agent:start', 'agent:stop', 'agent:deliver', 'workspace:read', 'reminders'],
     });
   }
 

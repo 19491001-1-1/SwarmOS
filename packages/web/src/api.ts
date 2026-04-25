@@ -18,6 +18,8 @@ export type Machine = { id: string; hostname: string; os: string; runtimes: stri
 export type VersionInfo = { component: string; version: string; commit?: string; build?: string };
 export type TaskStatus = 'todo' | 'in_progress' | 'in_review' | 'done';
 export type Task = { id: string; channelId: string; messageId?: string; title: string; status: TaskStatus; creatorName: string; assigneeId?: string; createdAt: string; updatedAt: string };
+export type ReminderStatus = 'pending' | 'triggered' | 'cancelled';
+export type Reminder = { id: string; agentId: string; channelId: string; message: string; triggerAt: string; status: ReminderStatus; createdAt: string };
 
 function authHeaders(extra?: Record<string, string>): Record<string, string> {
   const headers: Record<string, string> = { ...(extra ?? {}) };
@@ -176,6 +178,29 @@ export async function messageToTask(messageId: string, data: { assigneeId?: stri
     method: 'POST',
     headers: authHeaders({ 'Content-Type': 'application/json' }),
     body: JSON.stringify(data),
+  });
+  return r.json();
+}
+
+export async function getAgentReminders(agentId: string): Promise<Reminder[]> {
+  const r = await fetch(`${API_BASE}/api/agents/${agentId}/reminders`, { headers: authHeaders() });
+  return r.json();
+}
+
+export async function createAgentReminder(agentId: string, data: { channelId?: string; message: string; triggerAt: string }): Promise<Reminder> {
+  const r = await fetch(`${API_BASE}/api/agents/${agentId}/reminders`, {
+    method: 'POST',
+    headers: authHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(data),
+  });
+  return r.json();
+}
+
+export async function cancelReminder(reminderId: string): Promise<Reminder> {
+  const r = await fetch(`${API_BASE}/api/reminders/${reminderId}`, {
+    method: 'PATCH',
+    headers: authHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ status: 'cancelled' }),
   });
   return r.json();
 }

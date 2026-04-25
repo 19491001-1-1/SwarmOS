@@ -10,6 +10,8 @@ import type {
   DirectMessageThread,
   Machine,
   Message,
+  Reminder,
+  ReminderStatus,
   RuntimeId,
   ServerToDaemon,
   Task,
@@ -22,6 +24,7 @@ import {
   CreateAgentDelegationRequestSchema,
   CreateAgentRequestSchema,
   CreateDirectMessageRequestSchema,
+  CreateReminderRequestSchema,
   CreateTaskRequestSchema,
   InternalAgentDelegateRequestSchema,
   InternalAgentResolveRequestSchema,
@@ -34,6 +37,7 @@ import {
   CreateMessageRequestSchema,
   MessageToTaskRequestSchema,
   PatchAgentRequestSchema,
+  PatchReminderRequestSchema,
   PatchTaskRequestSchema,
   TaskStatusSchema,
 } from '@mini-slock/shared';
@@ -75,6 +79,7 @@ export class XoxiangHub extends DurableObject<Env> {
 
   async fetch(request: Request): Promise<Response> {
     if (request.method === 'OPTIONS') return new Response(null, { headers: JSON_HEADERS });
+    this.triggerDueReminders();
 
     const url = new URL(request.url);
     if (request.method === 'GET' && url.pathname === '/api/version') {
@@ -147,6 +152,22 @@ export class XoxiangHub extends DurableObject<Env> {
 
       if (request.method === 'GET' && url.pathname === '/api/agents') {
         return json(this.listAgents());
+      }
+
+      const remindersMatch = url.pathname.match(/^\/api\/agents\/([^/]+)\/reminders$/);
+      if (remindersMatch && request.method === 'GET') {
+        const agentId = decodeURIComponent(remindersMatch[1]);
+        if (!this.getAgent(agentId)) return json({ error: 'Agent not found' }, 404);
+        return json(this.listReminders(agentId));
+      }
+
+      if (remindersMatch && request.method === 'POST') {
+        return this.createUserReminder(decodeURIComponent(remindersMatch[1]), await request.json());
+      }
+
+      const reminderMatch = url.pathname.match(/^\/api\/reminders\/([^/]+)$/);
+      if (reminderMatch && request.method === 'PATCH') {
+        return this.patchReminder(decodeURIComponent(reminderMatch[1]), await request.json());
       }
 
       const dmThreadsMatch = url.pathname.match(/^\/api\/agents\/([^/]+)\/dms$/);
@@ -357,6 +378,31 @@ export class XoxiangHub extends DurableObject<Env> {
         this.broadcast({ type: 'task:update', task });
         this.notifyTaskAssignee(task);
       }
+      return;
+    }
+
+    if (data.type === 'agent:set_reminder') {
+      const channelId = data.channelId ?? 'general';
+      const channel = this.getChannel(channelId);
+      const agent = this.getAgent(data.agentId);
+      if (!channel || !agent) return;
+      const reminder = this.createReminder({
+        id: crypto.randomUUID(),
+        agentId: agent.id,
+        channelId,
+        message: data.message,
+        triggerAt: data.triggerAt,
+        status: 'pending',
+      });
+      this.broadcast({ type: 'reminder:update', reminder });
+      return;
+    }
+
+    if (data.type === 'agent:cancel_reminder') {
+      const reminder = this.getReminder(data.reminderId);
+      if (!reminder || reminder.agentId !== data.agentId) return;
+      const updated = this.updateReminder(data.reminderId, { status: 'cancelled' });
+      if (updated) this.broadcast({ type: 'reminder:update', reminder: updated });
     }
   }
 
@@ -427,6 +473,17 @@ export class XoxiangHub extends DurableObject<Env> {
     } catch {
       // Existing Durable Objects may already have the column.
     }
+    this.ctx.storage.sql.exec(`
+      CREATE TABLE IF NOT EXISTS reminders (
+        id TEXT PRIMARY KEY,
+        agent_id TEXT NOT NULL,
+        channel_id TEXT NOT NULL,
+        message TEXT NOT NULL,
+        trigger_at TEXT NOT NULL,
+        status TEXT NOT NULL,
+        created_at TEXT NOT NULL
+      )
+    `);
     this.ctx.storage.sql.exec(`
       CREATE TABLE IF NOT EXISTS activities (
         id TEXT PRIMARY KEY,
@@ -568,6 +625,34 @@ export class XoxiangHub extends DurableObject<Env> {
     return json(task, 201);
   }
 
+  private createUserReminder(agentId: string, body: unknown): Response {
+    const agent = this.getAgent(agentId);
+    if (!agent) return json({ error: 'Agent not found' }, 404);
+    const parsed = CreateReminderRequestSchema.safeParse(body);
+    if (!parsed.success) return json({ error: 'Invalid request body', issues: parsed.error.issues }, 400);
+    const channel = this.findChannel(parsed.data.channelId);
+    if (!channel) return json({ error: 'Channel not found' }, 404);
+    const reminder = this.createReminder({
+      id: crypto.randomUUID(),
+      agentId,
+      channelId: channel.id,
+      message: parsed.data.message,
+      triggerAt: parsed.data.triggerAt,
+      status: 'pending',
+    });
+    this.broadcast({ type: 'reminder:update', reminder });
+    return json(reminder, 201);
+  }
+
+  private patchReminder(id: string, body: unknown): Response {
+    const parsed = PatchReminderRequestSchema.safeParse(body);
+    if (!parsed.success) return json({ error: 'Invalid request body', issues: parsed.error.issues }, 400);
+    const reminder = this.updateReminder(id, { status: parsed.data.status });
+    if (!reminder) return json({ error: 'Reminder not found' }, 404);
+    this.broadcast({ type: 'reminder:update', reminder });
+    return json(reminder);
+  }
+
   private patchTask(taskId: string, body: unknown): Response {
     const parsed = PatchTaskRequestSchema.safeParse(body);
     if (!parsed.success) return json({ error: 'Invalid request body', issues: parsed.error.issues }, 400);
@@ -684,6 +769,36 @@ export class XoxiangHub extends DurableObject<Env> {
         status: parsed.data.status,
         assigneeId: parsed.data.all ? undefined : agent.id,
       }));
+    }
+
+    if (request.method === 'GET' && path === '/reminders') {
+      return json(this.listReminders(agent.id));
+    }
+
+    if (request.method === 'POST' && path === '/reminders') {
+      const parsed = CreateReminderRequestSchema.safeParse(await request.json());
+      if (!parsed.success) return json({ error: 'Invalid request body', issues: parsed.error.issues }, 400);
+      const channel = this.findChannel(parsed.data.channelId);
+      if (!channel) return json({ error: 'Channel not found' }, 404);
+      const reminder = this.createReminder({
+        id: crypto.randomUUID(),
+        agentId: agent.id,
+        channelId: channel.id,
+        message: parsed.data.message,
+        triggerAt: parsed.data.triggerAt,
+        status: 'pending',
+      });
+      this.broadcast({ type: 'reminder:update', reminder });
+      return json(reminder, 201);
+    }
+
+    const reminderCancelMatch = path.match(/^\/reminders\/([^/]+)\/cancel$/);
+    if (request.method === 'POST' && reminderCancelMatch) {
+      const existing = this.getReminder(decodeURIComponent(reminderCancelMatch[1]));
+      if (!existing || existing.agentId !== agent.id) return json({ error: 'Reminder not found' }, 404);
+      const reminder = this.updateReminder(existing.id, { status: 'cancelled' });
+      if (reminder) this.broadcast({ type: 'reminder:update', reminder });
+      return json(reminder);
     }
 
     const taskMatch = path.match(/^\/tasks\/([^/]+)$/);
@@ -967,6 +1082,16 @@ export class XoxiangHub extends DurableObject<Env> {
     return row ? toTask(row) : undefined;
   }
 
+  private listReminders(agentId?: string): Reminder[] {
+    const rows = this.ctx.storage.sql.exec<Row>('SELECT * FROM reminders ORDER BY trigger_at').toArray().map(toReminder);
+    return rows.filter((reminder) => !agentId || reminder.agentId === agentId);
+  }
+
+  private getReminder(id: string): Reminder | undefined {
+    const row = this.ctx.storage.sql.exec<Row>('SELECT * FROM reminders WHERE id = ? LIMIT 1', id).toArray()[0];
+    return row ? toReminder(row) : undefined;
+  }
+
   private createMessage(message: Omit<Message, 'createdAt'>): Message {
     const created: Message = { ...message, createdAt: new Date().toISOString() };
     this.ctx.storage.sql.exec(
@@ -1000,6 +1125,49 @@ export class XoxiangHub extends DurableObject<Env> {
       created.updatedAt
     );
     return created;
+  }
+
+  private createReminder(reminder: Omit<Reminder, 'createdAt'>): Reminder {
+    const created: Reminder = { ...reminder, createdAt: new Date().toISOString() };
+    this.ctx.storage.sql.exec(
+      `INSERT INTO reminders (id, agent_id, channel_id, message, trigger_at, status, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      created.id,
+      created.agentId,
+      created.channelId,
+      created.message,
+      created.triggerAt,
+      created.status,
+      created.createdAt
+    );
+    return created;
+  }
+
+  private updateReminder(id: string, patch: Partial<Pick<Reminder, 'status'>>): Reminder | undefined {
+    const existing = this.getReminder(id);
+    if (!existing) return undefined;
+    const updated: Reminder = { ...existing, status: patch.status ?? existing.status };
+    this.ctx.storage.sql.exec('UPDATE reminders SET status = ? WHERE id = ?', updated.status, id);
+    return updated;
+  }
+
+  private triggerDueReminders(now = new Date()): void {
+    const due = this.listReminders().filter((reminder) => reminder.status === 'pending' && reminder.triggerAt <= now.toISOString());
+    for (const reminder of due) {
+      const latest = this.getReminder(reminder.id);
+      if (!latest || latest.status !== 'pending') continue;
+      const agent = this.getAgent(reminder.agentId);
+      const message = this.createMessage({
+        id: crypto.randomUUID(),
+        channelId: reminder.channelId,
+        agentId: reminder.agentId,
+        senderName: agent?.displayName ?? agent?.name ?? reminder.agentId,
+        content: reminder.message,
+      });
+      this.broadcast({ type: 'message:new', message });
+      const updated = this.updateReminder(reminder.id, { status: 'triggered' });
+      if (updated) this.broadcast({ type: 'reminder:update', reminder: updated });
+    }
   }
 
   private updateTask(id: string, patch: Partial<Pick<Task, 'status' | 'assigneeId' | 'context'>>): Task | undefined {
@@ -1611,6 +1779,18 @@ function toTask(row: Row): Task {
     context: row.context ? JSON.parse(String(row.context)) as Task['context'] : undefined,
     createdAt: String(row.created_at),
     updatedAt: String(row.updated_at),
+  };
+}
+
+function toReminder(row: Row): Reminder {
+  return {
+    id: String(row.id),
+    agentId: String(row.agent_id),
+    channelId: String(row.channel_id),
+    message: String(row.message),
+    triggerAt: String(row.trigger_at),
+    status: String(row.status) as ReminderStatus,
+    createdAt: String(row.created_at),
   };
 }
 

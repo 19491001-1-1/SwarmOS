@@ -28,6 +28,9 @@ describe('agent MCP bridge', () => {
       'delegate_agent',
       'list_agents',
       'server_info',
+      'schedule_reminder',
+      'list_reminders',
+      'cancel_reminder',
     ]));
   });
 
@@ -41,6 +44,9 @@ describe('agent MCP bridge', () => {
     ['server_info', {}, 'http://hub.test/internal/agent/agent-1/server/info', 'GET', undefined],
     ['list_tasks', { all: true, status: 'todo' }, 'http://hub.test/internal/agent/agent-1/tasks?status=todo&all=true', 'GET', undefined],
     ['update_task_status', { taskId: 'task-1', status: 'done' }, 'http://hub.test/internal/agent/agent-1/tasks/task-1/update', 'POST', { status: 'done' }],
+    ['schedule_reminder', { channelId: 'general', message: 'hello', triggerAt: '2026-04-25T12:00:00.000Z' }, 'http://hub.test/internal/agent/agent-1/reminders', 'POST', { channelId: 'general', message: 'hello', triggerAt: '2026-04-25T12:00:00.000Z' }],
+    ['list_reminders', {}, 'http://hub.test/internal/agent/agent-1/reminders', 'GET', undefined],
+    ['cancel_reminder', { reminderId: 'rem-1' }, 'http://hub.test/internal/agent/agent-1/reminders/rem-1/cancel', 'POST', {}],
   ])('routes %s to the internal agent API', async (name, args, url, method, body) => {
     const fetchImpl = okFetch({ ok: true });
 

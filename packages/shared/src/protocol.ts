@@ -74,6 +74,18 @@ export type Task = {
   updatedAt: string;
 };
 
+export type ReminderStatus = 'pending' | 'triggered' | 'cancelled';
+
+export type Reminder = {
+  id: string;
+  agentId: string;
+  channelId: string;
+  message: string;
+  triggerAt: string;
+  status: ReminderStatus;
+  createdAt: string;
+};
+
 export type AgentTokenInfo = {
   agentId: string;
   token: string;
@@ -149,6 +161,8 @@ export type DaemonToServer =
   | { type: 'agent:delegate'; fromAgentId: string; toAgentId: string; content: string; startIfInactive?: boolean }
   | { type: 'agent:create_task'; agentId: string; title: string; channelId?: string; assigneeId?: string }
   | { type: 'agent:update_task'; agentId: string; taskId: string; status: TaskStatus }
+  | { type: 'agent:set_reminder'; agentId: string; channelId?: string; message: string; triggerAt: string }
+  | { type: 'agent:cancel_reminder'; agentId: string; reminderId: string }
   | { type: 'agent:message'; agentId: string; channelId: string; content: string; inReplyToMessageId?: string }
   | { type: 'agent:deliver:ack'; agentId: string; seq: number }
   | { type: 'workspace:result'; requestId: string; result: WorkspaceEntry | WorkspaceError }
@@ -212,4 +226,5 @@ export type BrowserEvent =
   | { type: 'dm:new'; dm: DirectMessage }
   | { type: 'agent:delegation'; delegation: AgentDelegation }
   | { type: 'task:update'; task: Task }
+  | { type: 'reminder:update'; reminder: Reminder }
   | { type: 'machine:update'; machine: Machine };

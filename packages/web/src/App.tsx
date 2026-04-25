@@ -5,8 +5,8 @@ import { Composer } from './components/Composer.js';
 import { AgentPanel } from './components/AgentPanel.js';
 import { AgentDetailPanel } from './components/AgentDetailPanel.js';
 import { TaskBoard } from './components/TaskBoard.js';
-import type { Channel, Message, Agent, Machine, AgentActivity, VersionInfo, Task } from './api.js';
-import { WEB_COMMIT_SHA, WEB_VERSION, buildWsUrl, getChannels, getMessages, sendMessage, getAgents, getMachines, getAgentActivities, getHubVersion, getTasks, messageToTask } from './api.js';
+import type { Channel, Message, Agent, Machine, AgentActivity, VersionInfo, Task, Reminder } from './api.js';
+import { WEB_COMMIT_SHA, WEB_VERSION, buildWsUrl, getChannels, getMessages, sendMessage, getAgents, getMachines, getAgentActivities, getHubVersion, getTasks, messageToTask, getAgentReminders } from './api.js';
 
 export function App() {
   const [channels, setChannels] = useState<Channel[]>([]);
@@ -16,6 +16,7 @@ export function App() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [hubVersion, setHubVersion] = useState<VersionInfo | undefined>();
   const [activitiesByAgent, setActivitiesByAgent] = useState<Record<string, AgentActivity[]>>({});
+  const [remindersByAgent, setRemindersByAgent] = useState<Record<string, Reminder[]>>({});
   const [selectedView, setSelectedView] = useState<'channel' | 'tasks'>('channel');
   const [selectedChannel, setSelectedChannel] = useState('general');
   const [selectedAgentId, setSelectedAgentId] = useState<string | undefined>();
@@ -63,6 +64,9 @@ export function App() {
     getAgentActivities(selectedAgentId).then((data) => {
       setActivitiesByAgent((prev) => ({ ...prev, [selectedAgentId]: data }));
     });
+    getAgentReminders(selectedAgentId).then((data) => {
+      setRemindersByAgent((prev) => ({ ...prev, [selectedAgentId]: data }));
+    });
   }, [selectedAgentId]);
 
   // WebSocket for real-time updates
@@ -97,6 +101,17 @@ export function App() {
           if (exists) return prev.map((task) => (task.id === msg.task.id ? msg.task : task));
           return [...prev, msg.task];
         });
+      } else if (msg.type === 'reminder:update') {
+        setRemindersByAgent((prev) => {
+          const current = prev[msg.reminder.agentId] ?? [];
+          const exists = current.some((reminder) => reminder.id === msg.reminder.id);
+          return {
+            ...prev,
+            [msg.reminder.agentId]: exists
+              ? current.map((reminder) => (reminder.id === msg.reminder.id ? msg.reminder : reminder))
+              : [...current, msg.reminder],
+          };
+        });
       }
     };
 
@@ -111,6 +126,18 @@ export function App() {
     setTasks((prev) => prev.some((candidate) => candidate.id === task.id)
       ? prev.map((candidate) => (candidate.id === task.id ? task : candidate))
       : [...prev, task]);
+  };
+
+  const upsertReminder = (reminder: Reminder) => {
+    setRemindersByAgent((prev) => {
+      const current = prev[reminder.agentId] ?? [];
+      return {
+        ...prev,
+        [reminder.agentId]: current.some((candidate) => candidate.id === reminder.id)
+          ? current.map((candidate) => (candidate.id === reminder.id ? reminder : candidate))
+          : [...current, reminder],
+      };
+    });
   };
 
   const handleMessageToTask = async (messageId: string) => {
@@ -160,6 +187,8 @@ export function App() {
         <AgentDetailPanel
           agent={selectedAgent}
           activities={activitiesByAgent[selectedAgent.id] ?? []}
+          reminders={remindersByAgent[selectedAgent.id] ?? []}
+          onReminderUpdated={upsertReminder}
           onAgentUpdated={(updated) => setAgents((prev) => prev.map((agent) => (agent.id === updated.id ? updated : agent)))}
           onClose={() => setSelectedAgentId(undefined)}
         />

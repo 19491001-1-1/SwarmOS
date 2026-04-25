@@ -25,7 +25,10 @@ type ToolName =
   | 'list_agents'
   | 'server_info'
   | 'list_tasks'
-  | 'update_task_status';
+  | 'update_task_status'
+  | 'schedule_reminder'
+  | 'list_reminders'
+  | 'cancel_reminder';
 
 const TOOL_NAMES: ToolName[] = [
   'send_message',
@@ -37,6 +40,9 @@ const TOOL_NAMES: ToolName[] = [
   'server_info',
   'list_tasks',
   'update_task_status',
+  'schedule_reminder',
+  'list_reminders',
+  'cancel_reminder',
 ];
 
 export async function runMcpBridgeFromCli(argv: string[], env: BridgeEnv = process.env, io: BridgeIo): Promise<number> {
@@ -172,6 +178,20 @@ function toolToCommand(name: ToolName, args: Record<string, unknown>): ParsedCom
     }
     case 'update_task_status':
       return { method: 'POST', path: `/tasks/${encodeURIComponent(requiredString(args.taskId, 'taskId'))}/update`, body: { status: requiredString(args.status, 'status') } };
+    case 'schedule_reminder':
+      return {
+        method: 'POST',
+        path: '/reminders',
+        body: {
+          channelId: optionalString(args.channelId, 'general'),
+          message: requiredString(args.message, 'message'),
+          triggerAt: requiredString(args.triggerAt, 'triggerAt'),
+        },
+      };
+    case 'list_reminders':
+      return { method: 'GET', path: '/reminders' };
+    case 'cancel_reminder':
+      return { method: 'POST', path: `/reminders/${encodeURIComponent(requiredString(args.reminderId, 'reminderId'))}/cancel`, body: {} };
   }
 }
 
@@ -204,6 +224,10 @@ function toolProperties(name: ToolName): Record<string, unknown> {
       return { channelId: str, status: str, all: bool };
     case 'update_task_status':
       return { taskId: str, status: str };
+    case 'schedule_reminder':
+      return { channelId: str, message: str, triggerAt: str };
+    case 'cancel_reminder':
+      return { reminderId: str };
     default:
       return {};
   }

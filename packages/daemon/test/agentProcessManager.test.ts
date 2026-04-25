@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { AgentProcessManager } from '../src/agentProcessManager.js';
-import { BRIDGE_MARKER } from '../src/bridge/simpleToolBridge.js';
+import { BRIDGE_MARKER, CANCEL_REMINDER_BRIDGE_MARKER, SET_REMINDER_BRIDGE_MARKER } from '../src/bridge/simpleToolBridge.js';
 import { EventEmitter } from 'events';
 import { appendFile, writeFile } from 'fs/promises';
 import { delimiter } from 'path';
@@ -71,6 +71,8 @@ describe('AgentProcessManager', () => {
   let activities: Array<{ agentId: string; type: string; detail?: string }> = [];
   let dms: Array<{ fromAgentId: string; toAgentId: string; content: string }> = [];
   let delegations: Array<{ fromAgentId: string; toAgentId: string; content: string; startIfInactive?: boolean }> = [];
+  let reminders: Array<{ agentId: string; message: string; triggerAt: string; channelId?: string }> = [];
+  let cancelledReminders: Array<{ agentId: string; reminderId: string }> = [];
   let manager: AgentProcessManager;
 
   beforeEach(() => {
@@ -79,13 +81,19 @@ describe('AgentProcessManager', () => {
     activities = [];
     dms = [];
     delegations = [];
+    reminders = [];
+    cancelledReminders = [];
     manager = new AgentProcessManager(
       '/tmp/test-workspaces',
       (agentId, channelId, content) => messages.push({ agentId, channelId, content }),
       (agentId, status) => statuses.push({ agentId, status }),
       (agentId, type, detail) => activities.push({ agentId, type, detail }),
       (fromAgentId, toAgentId, content) => dms.push({ fromAgentId, toAgentId, content }),
-      (fromAgentId, toAgentId, content, startIfInactive) => delegations.push({ fromAgentId, toAgentId, content, startIfInactive })
+      (fromAgentId, toAgentId, content, startIfInactive) => delegations.push({ fromAgentId, toAgentId, content, startIfInactive }),
+      () => {},
+      () => {},
+      (agentId, message, triggerAt, channelId) => reminders.push({ agentId, message, triggerAt, channelId }),
+      (agentId, reminderId) => cancelledReminders.push({ agentId, reminderId })
     );
     vi.clearAllMocks();
   });
@@ -413,6 +421,29 @@ describe('AgentProcessManager', () => {
       expect.stringContaining('bot -> delegate:agent-2: please work')
     );
     expect(activities.some((a) => a.type === 'sending' && a.detail === 'delegating to agent-2')).toBe(true);
+  });
+
+  it('stdout reminder markers are reported as reminder operations', async () => {
+    const fakeProc = createFakeProc([
+      `${SET_REMINDER_BRIDGE_MARKER} {"message":"hello later","triggerAt":"2026-04-25T12:00:00.000Z","channelId":"general"}`,
+      `${CANCEL_REMINDER_BRIDGE_MARKER} {"reminderId":"rem-1"}`,
+    ]);
+    mockSpawn.mockReturnValue(fakeProc);
+
+    await manager.startAgent('agent-1', { runtime: 'claude', name: 'bot' }, 'general');
+    await manager.deliverMessage('agent-1', {
+      id: 'msg-1',
+      channelId: 'general',
+      channelName: 'general',
+      senderName: 'user',
+      content: 'Hello',
+      createdAt: new Date().toISOString(),
+    });
+
+    await new Promise((r) => setTimeout(r, 50));
+
+    expect(reminders).toEqual([{ agentId: 'agent-1', message: 'hello later', triggerAt: '2026-04-25T12:00:00.000Z', channelId: 'general' }]);
+    expect(cancelledReminders).toEqual([{ agentId: 'agent-1', reminderId: 'rem-1' }]);
   });
 
   it('stopAgent kills process', async () => {

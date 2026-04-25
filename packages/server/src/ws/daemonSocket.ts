@@ -168,6 +168,32 @@ export async function daemonSocketHandler(app: FastifyInstance) {
           return;
         }
 
+        if (msg.type === 'agent:set_reminder') {
+          const channelId = msg.channelId ?? 'general';
+          const channel = await store.getChannel(channelId);
+          if (!channel) return;
+          const agent = await store.getAgent(msg.agentId);
+          if (!agent) return;
+          const reminder = await store.createReminder({
+            id: nanoid(),
+            agentId: agent.id,
+            channelId,
+            message: msg.message,
+            triggerAt: msg.triggerAt,
+            status: 'pending',
+          });
+          eventBus.emit({ type: 'reminder:update', reminder });
+          return;
+        }
+
+        if (msg.type === 'agent:cancel_reminder') {
+          const reminder = await store.getReminder(msg.reminderId);
+          if (!reminder || reminder.agentId !== msg.agentId) return;
+          const updated = await store.updateReminder(msg.reminderId, { status: 'cancelled' });
+          if (updated) eventBus.emit({ type: 'reminder:update', reminder: updated });
+          return;
+        }
+
         if (msg.type === 'agent:session') {
           return;
         }

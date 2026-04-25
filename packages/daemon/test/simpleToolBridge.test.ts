@@ -11,10 +11,14 @@ import {
   buildBridgeInstruction,
   CREATE_TASK_BRIDGE_MARKER,
   UPDATE_TASK_BRIDGE_MARKER,
+  SET_REMINDER_BRIDGE_MARKER,
+  CANCEL_REMINDER_BRIDGE_MARKER,
   buildDmInstruction,
   buildDelegateInstruction,
   buildTaskInstruction,
   buildMemoryInstruction,
+  parseReminderLine,
+  parseCancelReminderLine,
 } from '../src/bridge/simpleToolBridge.js';
 
 describe('parseBridgeLine', () => {
@@ -73,6 +77,20 @@ describe('memory instruction', () => {
     expect(instruction).toContain('MEMORY.md');
     expect(instruction).toContain('notes/work-log.md');
     expect(instruction).toContain('Do not write secrets');
+  });
+});
+
+describe('reminder bridge markers', () => {
+  it('parses set reminder lines', () => {
+    expect(parseReminderLine(`${SET_REMINDER_BRIDGE_MARKER} {"message":"hello","triggerAt":"2026-04-25T12:00:00.000Z","channelId":"general"}`)).toEqual({
+      message: 'hello',
+      triggerAt: '2026-04-25T12:00:00.000Z',
+      channelId: 'general',
+    });
+  });
+
+  it('parses cancel reminder lines', () => {
+    expect(parseCancelReminderLine(`${CANCEL_REMINDER_BRIDGE_MARKER} {"reminderId":"rem-1"}`)).toEqual({ reminderId: 'rem-1' });
   });
 });
 
