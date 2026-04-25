@@ -1,4 +1,7 @@
 import { describe, it, expect } from 'vitest';
+import { mkdtemp, readFile } from 'fs/promises';
+import { join } from 'path';
+import { tmpdir } from 'os';
 import { claudeDriver } from '../src/drivers/claude.js';
 import { codexDriver } from '../src/drivers/codex.js';
 import { geminiDriver } from '../src/drivers/gemini.js';
@@ -61,7 +64,22 @@ describe('Claude driver', () => {
       supportsStdinDelivery: true,
       busyDeliveryMode: 'notification',
       supportsSessionResume: true,
+      supportsMcpBridge: true,
     });
+  });
+
+  it('writes and references Claude MCP config', async () => {
+    const workspaceDir = await mkdtemp(join(tmpdir(), 'xoxiang-claude-mcp-'));
+    const ctx = { ...baseCtx, workspaceDir, agentTokenFile: join(workspaceDir, '.xoxiang', 'agent-token') };
+
+    await claudeDriver.prepareWorkspace?.(ctx);
+    const config = await readFile(join(workspaceDir, '.claude', 'xoxiang-mcp.json'), 'utf8');
+    const cmd = claudeDriver.buildCommand(ctx);
+
+    expect(config).toContain('"mcpServers"');
+    expect(config).toContain('"mcp-bridge"');
+    expect(cmd.args).toContain('--mcp-config');
+    expect(cmd.args).toContain(join(workspaceDir, '.claude', 'xoxiang-mcp.json'));
   });
 
   it('parseOutput extracts bridge message', () => {

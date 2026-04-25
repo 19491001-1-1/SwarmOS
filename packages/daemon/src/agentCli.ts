@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 import { readFile } from 'fs/promises';
 import { fileURLToPath } from 'url';
+import { runMcpBridgeFromCli } from './mcp/bridge.js';
+import { callInternalApi, type ParsedCommand } from './internalAgentApi.js';
 
 type CliEnv = {
   XOXIANG_AGENT_ID?: string;
@@ -15,6 +17,15 @@ type CliIo = {
 };
 
 export async function runAgentCli(argv: string[], env: CliEnv = process.env, io: CliIo = { stdout: process.stdout, stderr: process.stderr, fetch }): Promise<number> {
+  if (argv[0] === 'mcp-bridge') {
+    return runMcpBridgeFromCli(argv.slice(1), env, {
+      stdin: process.stdin,
+      stdout: process.stdout,
+      stderr: process.stderr,
+      fetch: io.fetch,
+    });
+  }
+
   const agentId = env.XOXIANG_AGENT_ID;
   const serverUrl = env.XOXIANG_SERVER_URL;
   const tokenFile = env.XOXIANG_AGENT_TOKEN_FILE;
@@ -39,10 +50,6 @@ export async function runAgentCli(argv: string[], env: CliEnv = process.env, io:
     return 1;
   }
 }
-
-type ParsedCommand =
-  | { method: 'GET'; path: string; select?: 'agents' | 'task-summary' }
-  | { method: 'POST'; path: string; body: unknown };
 
 function parseCommand(argv: string[]): ParsedCommand {
   const [group, action, ...rest] = argv;
@@ -162,23 +169,6 @@ function required(value: string | boolean | undefined, flag: string): string {
 
 function stringFlag(value: string | boolean | undefined, fallback: string): string {
   return typeof value === 'string' ? value : fallback;
-}
-
-async function callInternalApi(input: { command: ParsedCommand; agentId: string; serverUrl: string; token: string; fetchImpl: typeof fetch }): Promise<unknown> {
-  const url = `${input.serverUrl.replace(/\/$/, '')}/internal/agent/${encodeURIComponent(input.agentId)}${input.command.path}`;
-  const res = await input.fetchImpl(url, {
-    method: input.command.method,
-    headers: {
-      Authorization: `Bearer ${input.token}`,
-      'X-Agent-Id': input.agentId,
-      ...(input.command.method === 'POST' ? { 'Content-Type': 'application/json' } : {}),
-    },
-    body: input.command.method === 'POST' ? JSON.stringify(input.command.body) : undefined,
-  });
-  const text = await res.text();
-  const body = text ? JSON.parse(text) : undefined;
-  if (!res.ok) throw new Error(`request failed ${res.status}: ${text}`);
-  return body;
 }
 
 function formatOutput(value: unknown): string {

@@ -121,7 +121,10 @@ export function parseUpdateTaskLine(line: string): ParsedBridgeUpdateTask | null
 
 export function buildBridgeInstruction(): string {
   return [
-    'Prefer the injected `xoxiang` CLI for collaboration:',
+    'Use xoxiang collaboration tools in this order: MCP tools when available, then the injected `xoxiang` CLI, then stdout marker fallback.',
+    'Prefer MCP tools for structured reads, message sending, DMs, delegation, and server info because their results are machine-readable.',
+    'If you use a tool or CLI command, base your answer on the real returned result; do not invent tool results.',
+    'Injected `xoxiang` CLI commands:',
     '- `xoxiang message send --channel general --content "..."`',
     '- `xoxiang message check`',
     '- `xoxiang message read --channel general --limit 20`',
