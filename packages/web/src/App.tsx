@@ -7,10 +7,14 @@ import { AgentDetailPanel } from './components/AgentDetailPanel.js';
 import { TaskBoard } from './components/TaskBoard.js';
 import { ThreadPanel } from './components/ThreadPanel.js';
 import { MobileTopBar } from './components/MobileTopBar.js';
+import { LoginView } from './components/LoginView.js';
 import type { Channel, Message, MessageThread, Agent, Machine, AgentActivity, VersionInfo, Task, Reminder, SearchMessageResult } from './api.js';
-import { WEB_COMMIT_SHA, WEB_VERSION, buildWsUrl, getChannels, getMessages, getMessageThread, sendMessage, getAgents, getMachines, getAgentActivities, getHubVersion, getTasks, messageToTask, getAgentReminders, createChannel, deleteChannel, searchMessages } from './api.js';
+import { AuthError, WEB_COMMIT_SHA, WEB_VERSION, buildWsUrl, getChannels, getMessages, getMessageThread, sendMessage, getAgents, getMachines, getAgentActivities, getHubVersion, getTasks, messageToTask, getAgentReminders, createChannel, deleteChannel, searchMessages, setAuthFailureHandler, verifyAuthToken } from './api.js';
+import { clearStoredAuthToken, getEffectiveAuthToken, setStoredAuthToken } from './auth.js';
 
 export function App() {
+  const [authState, setAuthState] = useState<'checking' | 'authenticated' | 'login'>('checking');
+  const [authError, setAuthError] = useState<string | undefined>();
   const [channels, setChannels] = useState<Channel[]>([]);
   const [messagesByChannel, setMessagesByChannel] = useState<Record<string, Message[]>>({});
   const [agents, setAgents] = useState<Agent[]>([]);
@@ -30,6 +34,78 @@ export function App() {
   const [searchOpen, setSearchOpen] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
   const selectedChannelRef = useRef(selectedChannel);
+  const isAuthenticated = authState === 'authenticated';
+
+  const resetWorkspaceState = useCallback(() => {
+    setChannels([]);
+    setMessagesByChannel({});
+    setAgents([]);
+    setMachines([]);
+    setTasks([]);
+    setHubVersion(undefined);
+    setActivitiesByAgent({});
+    setRemindersByAgent({});
+    setSelectedView('channel');
+    setSelectedChannel('general');
+    setSelectedAgentId(undefined);
+    setRightPanel(undefined);
+    setSidebarOpen(false);
+    setThread(undefined);
+    setTargetMessageId(undefined);
+    setThreadTargetMessageId(undefined);
+    setSearchOpen(false);
+  }, []);
+
+  const handleAuthExpired = useCallback(() => {
+    clearStoredAuthToken();
+    wsRef.current?.close();
+    resetWorkspaceState();
+    setAuthError('Session expired. Sign in again.');
+    setAuthState('login');
+  }, [resetWorkspaceState]);
+
+  const handleSignOut = useCallback(() => {
+    clearStoredAuthToken();
+    wsRef.current?.close();
+    resetWorkspaceState();
+    setAuthError(undefined);
+    setAuthState('login');
+  }, [resetWorkspaceState]);
+
+  const handleSignIn = useCallback(async (token: string) => {
+    try {
+      await verifyAuthToken(token);
+      setStoredAuthToken(token);
+      setAuthError(undefined);
+      setAuthState('authenticated');
+    } catch (err) {
+      setAuthError(err instanceof AuthError ? 'Invalid token' : 'Server unavailable');
+      throw err;
+    }
+  }, []);
+
+  useEffect(() => {
+    setAuthFailureHandler(handleAuthExpired);
+    return () => setAuthFailureHandler(undefined);
+  }, [handleAuthExpired]);
+
+  useEffect(() => {
+    const token = getEffectiveAuthToken();
+    verifyAuthToken(token)
+      .then(() => {
+        setAuthError(undefined);
+        setAuthState('authenticated');
+      })
+      .catch((err) => {
+        if (err instanceof AuthError) {
+          clearStoredAuthToken();
+          setAuthError(token ? 'Invalid token' : undefined);
+        } else {
+          setAuthError('Server unavailable');
+        }
+        setAuthState('login');
+      });
+  }, []);
 
   const loadChannels = useCallback(async () => {
     const data = await getChannels();
@@ -80,17 +156,19 @@ export function App() {
   }, []);
 
   useEffect(() => {
+    if (!isAuthenticated) return;
     loadChannels();
     loadAgents();
     loadMachines();
     loadTasks();
     getHubVersion().then(setHubVersion).catch(() => undefined);
-  }, []);
+  }, [isAuthenticated, loadAgents, loadChannels, loadMachines, loadTasks]);
 
   useEffect(() => {
+    if (!isAuthenticated) return;
     selectedChannelRef.current = selectedChannel;
     loadMessages(selectedChannel);
-  }, [selectedChannel]);
+  }, [isAuthenticated, loadMessages, selectedChannel]);
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -104,14 +182,14 @@ export function App() {
   }, []);
 
   useEffect(() => {
-    if (!selectedAgentId) return;
+    if (!isAuthenticated || !selectedAgentId) return;
     getAgentActivities(selectedAgentId).then((data) => {
       setActivitiesByAgent((prev) => ({ ...prev, [selectedAgentId]: data }));
     });
     getAgentReminders(selectedAgentId).then((data) => {
       setRemindersByAgent((prev) => ({ ...prev, [selectedAgentId]: data }));
     });
-  }, [selectedAgentId]);
+  }, [isAuthenticated, selectedAgentId]);
 
   useEffect(() => {
     if (!thread && !selectedAgentId && !rightPanel && !sidebarOpen) return;
@@ -129,6 +207,7 @@ export function App() {
   // WebSocket for real-time updates. Keep one connection alive and use refs for
   // channel-specific state so channel switching does not churn the socket.
   useEffect(() => {
+    if (!isAuthenticated) return;
     let closedByEffect = false;
     let reconnectTimer: ReturnType<typeof setTimeout> | undefined;
     let heartbeatTimer: ReturnType<typeof setInterval> | undefined;
@@ -212,6 +291,7 @@ export function App() {
       };
 
       ws.onerror = () => {
+        if (ws.readyState === WebSocket.CLOSED) handleAuthExpired();
         ws.close();
       };
 
@@ -236,7 +316,7 @@ export function App() {
       wsRef.current?.close();
       wsRef.current = null;
     };
-  }, [loadAgents, loadChannels, loadMachines, loadMessages, loadTasks, updateThreadRoot, upsertMessage]);
+  }, [handleAuthExpired, isAuthenticated, loadAgents, loadChannels, loadMachines, loadMessages, loadTasks, updateThreadRoot, upsertMessage]);
 
   const handleSend = async (content: string, agentId?: string) => {
     const message = await sendMessage(selectedChannel, 'user', content, agentId);
@@ -315,6 +395,14 @@ export function App() {
       ? selectedAgent.displayName ?? selectedAgent.name
       : `# ${selectedChannelObj?.name ?? selectedChannel}`;
 
+  if (authState === 'checking') {
+    return <div className="login-shell"><div className="login-card">Loading...</div></div>;
+  }
+
+  if (authState === 'login') {
+    return <LoginView error={authError} onSignIn={handleSignIn} />;
+  }
+
   const handleSearchSelect = async (result: SearchMessageResult) => {
     setSelectedView('channel');
     setSelectedChannel(result.channelId);
@@ -367,6 +455,7 @@ export function App() {
         onSelectAgent={(id) => { setSelectedAgentId(id); }}
         onOpenAgents={() => { setRightPanel((current) => current === 'agents' ? undefined : 'agents'); setSelectedAgentId(undefined); setThread(undefined); }}
         onNavigate={() => setSidebarOpen(false)}
+        onSignOut={handleSignOut}
       />
       <div className="main-pane" style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, minHeight: 0 }}>
         {selectedView === 'tasks' ? (

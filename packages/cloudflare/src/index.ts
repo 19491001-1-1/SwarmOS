@@ -110,6 +110,10 @@ export class XoxiangHub extends DurableObject<Env> {
     }
 
     try {
+      if (request.method === 'GET' && url.pathname === '/api/auth/whoami') {
+        return json({ authenticated: true, mode: 'token' });
+      }
+
       if (request.method === 'GET' && url.pathname === '/api/channels') {
         return json(this.listChannels());
       }

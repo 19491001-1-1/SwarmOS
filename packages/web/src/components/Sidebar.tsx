@@ -22,6 +22,7 @@ type Props = {
   onOpenAgents: () => void;
   className?: string;
   onNavigate?: () => void;
+  onSignOut?: () => void;
 };
 
 const S = {
@@ -58,7 +59,7 @@ const S = {
   },
 };
 
-export function Sidebar({ channels, agents, machines, selectedView, selectedChannel, selectedAgentId, webVersion, hubVersion, taskCount, onSelectTasks, onOpenSearch, onSelectChannel, onCreateChannel, onDeleteChannel, onSelectAgent, onOpenAgents, className, onNavigate }: Props) {
+export function Sidebar({ channels, agents, machines, selectedView, selectedChannel, selectedAgentId, webVersion, hubVersion, taskCount, onSelectTasks, onOpenSearch, onSelectChannel, onCreateChannel, onDeleteChannel, onSelectAgent, onOpenAgents, className, onNavigate, onSignOut }: Props) {
   const [creating, setCreating] = useState(false);
   const [channelName, setChannelName] = useState('');
   const [channelError, setChannelError] = useState('');
@@ -80,8 +81,15 @@ export function Sidebar({ channels, agents, machines, selectedView, selectedChan
     <div className={`sidebar-shell${className ? ` ${className}` : ''}`} style={S.sidebar}>
       <div className="sidebar-item sidebar-workspace" style={S.workspaceName}>
         <span>▶ {t('nav.workspace')}</span>
-        <span title={versionTitle(webVersion, hubVersion)} style={{ fontSize: 10, fontWeight: 400, opacity: 0.65 }}>
-          web {shortVersion(webVersion.version)}
+        <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span title={versionTitle(webVersion, hubVersion)} style={{ fontSize: 10, fontWeight: 400, opacity: 0.65 }}>
+            web {shortVersion(webVersion.version)}
+          </span>
+          {onSignOut ? (
+            <button type="button" onClick={onSignOut} title="Sign out" style={signOutButtonStyle}>
+              OUT
+            </button>
+          ) : null}
         </span>
       </div>
 
@@ -245,6 +253,17 @@ const miniButtonStyle: React.CSSProperties = {
   cursor: 'pointer',
   minWidth: 24,
   height: 22,
+};
+
+const signOutButtonStyle: React.CSSProperties = {
+  border: '1.5px solid #000',
+  background: '#fff',
+  color: '#000',
+  fontFamily: "'Courier New', monospace",
+  fontSize: 9,
+  fontWeight: 700,
+  cursor: 'pointer',
+  padding: '1px 4px',
 };
 
 function navButtonStyle(active: boolean): React.CSSProperties {

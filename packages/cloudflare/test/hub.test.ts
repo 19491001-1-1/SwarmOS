@@ -57,6 +57,12 @@ describe('browser auth', () => {
     expect(channels.find((c) => c.name === 'general')).toBeTruthy();
   });
 
+  it('returns auth status with correct token', async () => {
+    const res = await SELF.fetch('https://hub.test/api/auth/whoami', { headers: authHeaders() });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ authenticated: true, mode: 'token' });
+  });
+
   it('creates display-oriented channel names', async () => {
     const name = `产品 讨论 ${crypto.randomUUID()}`;
     const created = await SELF.fetch('https://hub.test/api/channels', {

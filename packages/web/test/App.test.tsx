@@ -4,6 +4,7 @@ import { App } from '../src/App.js';
 
 describe('App', () => {
   beforeEach(() => {
+    window.localStorage.clear();
     class MockWebSocket {
       static OPEN = 1;
       readyState = 1;
@@ -23,6 +24,10 @@ describe('App', () => {
   it('keeps the agent panel collapsed until explicitly opened', async () => {
     render(<App />);
 
+    await waitFor(() => {
+      expect(screen.getByText('Workspace')).toBeTruthy();
+    });
+
     expect(screen.queryByText('+ NEW')).toBeNull();
 
     fireEvent.click(screen.getAllByRole('button', { name: 'Open agents' })[0]);
@@ -35,6 +40,10 @@ describe('App', () => {
   it('opens the mobile navigation drawer from the top bar', async () => {
     const { container } = render(<App />);
 
+    await waitFor(() => {
+      expect(screen.getByText('Workspace')).toBeTruthy();
+    });
+
     fireEvent.click(screen.getByRole('button', { name: 'Open navigation' }));
 
     expect(container.querySelector('.sidebar-mobile-open')).toBeTruthy();
@@ -42,9 +51,17 @@ describe('App', () => {
 });
 
 vi.mock('../src/api.js', () => ({
+  AuthError: class AuthError extends Error {
+    constructor(message = 'Unauthorized') {
+      super(message);
+      this.name = 'AuthError';
+    }
+  },
   WEB_COMMIT_SHA: 'test-commit',
   WEB_VERSION: 'test-version',
   buildWsUrl: (path: string) => `ws://localhost${path}`,
+  setAuthFailureHandler: vi.fn(),
+  verifyAuthToken: vi.fn(async () => ({ authenticated: true, mode: 'anonymous' })),
   getChannels: vi.fn(async () => [{ id: 'general', name: 'general', createdAt: '2026-04-25T00:00:00.000Z' }]),
   getMessages: vi.fn(async () => []),
   getMessageThread: vi.fn(),

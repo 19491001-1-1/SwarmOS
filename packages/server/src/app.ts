@@ -12,6 +12,7 @@ import { browserSocketHandler } from './ws/browserSocket.js';
 import { initDb } from './db.js';
 import { createVersionInfo } from '@mini-slock/shared';
 import { startReminderScheduler } from './reminders.js';
+import { browserAuthConfigured, requireBrowserAuth } from './browserAuth.js';
 
 export async function buildApp(opts: { logger?: boolean } = {}) {
   await initDb();
@@ -20,6 +21,17 @@ export async function buildApp(opts: { logger?: boolean } = {}) {
 
   await app.register(fastifyCors, { origin: true });
   await app.register(fastifyWebsocket);
+
+  app.addHook('onRequest', async (request, reply) => {
+    if (request.method === 'OPTIONS') return;
+    if (!request.url.startsWith('/api/')) return;
+    await requireBrowserAuth(request, reply);
+    if (reply.sent) return reply;
+  });
+
+  app.get('/api/auth/whoami', async () => {
+    return { authenticated: true, mode: browserAuthConfigured() ? 'token' : 'anonymous' };
+  });
 
   app.get('/api/version', async () => {
     return createVersionInfo('server', {
