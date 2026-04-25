@@ -14,6 +14,18 @@
 - 轻量级架构，无数据库依赖（MVP）
 - 像素风 UI，工具感强
 
+### 1.1 Phase Two Product Direction
+
+v1.x 阶段的产品目标是从“Agent 协作工作台”升级为“Agent-native company”：系统不只承载聊天和任务，而是承载一个由 agent 组成的公司组织。老板通过目标、约束和优先级进行编排；agent 通过组织角色、项目、任务、知识、工具和质量流程完成线上工作闭环。
+
+第二阶段的详细路线图见 [v1.x — Phase Two Roadmap: Agent-Native Company](./v1-phase-two-roadmap.md)。所有 v1.x 设计应遵循以下方向：
+
+- 目标优先于对话：Goal/Project/Task/Decision/Artifact 是核心对象。
+- 信息传递默认结构化：handoff 必须携带背景、事实、决策、验收标准、风险、证据和下一步。
+- Agent 是组织成员：角色、能力、汇报关系、权限和质量责任是一等概念。
+- 自主性来自产品机制：inbox、claim、handoff、escalation、review、SLA 和 audit 要进入系统模型。
+- 创造力要有容器：方案、批判、研究和创新提案应先进入 proposal，再转项目执行。
+
 ---
 
 ## 2. 系统架构
