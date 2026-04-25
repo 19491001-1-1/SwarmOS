@@ -121,6 +121,8 @@ v1.5 应优先设计知识层和 adapter 接口，不急着绑定某个外部知
 
 ## v1.0 — Lightweight Agent Roles
 
+详细执行文档：[`docs/v1.0-agent-roles.md`](./v1.0-agent-roles.md)
+
 ### 目标
 
 让系统知道每个 Agent 适合干什么。
@@ -145,6 +147,8 @@ v1.0 继续复用当前 Agent profile，不引入复杂组织架构。
 - 委派时可以复用 resolve，不只依赖名字。
 
 ## v1.1 — Goal Brief & Work Breakdown
+
+详细执行文档：[`docs/v1.1-goal-brief-work-breakdown.md`](./v1.1-goal-brief-work-breakdown.md)
 
 ### 目标
 
@@ -180,6 +184,8 @@ v1.0 继续复用当前 Agent profile，不引入复杂组织架构。
 - Agent 收到任务时有足够上下文。
 
 ## v1.2 — Goal Alignment in Chat
+
+详细执行文档：[`docs/v1.2-chat-goal-alignment.md`](./v1.2-chat-goal-alignment.md)
 
 ### 目标
 
@@ -218,6 +224,8 @@ v1.0 继续复用当前 Agent profile，不引入复杂组织架构。
 
 ## v1.3 — Autonomous Work Loop
 
+详细执行文档：[`docs/v1.3-autonomous-work-loop.md`](./v1.3-autonomous-work-loop.md)
+
 ### 目标
 
 让 Agent 能稳定地“上班”：看 inbox、找任务、认领、推进、委派、汇报、升级。
@@ -249,6 +257,8 @@ v1.0 继续复用当前 Agent profile，不引入复杂组织架构。
 
 ## v1.4 — Review & Acceptance
 
+详细执行文档：[`docs/v1.4-review-acceptance.md`](./v1.4-review-acceptance.md)
+
 ### 目标
 
 把“做完了”升级成“有证据、可验收”。
@@ -276,6 +286,8 @@ v1.0 继续复用当前 Agent profile，不引入复杂组织架构。
 - done 任务展示 evidence 和 acceptance checklist。
 
 ## v1.5 — Knowledge & Memory Layer
+
+详细执行文档：[`docs/v1.5-knowledge-memory-layer.md`](./v1.5-knowledge-memory-layer.md)
 
 ### 目标
 
