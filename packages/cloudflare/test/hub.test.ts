@@ -276,6 +276,17 @@ describe('agent internal API', () => {
     });
     expect(approved.status).toBe(200);
     expect(await approved.json()).toMatchObject({ status: 'approved' });
+
+    const knowledgeWritten = await SELF.fetch(`https://hub.test/internal/agent/${agent.id}/knowledge`, {
+      method: 'POST',
+      headers: internalHeaders,
+      body: JSON.stringify({ kind: 'runbook', title: 'Cloudflare review runbook', summary: 'Review evidence before approval.', body: 'Use review list and approve only after checking evidence.', tags: ['review'], sourceRefs: ['task:review'] }),
+    });
+    expect(knowledgeWritten.status).toBe(201);
+    const knowledge = (await knowledgeWritten.json()) as { id: string };
+    const knowledgeSearch = await SELF.fetch(`https://hub.test/internal/agent/${agent.id}/knowledge?query=runbook&tag=review`, { headers: internalHeaders });
+    expect(knowledgeSearch.status).toBe(200);
+    expect((await knowledgeSearch.json()) as Array<{ entry: { id: string } }>).toContainEqual(expect.objectContaining({ entry: expect.objectContaining({ id: knowledge.id }) }));
     daemon.close();
   });
 });
@@ -442,6 +453,38 @@ describe('input validation', () => {
     });
     expect(approved.status).toBe(200);
     expect(await approved.json()).toMatchObject({ status: 'approved', checklist: [expect.objectContaining({ checked: true })] });
+  });
+
+  it('supports public knowledge CRUD and goal archive', async () => {
+    const created = await SELF.fetch('https://hub.test/api/knowledge', {
+      method: 'POST',
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ kind: 'decision', title: 'CF V1 test env', summary: 'Use test hub.', body: 'Keep production isolated.', tags: ['v1'], sourceRefs: ['goal:v1'] }),
+    });
+    expect(created.status).toBe(201);
+    const entry = (await created.json()) as { id: string };
+
+    const searched = await SELF.fetch('https://hub.test/api/knowledge?query=test&kind=decision&tag=v1', { headers: authHeaders() });
+    expect(searched.status).toBe(200);
+    expect((await searched.json()) as Array<{ entry: { id: string } }>).toContainEqual(expect.objectContaining({ entry: expect.objectContaining({ id: entry.id }) }));
+
+    const patched = await SELF.fetch(`https://hub.test/api/knowledge/${entry.id}`, {
+      method: 'PATCH',
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ status: 'stale' }),
+    });
+    expect(patched.status).toBe(200);
+    expect(await patched.json()).toMatchObject({ status: 'stale' });
+
+    const goalCreated = await SELF.fetch('https://hub.test/api/goals', {
+      method: 'POST',
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ objective: `archive goal ${crypto.randomUUID()}`, requesterName: 'user', channelId: 'general', successCriteria: ['archived'] }),
+    });
+    const goal = (await goalCreated.json()) as { id: string };
+    const archived = await SELF.fetch(`https://hub.test/api/goals/${goal.id}/archive`, { method: 'POST', headers: authHeaders() });
+    expect(archived.status).toBe(201);
+    expect(await archived.json()).toMatchObject({ kind: 'project_archive', sourceRefs: expect.arrayContaining([`goal:${goal.id}`]) });
   });
 
   it('supports goal brief CRUD, message conversion, and task breakdown', async () => {

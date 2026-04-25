@@ -14,6 +14,8 @@ export const WorkItemPrioritySchema = z.enum(['low', 'normal', 'high', 'urgent']
 export const TaskProgressEventTypeSchema = z.enum(['claimed', 'started', 'heartbeat', 'blocked', 'handoff', 'completed', 'escalated']);
 export const ReviewStatusSchema = z.enum(['requested', 'changes_requested', 'approved', 'cancelled']);
 export const ReminderStatusSchema = z.enum(['pending', 'triggered', 'cancelled']);
+export const KnowledgeKindSchema = z.enum(['decision', 'project_archive', 'user_preference', 'runbook', 'learning', 'artifact']);
+export const KnowledgeStatusSchema = z.enum(['active', 'stale', 'conflict', 'archived']);
 
 export const MentionSchema = z.object({
   type: z.enum(['agent', 'user']),
@@ -126,6 +128,56 @@ export const TaskContextSchema = z.object({
     updatedAt: z.string(),
   })).optional(),
 }).partial();
+
+export const KnowledgeEntrySchema = z.object({
+  id: z.string(),
+  kind: KnowledgeKindSchema,
+  title: z.string().min(1),
+  summary: z.string().min(1),
+  body: z.string().min(1),
+  tags: z.array(z.string().min(1)).default([]),
+  sourceRefs: z.array(z.string().min(1)).default([]),
+  ownerAgentId: z.string().optional(),
+  reviewerAgentId: z.string().optional(),
+  status: KnowledgeStatusSchema,
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+
+export const CreateKnowledgeEntryRequestSchema = z.object({
+  kind: KnowledgeKindSchema,
+  title: z.string().min(1),
+  summary: z.string().min(1),
+  body: z.string().min(1),
+  tags: z.array(z.string().min(1)).default([]),
+  sourceRefs: z.array(z.string().min(1)).default([]),
+  ownerAgentId: z.string().optional(),
+  reviewerAgentId: z.string().optional(),
+  status: KnowledgeStatusSchema.default('active'),
+  allowNoSource: z.boolean().optional(),
+});
+
+export const PatchKnowledgeEntryRequestSchema = z.object({
+  kind: KnowledgeKindSchema.optional(),
+  title: z.string().min(1).optional(),
+  summary: z.string().min(1).optional(),
+  body: z.string().min(1).optional(),
+  tags: z.array(z.string().min(1)).optional(),
+  sourceRefs: z.array(z.string().min(1)).optional(),
+  ownerAgentId: z.string().optional(),
+  reviewerAgentId: z.string().optional(),
+  status: KnowledgeStatusSchema.optional(),
+}).refine((value) => Object.keys(value).length > 0, { message: 'At least one field is required' });
+
+export const SearchKnowledgeRequestSchema = z.object({
+  query: z.string().optional().default(''),
+  kind: KnowledgeKindSchema.optional(),
+  tag: z.union([z.string(), z.array(z.string())]).optional(),
+  limit: z.coerce.number().int().positive().max(100).default(20),
+}).transform((value) => ({
+  ...value,
+  tags: typeof value.tag === 'string' ? [value.tag] : value.tag ?? [],
+}));
 
 export const TaskSchema = z.object({
   id: z.string(),
@@ -612,6 +664,9 @@ export type InternalTaskEscalateRequest = z.infer<typeof InternalTaskEscalateReq
 export type CreateTaskReviewRequest = z.infer<typeof CreateTaskReviewRequestSchema>;
 export type ReviewDecisionRequest = z.infer<typeof ReviewDecisionRequestSchema>;
 export type InternalReviewListRequest = z.infer<typeof InternalReviewListRequestSchema>;
+export type CreateKnowledgeEntryRequest = z.infer<typeof CreateKnowledgeEntryRequestSchema>;
+export type PatchKnowledgeEntryRequest = z.infer<typeof PatchKnowledgeEntryRequestSchema>;
+export type SearchKnowledgeRequest = z.infer<typeof SearchKnowledgeRequestSchema>;
 export type InternalGoalListRequest = z.infer<typeof InternalGoalListRequestSchema>;
 export type InternalGoalCreateRequest = z.infer<typeof InternalGoalCreateRequestSchema>;
 export type InternalGoalCreateTasksRequest = z.infer<typeof InternalGoalCreateTasksRequestSchema>;

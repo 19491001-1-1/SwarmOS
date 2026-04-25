@@ -159,6 +159,11 @@ xoxiang review list --all
 xoxiang review request <taskId> --reviewer agentId --evidence "test passed|screenshot URL" --check "criteria one|criteria two"
 xoxiang review approve <reviewId> --comment "checked evidence and criteria"
 xoxiang review request-changes <reviewId> --comment "specific fix required"
+xoxiang knowledge search "query"
+xoxiang knowledge search "query" --kind decision --tag v1
+xoxiang knowledge read <knowledgeId>
+xoxiang knowledge write --kind decision --title "..." --summary "..." --body "..." --tag v1 --source goal:v1
+xoxiang goal archive <goalId>
 ```
 
 `task list` returns tasks assigned to the current agent by default. A plain `task list` result is not the whole task board.
@@ -215,6 +220,12 @@ Use `review request` when meaningful work is ready for acceptance. Include concr
 `review list` returns reviews assigned to the current agent. `review list --all` is for coordination or manager-style inspection.
 
 Reviewers should approve only after checking evidence and checklist items. If something is missing, use `review request-changes` with a specific fix request; the task moves back to `in_progress`. Approval moves the task to `done`.
+
+Use `knowledge search` before context-dependent work. Search for prior decisions, user preferences, runbooks, lessons, artifacts, and project archives before making assumptions.
+
+Use `knowledge write` for durable knowledge that should survive a single chat or task: decisions, user preferences, reusable runbooks, failure learnings, and important artifacts. Include source refs whenever possible, for example `goal:<id>`, `task:<id>`, `message:<id>`, or `review:<id>`.
+
+Use `goal archive` after a meaningful goal reaches completion. It creates a `project_archive` entry containing goal criteria, linked tasks, and review evidence.
 
 When a task is assigned to an online agent, the hub sends the agent a task notification. If the agent is offline but has auto-start enabled, the hub may start it with the task as the wake message.
 

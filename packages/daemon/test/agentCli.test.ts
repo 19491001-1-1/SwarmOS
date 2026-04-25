@@ -250,6 +250,53 @@ describe('agent-facing xoxiang CLI', () => {
     expect(changesFetch).toHaveBeenCalledWith('http://hub.test/internal/agent/agent-1/reviews/review-1/request-changes', expect.objectContaining({ method: 'POST', body: JSON.stringify({ comment: 'add evidence' }) }));
   });
 
+  it('supports knowledge search, read, write, and goal archive commands', async () => {
+    const searchFetch = okFetch([{ entry: { id: 'knowledge-1' } }]);
+    expect((await run(['knowledge', 'search', 'test env', '--kind', 'decision', '--tag', 'v1|cloudflare'], searchFetch)).code).toBe(0);
+    expect(searchFetch).toHaveBeenCalledWith(
+      'http://hub.test/internal/agent/agent-1/knowledge?query=test+env&kind=decision&tag=v1&tag=cloudflare',
+      expect.objectContaining({ method: 'GET' }),
+    );
+
+    const readFetch = okFetch({ id: 'knowledge-1' });
+    expect((await run(['knowledge', 'read', 'knowledge-1'], readFetch)).code).toBe(0);
+    expect(readFetch).toHaveBeenCalledWith('http://hub.test/internal/agent/agent-1/knowledge/knowledge-1', expect.objectContaining({ method: 'GET' }));
+
+    const writeFetch = okFetch({ id: 'knowledge-1' });
+    expect((await run([
+      'knowledge',
+      'write',
+      '--kind',
+      'decision',
+      '--title',
+      'V1 test environment',
+      '--summary',
+      'Use test Cloudflare',
+      '--body',
+      'Keep production isolated.',
+      '--tag',
+      'v1|cloudflare',
+      '--source',
+      'goal:v1',
+    ], writeFetch)).code).toBe(0);
+    expect(writeFetch).toHaveBeenCalledWith('http://hub.test/internal/agent/agent-1/knowledge', expect.objectContaining({
+      method: 'POST',
+      body: JSON.stringify({
+        kind: 'decision',
+        title: 'V1 test environment',
+        summary: 'Use test Cloudflare',
+        body: 'Keep production isolated.',
+        tags: ['v1', 'cloudflare'],
+        sourceRefs: ['goal:v1'],
+        allowNoSource: false,
+      }),
+    }));
+
+    const archiveFetch = okFetch({ id: 'archive-1' });
+    expect((await run(['goal', 'archive', 'goal-1'], archiveFetch)).code).toBe(0);
+    expect(archiveFetch).toHaveBeenCalledWith('http://hub.test/internal/agent/agent-1/goals/goal-1/archive', expect.objectContaining({ method: 'POST', body: JSON.stringify({}) }));
+  });
+
   it('lists goals with optional filters', async () => {
     const fetchImpl = okFetch([{ id: 'goal-1', objective: 'ship v1.1' }]);
     const result = await run(['goal', 'list', '--channel', 'general', '--status', 'draft'], fetchImpl);

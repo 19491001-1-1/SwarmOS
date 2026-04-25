@@ -54,6 +54,8 @@ export type WorkItemKind = 'mention' | 'dm' | 'assigned_task' | 'claimable_task'
 export type WorkItemPriority = 'low' | 'normal' | 'high' | 'urgent';
 export type TaskProgressEventType = 'claimed' | 'started' | 'heartbeat' | 'blocked' | 'handoff' | 'completed' | 'escalated';
 export type ReviewStatus = 'requested' | 'changes_requested' | 'approved' | 'cancelled';
+export type KnowledgeKind = 'decision' | 'project_archive' | 'user_preference' | 'runbook' | 'learning' | 'artifact';
+export type KnowledgeStatus = 'active' | 'stale' | 'conflict' | 'archived';
 
 export type AgentInboxItem = {
   id: string;
@@ -89,6 +91,36 @@ export type TaskReview = {
   comment?: string;
   createdAt: string;
   updatedAt: string;
+};
+
+export type KnowledgeEntry = {
+  id: string;
+  kind: KnowledgeKind;
+  title: string;
+  summary: string;
+  body: string;
+  tags: string[];
+  sourceRefs: string[];
+  ownerAgentId?: string;
+  reviewerAgentId?: string;
+  status: KnowledgeStatus;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type KnowledgeSearchResult = {
+  entry: KnowledgeEntry;
+  score?: number;
+  reason?: string;
+};
+
+export type KnowledgeAdapter = {
+  id: string;
+  name: string;
+  search(query: string, options?: { tags?: string[]; kind?: KnowledgeKind }): Promise<KnowledgeSearchResult[]>;
+  read(id: string): Promise<KnowledgeEntry | undefined>;
+  write(entry: KnowledgeEntry): Promise<KnowledgeEntry>;
+  update(id: string, patch: Partial<KnowledgeEntry>): Promise<KnowledgeEntry>;
 };
 
 export type GoalBrief = {
@@ -369,6 +401,7 @@ export type BrowserEvent =
   | { type: 'agent:delegation'; delegation: AgentDelegation }
   | { type: 'goal:update'; goal: GoalBrief }
   | { type: 'goal-alignment:update'; alignment: GoalAlignment }
+  | { type: 'knowledge:update'; entry: KnowledgeEntry }
   | { type: 'task:update'; task: Task }
   | { type: 'reminder:update'; reminder: Reminder }
   | { type: 'machine:update'; machine: Machine };

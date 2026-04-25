@@ -13,6 +13,10 @@ import type {
   GoalAlignmentStatus,
   GoalBrief,
   GoalBriefStatus,
+  KnowledgeEntry,
+  KnowledgeKind,
+  KnowledgeSearchResult,
+  KnowledgeStatus,
   Machine,
   Message,
   Mention,
@@ -36,6 +40,7 @@ import {
   CreateGoalBriefRequestSchema,
   CreateGoalTasksRequestSchema,
   ConfirmGoalAlignmentRequestSchema,
+  CreateKnowledgeEntryRequestSchema,
   CreateReminderRequestSchema,
   CreateTaskReviewRequestSchema,
   CreateTaskRequestSchema,
@@ -64,11 +69,13 @@ import {
   MessageToTaskRequestSchema,
   PatchGoalBriefRequestSchema,
   PatchGoalAlignmentRequestSchema,
+  PatchKnowledgeEntryRequestSchema,
   PatchAgentRequestSchema,
   PatchReminderRequestSchema,
   PatchTaskRequestSchema,
   ReviewDecisionRequestSchema,
   SearchRequestSchema,
+  SearchKnowledgeRequestSchema,
   StartGoalAlignmentRequestSchema,
   TaskStatusSchema,
 } from '@mini-slock/shared';
@@ -297,6 +304,34 @@ export class XoxiangHub extends DurableObject<Env> {
       const goalAlignmentCancelMatch = url.pathname.match(/^\/api\/goal-alignments\/([^/]+)\/cancel$/);
       if (goalAlignmentCancelMatch && request.method === 'POST') {
         return this.cancelGoalAlignment(decodeURIComponent(goalAlignmentCancelMatch[1]));
+      }
+
+      if (request.method === 'GET' && url.pathname === '/api/knowledge') {
+        const parsed = SearchKnowledgeRequestSchema.safeParse(Object.fromEntries(url.searchParams.entries()));
+        if (!parsed.success) return json({ error: 'Invalid query', issues: parsed.error.issues }, 400);
+        return json(this.searchKnowledge(parsed.data));
+      }
+
+      if (request.method === 'POST' && url.pathname === '/api/knowledge') {
+        return this.createKnowledgeEntry(await request.json());
+      }
+
+      const knowledgeMatch = url.pathname.match(/^\/api\/knowledge\/([^/]+)$/);
+      if (knowledgeMatch && request.method === 'GET') {
+        const entry = this.getKnowledgeEntry(decodeURIComponent(knowledgeMatch[1]));
+        if (!entry) return json({ error: 'Knowledge entry not found' }, 404);
+        return json(entry);
+      }
+
+      if (knowledgeMatch && request.method === 'PATCH') {
+        return this.patchKnowledgeEntry(decodeURIComponent(knowledgeMatch[1]), await request.json());
+      }
+
+      const goalArchiveMatch = url.pathname.match(/^\/api\/goals\/([^/]+)\/archive$/);
+      if (goalArchiveMatch && request.method === 'POST') {
+        const entry = this.archiveGoal(decodeURIComponent(goalArchiveMatch[1]));
+        if (!entry) return json({ error: 'Goal not found' }, 404);
+        return json(entry, 201);
       }
 
       if (request.method === 'GET' && url.pathname === '/api/agents') {
@@ -699,6 +734,22 @@ export class XoxiangHub extends DurableObject<Env> {
       )
     `);
     this.ctx.storage.sql.exec(`
+      CREATE TABLE IF NOT EXISTS knowledge_entries (
+        id TEXT PRIMARY KEY,
+        kind TEXT NOT NULL,
+        title TEXT NOT NULL,
+        summary TEXT NOT NULL,
+        body TEXT NOT NULL,
+        tags TEXT NOT NULL,
+        source_refs TEXT NOT NULL,
+        owner_agent_id TEXT,
+        reviewer_agent_id TEXT,
+        status TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      )
+    `);
+    this.ctx.storage.sql.exec(`
       CREATE TABLE IF NOT EXISTS activities (
         id TEXT PRIMARY KEY,
         agent_id TEXT NOT NULL,
@@ -938,6 +989,35 @@ export class XoxiangHub extends DurableObject<Env> {
     return json(reminder);
   }
 
+  private createKnowledgeEntry(body: unknown): Response {
+    const parsed = CreateKnowledgeEntryRequestSchema.safeParse(body);
+    if (!parsed.success) return json({ error: 'Invalid request body', issues: parsed.error.issues }, 400);
+    if (parsed.data.sourceRefs.length === 0 && !parsed.data.allowNoSource) return json({ error: 'sourceRefs are required unless allowNoSource is true' }, 400);
+    const entry = this.writeKnowledgeEntry({
+      id: crypto.randomUUID(),
+      kind: parsed.data.kind,
+      title: parsed.data.title,
+      summary: parsed.data.summary,
+      body: parsed.data.body,
+      tags: parsed.data.tags,
+      sourceRefs: parsed.data.sourceRefs,
+      ownerAgentId: parsed.data.ownerAgentId,
+      reviewerAgentId: parsed.data.reviewerAgentId,
+      status: parsed.data.status,
+    });
+    this.broadcast({ type: 'knowledge:update', entry });
+    return json(entry, 201);
+  }
+
+  private patchKnowledgeEntry(id: string, body: unknown): Response {
+    const parsed = PatchKnowledgeEntryRequestSchema.safeParse(body);
+    if (!parsed.success) return json({ error: 'Invalid request body', issues: parsed.error.issues }, 400);
+    const entry = this.updateKnowledgeEntry(id, parsed.data);
+    if (!entry) return json({ error: 'Knowledge entry not found' }, 404);
+    this.broadcast({ type: 'knowledge:update', entry });
+    return json(entry);
+  }
+
   private patchTask(taskId: string, body: unknown): Response {
     const parsed = PatchTaskRequestSchema.safeParse(body);
     if (!parsed.success) return json({ error: 'Invalid request body', issues: parsed.error.issues }, 400);
@@ -1101,6 +1181,39 @@ export class XoxiangHub extends DurableObject<Env> {
       return task;
     });
     return json({ tasks }, 201);
+  }
+
+  private archiveGoal(goalId: string, ownerAgentId?: string): KnowledgeEntry | undefined {
+    const goal = this.getGoal(goalId);
+    if (!goal) return undefined;
+    const tasks = this.listTasks({ channelId: goal.channelId }).filter((task) => task.context?.goalId === goal.id);
+    const reviews = tasks.flatMap((task) => task.context?.reviews ?? []);
+    const evidence = reviews.flatMap((review) => review.evidence);
+    const body = [
+      `# ${goal.objective}`,
+      '',
+      '## Success Criteria',
+      ...goal.successCriteria.map((item) => `- ${item}`),
+      '',
+      '## Tasks',
+      ...tasks.map((task) => `- [${task.status}] ${task.title}`),
+      '',
+      '## Review Evidence',
+      ...(evidence.length > 0 ? evidence.map((item) => `- ${item}`) : ['- No review evidence recorded.']),
+    ].join('\n');
+    const entry = this.writeKnowledgeEntry({
+      id: crypto.randomUUID(),
+      kind: 'project_archive',
+      title: `Archive: ${goal.objective}`.slice(0, 200),
+      summary: `${tasks.length} tasks archived for goal ${goal.id}.`,
+      body,
+      tags: ['project_archive', goal.status, goal.channelId],
+      sourceRefs: [`goal:${goal.id}`, ...tasks.map((task) => `task:${task.id}`), ...reviews.map((review) => `review:${review.id}`)],
+      ownerAgentId,
+      status: 'active',
+    });
+    this.broadcast({ type: 'knowledge:update', entry });
+    return entry;
   }
 
   private startGoalAlignment(messageId: string, body: unknown): Response {
@@ -1325,6 +1438,26 @@ export class XoxiangHub extends DurableObject<Env> {
       return json(reviews.filter((review) => parsed.data.all || review.reviewerAgentId === agent.id));
     }
 
+    if (request.method === 'GET' && path === '/knowledge') {
+      const parsed = SearchKnowledgeRequestSchema.safeParse(Object.fromEntries(url.searchParams.entries()));
+      if (!parsed.success) return json({ error: 'Invalid query', issues: parsed.error.issues }, 400);
+      return json(this.searchKnowledge(parsed.data));
+    }
+
+    const internalKnowledgeMatch = path.match(/^\/knowledge\/([^/]+)$/);
+    if (request.method === 'GET' && internalKnowledgeMatch) {
+      const entry = this.getKnowledgeEntry(decodeURIComponent(internalKnowledgeMatch[1]));
+      if (!entry) return json({ error: 'Knowledge entry not found' }, 404);
+      return json(entry);
+    }
+
+    if (request.method === 'POST' && path === '/knowledge') {
+      return this.createKnowledgeEntry({
+        ...(await request.json().catch(() => ({})) as object),
+        ownerAgentId: agent.id,
+      });
+    }
+
     if (request.method === 'GET' && path === '/goals') {
       const parsed = InternalGoalListRequestSchema.safeParse(Object.fromEntries(url.searchParams.entries()));
       if (!parsed.success) return json({ error: 'Invalid query', issues: parsed.error.issues }, 400);
@@ -1424,6 +1557,13 @@ export class XoxiangHub extends DurableObject<Env> {
     const alignmentConfirmMatch = path.match(/^\/goal-alignments\/([^/]+)\/confirm$/);
     if (request.method === 'POST' && alignmentConfirmMatch) {
       return this.confirmGoalAlignment(decodeURIComponent(alignmentConfirmMatch[1]), { requesterName: agent.displayName ?? agent.name });
+    }
+
+    const internalGoalArchiveMatch = path.match(/^\/goals\/([^/]+)\/archive$/);
+    if (request.method === 'POST' && internalGoalArchiveMatch) {
+      const entry = this.archiveGoal(decodeURIComponent(internalGoalArchiveMatch[1]), agent.id);
+      if (!entry) return json({ error: 'Goal not found' }, 404);
+      return json(entry, 201);
     }
 
     if (request.method === 'GET' && path === '/reminders') {
@@ -2019,6 +2159,23 @@ export class XoxiangHub extends DurableObject<Env> {
     return row ? toReminder(row) : undefined;
   }
 
+  private searchKnowledge(filter: { query?: string; kind?: KnowledgeKind; tags?: string[]; limit?: number } = {}): KnowledgeSearchResult[] {
+    const query = (filter.query ?? '').trim().toLowerCase();
+    const tags = filter.tags ?? [];
+    return this.ctx.storage.sql.exec<Row>('SELECT * FROM knowledge_entries ORDER BY updated_at DESC').toArray()
+      .map(toKnowledgeEntry)
+      .map((entry) => ({ entry, score: scoreKnowledge(entry, query), reason: query ? `Matched "${query}"` : 'Recent knowledge' }))
+      .filter((result) => (!filter.kind || result.entry.kind === filter.kind) && tags.every((tag) => result.entry.tags.includes(tag)))
+      .filter((result) => !query || (result.score ?? 0) > 0)
+      .sort((a, b) => (b.score ?? 0) - (a.score ?? 0) || new Date(b.entry.updatedAt).getTime() - new Date(a.entry.updatedAt).getTime())
+      .slice(0, filter.limit ?? 20);
+  }
+
+  private getKnowledgeEntry(id: string): KnowledgeEntry | undefined {
+    const row = this.ctx.storage.sql.exec<Row>('SELECT * FROM knowledge_entries WHERE id = ? LIMIT 1', id).toArray()[0];
+    return row ? toKnowledgeEntry(row) : undefined;
+  }
+
   private createMessage(message: Omit<Message, 'createdAt'>): Message {
     const created: Message = { ...message, createdAt: new Date().toISOString() };
     this.ctx.storage.sql.exec(
@@ -2140,11 +2297,56 @@ export class XoxiangHub extends DurableObject<Env> {
     return created;
   }
 
+  private writeKnowledgeEntry(entry: Omit<KnowledgeEntry, 'createdAt' | 'updatedAt'>): KnowledgeEntry {
+    const now = new Date().toISOString();
+    const created: KnowledgeEntry = { ...entry, createdAt: now, updatedAt: now };
+    this.ctx.storage.sql.exec(
+      `INSERT INTO knowledge_entries (id, kind, title, summary, body, tags, source_refs, owner_agent_id, reviewer_agent_id, status, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      created.id,
+      created.kind,
+      created.title,
+      created.summary,
+      created.body,
+      JSON.stringify(created.tags),
+      JSON.stringify(created.sourceRefs),
+      created.ownerAgentId ?? null,
+      created.reviewerAgentId ?? null,
+      created.status,
+      created.createdAt,
+      created.updatedAt,
+    );
+    return created;
+  }
+
   private updateReminder(id: string, patch: Partial<Pick<Reminder, 'status'>>): Reminder | undefined {
     const existing = this.getReminder(id);
     if (!existing) return undefined;
     const updated: Reminder = { ...existing, status: patch.status ?? existing.status };
     this.ctx.storage.sql.exec('UPDATE reminders SET status = ? WHERE id = ?', updated.status, id);
+    return updated;
+  }
+
+  private updateKnowledgeEntry(id: string, patch: Partial<Omit<KnowledgeEntry, 'id' | 'createdAt' | 'updatedAt'>>): KnowledgeEntry | undefined {
+    const existing = this.getKnowledgeEntry(id);
+    if (!existing) return undefined;
+    const updated: KnowledgeEntry = { ...existing, ...patch, updatedAt: new Date().toISOString() };
+    this.ctx.storage.sql.exec(
+      `UPDATE knowledge_entries
+       SET kind = ?, title = ?, summary = ?, body = ?, tags = ?, source_refs = ?, owner_agent_id = ?, reviewer_agent_id = ?, status = ?, updated_at = ?
+       WHERE id = ?`,
+      updated.kind,
+      updated.title,
+      updated.summary,
+      updated.body,
+      JSON.stringify(updated.tags),
+      JSON.stringify(updated.sourceRefs),
+      updated.ownerAgentId ?? null,
+      updated.reviewerAgentId ?? null,
+      updated.status,
+      updated.updatedAt,
+      id,
+    );
     return updated;
   }
 
@@ -2971,6 +3173,33 @@ function toReminder(row: Row): Reminder {
     status: String(row.status) as ReminderStatus,
     createdAt: String(row.created_at),
   };
+}
+
+function toKnowledgeEntry(row: Row): KnowledgeEntry {
+  return {
+    id: String(row.id),
+    kind: String(row.kind) as KnowledgeKind,
+    title: String(row.title),
+    summary: String(row.summary),
+    body: String(row.body),
+    tags: JSON.parse(String(row.tags)) as string[],
+    sourceRefs: JSON.parse(String(row.source_refs)) as string[],
+    ownerAgentId: row.owner_agent_id ? String(row.owner_agent_id) : undefined,
+    reviewerAgentId: row.reviewer_agent_id ? String(row.reviewer_agent_id) : undefined,
+    status: String(row.status) as KnowledgeStatus,
+    createdAt: String(row.created_at),
+    updatedAt: String(row.updated_at),
+  };
+}
+
+function scoreKnowledge(entry: KnowledgeEntry, query: string): number {
+  if (!query) return 1;
+  let score = 0;
+  if (entry.title.toLowerCase().includes(query)) score += 8;
+  if (entry.summary.toLowerCase().includes(query)) score += 5;
+  if (entry.body.toLowerCase().includes(query)) score += 2;
+  score += entry.tags.filter((tag) => tag.toLowerCase().includes(query)).length * 4;
+  return score;
 }
 
 function toDirectMessageDelivery(dm: DirectMessage) {

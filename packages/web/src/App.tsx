@@ -8,6 +8,7 @@ import { TaskBoard } from './components/TaskBoard.js';
 import { ThreadPanel } from './components/ThreadPanel.js';
 import { GoalDraftPanel } from './components/GoalDraftPanel.js';
 import { GoalAlignmentPanel } from './components/GoalAlignmentPanel.js';
+import { KnowledgePanel } from './components/KnowledgePanel.js';
 import { MobileTopBar } from './components/MobileTopBar.js';
 import { LoginView } from './components/LoginView.js';
 import type { Channel, Message, MessageThread, Agent, Machine, AgentActivity, VersionInfo, Task, Reminder, SearchMessageResult, GoalBrief, GoalAlignment } from './api.js';
@@ -25,7 +26,7 @@ export function App() {
   const [hubVersion, setHubVersion] = useState<VersionInfo | undefined>();
   const [activitiesByAgent, setActivitiesByAgent] = useState<Record<string, AgentActivity[]>>({});
   const [remindersByAgent, setRemindersByAgent] = useState<Record<string, Reminder[]>>({});
-  const [selectedView, setSelectedView] = useState<'channel' | 'tasks'>('channel');
+  const [selectedView, setSelectedView] = useState<'channel' | 'tasks' | 'knowledge'>('channel');
   const [selectedChannel, setSelectedChannel] = useState('general');
   const [selectedAgentId, setSelectedAgentId] = useState<string | undefined>();
   const [rightPanel, setRightPanel] = useState<'agents' | undefined>();
@@ -419,6 +420,8 @@ export function App() {
   const currentMessages = messagesByChannel[selectedChannel] ?? [];
   const currentTitle = selectedView === 'tasks'
     ? 'Tasks'
+    : selectedView === 'knowledge'
+      ? 'Knowledge'
     : selectedAgent
       ? selectedAgent.displayName ?? selectedAgent.name
       : `# ${selectedChannelObj?.name ?? selectedChannel}`;
@@ -450,7 +453,7 @@ export function App() {
     <div className="app-shell" style={{ display: 'flex', height: '100vh', fontFamily: "'Courier New', monospace", background: '#fafaf5' }}>
       <MobileTopBar
         title={currentTitle}
-        subtitle={thread ? 'Thread' : selectedView === 'tasks' ? `${tasks.filter((task) => task.status !== 'done').length} open` : 'Workspace'}
+        subtitle={thread ? 'Thread' : selectedView === 'tasks' ? `${tasks.filter((task) => task.status !== 'done').length} open` : selectedView === 'knowledge' ? 'Memory layer' : 'Workspace'}
         hasThread={!!thread}
         onOpenMenu={() => setSidebarOpen(true)}
         onOpenAgents={() => { setRightPanel('agents'); setSelectedAgentId(undefined); setThread(undefined); setGoalAlignment(undefined); }}
@@ -470,6 +473,7 @@ export function App() {
         hubVersion={hubVersion}
         taskCount={tasks.filter((task) => task.status !== 'done').length}
         onSelectTasks={() => { setSelectedView('tasks'); setSelectedAgentId(undefined); setGoalAlignment(undefined); }}
+        onSelectKnowledge={() => { setSelectedView('knowledge'); setSelectedAgentId(undefined); setGoalAlignment(undefined); }}
         onOpenSearch={() => setSearchOpen(true)}
         onSelectChannel={(id) => {
           setSelectedView('channel');
@@ -497,6 +501,8 @@ export function App() {
             onTaskUpdated={upsertTask}
             onTaskDeleted={(taskId) => setTasks((prev) => prev.filter((task) => task.id !== taskId))}
           />
+        ) : selectedView === 'knowledge' ? (
+          <KnowledgePanel />
         ) : (
           <>
             <ChannelView

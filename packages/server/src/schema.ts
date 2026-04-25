@@ -111,6 +111,21 @@ export const reminders = sqliteTable('reminders', {
   createdAt: text('created_at').notNull(),
 });
 
+export const knowledgeEntries = sqliteTable('knowledge_entries', {
+  id: text('id').primaryKey(),
+  kind: text('kind').notNull(),
+  title: text('title').notNull(),
+  summary: text('summary').notNull(),
+  body: text('body').notNull(),
+  tags: text('tags').notNull(),
+  sourceRefs: text('source_refs').notNull(),
+  ownerAgentId: text('owner_agent_id'),
+  reviewerAgentId: text('reviewer_agent_id'),
+  status: text('status').notNull(),
+  createdAt: text('created_at').notNull(),
+  updatedAt: text('updated_at').notNull(),
+});
+
 export const agents = sqliteTable('agents', {
   id: text('id').primaryKey(),
   name: text('name').notNull(),
