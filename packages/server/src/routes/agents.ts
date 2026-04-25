@@ -6,6 +6,7 @@ import { eventBus } from '../events.js';
 import { CreateAgentDelegationRequestSchema, CreateAgentRequestSchema, CreateDirectMessageRequestSchema, PatchAgentRequestSchema, type Agent, type DirectMessage } from '@mini-slock/shared';
 import { resolveStartMachineId, toRuntimeConfig } from '@mini-slock/hub-core';
 import { delegateAgent } from '../delegation.js';
+import { toAgentRuntimeConfig } from '../runtimeConfig.js';
 
 export async function agentRoutes(app: FastifyInstance) {
   app.get('/api/agents', async () => {
@@ -161,7 +162,7 @@ export async function agentRoutes(app: FastifyInstance) {
     const sent = daemonRegistry.send(machineId, {
       type: 'agent:start',
       agentId: agent.id,
-      config: toRuntimeConfig(agent),
+      config: await toAgentRuntimeConfig(agent),
       launchId,
     });
 

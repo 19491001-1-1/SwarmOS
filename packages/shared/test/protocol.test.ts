@@ -8,6 +8,10 @@ import {
   CreateMessageRequestSchema,
   CreateDirectMessageRequestSchema,
   CreateAgentDelegationRequestSchema,
+  InternalAgentDelegateRequestSchema,
+  InternalDmSendRequestSchema,
+  InternalMessageReadRequestSchema,
+  InternalMessageSendRequestSchema,
 } from '../src/validation.js';
 import { APP_VERSION, createVersionInfo } from '../src/version.js';
 
@@ -123,6 +127,7 @@ describe('ServerToDaemon protocol', () => {
       config: {
         runtime: 'claude',
         name: 'my-agent',
+        agentToken: 'token-1',
       },
       launchId: 'launch-1',
     };
@@ -161,6 +166,21 @@ describe('ServerToDaemon protocol', () => {
       relPath: 'transcript.txt',
     });
     expect(result.success).toBe(true);
+  });
+});
+
+describe('Internal agent API schemas', () => {
+  it('accepts agent-facing CLI request bodies', () => {
+    expect(InternalMessageSendRequestSchema.safeParse({ channel: 'general', content: 'hello' }).success).toBe(true);
+    expect(InternalMessageReadRequestSchema.safeParse({ channel: 'general', limit: '10' }).success).toBe(true);
+    expect(InternalDmSendRequestSchema.safeParse({ to: 'agent-2', content: 'secret' }).success).toBe(true);
+    expect(InternalAgentDelegateRequestSchema.safeParse({ to: 'agent-2', content: 'work', startIfInactive: true }).success).toBe(true);
+  });
+
+  it('rejects empty internal agent API content', () => {
+    expect(InternalMessageSendRequestSchema.safeParse({ channel: 'general', content: '' }).success).toBe(false);
+    expect(InternalDmSendRequestSchema.safeParse({ to: 'agent-2', content: '' }).success).toBe(false);
+    expect(InternalAgentDelegateRequestSchema.safeParse({ to: '', content: 'work' }).success).toBe(false);
   });
 });
 

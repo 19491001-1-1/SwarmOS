@@ -1,3 +1,5 @@
+import type { VersionInfo } from './version.js';
+
 export type RuntimeId = 'claude' | 'codex' | 'gemini';
 
 export type AgentStatus = 'inactive' | 'starting' | 'running' | 'working' | 'idle' | 'error';
@@ -18,6 +20,7 @@ export type AgentRuntimeConfig = {
   description?: string;
   systemPrompt?: string;
   envVars?: Record<string, string>;
+  agentToken?: string;
 };
 
 export type DirectMessage = {
@@ -41,6 +44,28 @@ export type AgentDelegation = {
   status: 'queued' | 'delivered' | 'started' | 'failed';
   error?: string;
   createdAt: string;
+};
+
+export type AgentTokenInfo = {
+  agentId: string;
+  token: string;
+  createdAt: string;
+};
+
+export type AgentWhoami = {
+  agent: Agent;
+};
+
+export type AgentServerInfo = {
+  agent: Agent;
+  channels: Channel[];
+  agents: Agent[];
+  version: VersionInfo;
+};
+
+export type AgentUnreadSummary = {
+  channels: Array<{ channelId: string; channelName: string; count: number; latestMessage?: Message }>;
+  dms: Array<{ otherAgentId: string; count: number; latestMessage?: DirectMessage }>;
 };
 
 export type AgentDelivery = {

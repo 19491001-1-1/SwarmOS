@@ -70,7 +70,16 @@ export function parseDelegateLine(line: string): ParsedBridgeDelegate | null {
 }
 
 export function buildBridgeInstruction(): string {
-  return `When you want to send a chat reply, output exactly one line:\n${BRIDGE_MARKER} {"content":"your message here"}`;
+  return [
+    'Prefer the injected `xoxiang` CLI for collaboration:',
+    '- `xoxiang message send --channel general --content "..."`',
+    '- `xoxiang message check`',
+    '- `xoxiang message read --channel general --limit 20`',
+    '- `xoxiang dm send --to agentName --content "..."`',
+    '- `xoxiang agent delegate --to agentName --content "..." --start-if-inactive`',
+    'Never print or reveal the agent token file content.',
+    `If the CLI is unavailable, send a chat reply by outputting exactly one line:\n${BRIDGE_MARKER} {"content":"your message here"}`,
+  ].join('\n');
 }
 
 export function buildDmInstruction(): string {

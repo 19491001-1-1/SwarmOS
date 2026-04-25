@@ -4,8 +4,8 @@ import { homedir } from 'node:os';
 import { drizzle, type LibSQLDatabase } from 'drizzle-orm/libsql';
 import { createClient, type Client } from '@libsql/client';
 import { asc, desc, eq, inArray, or } from 'drizzle-orm';
-import type { Channel, Message, Machine, Agent, RuntimeId, AgentStatus, AgentActivity, DirectMessage, DirectMessageThread, AgentDelegation } from '@mini-slock/shared';
-import { activities, agentDelegations, agents, channels, directMessages, machines, messages } from './schema.js';
+import type { Channel, Message, Machine, Agent, RuntimeId, AgentStatus, AgentActivity, DirectMessage, DirectMessageThread, AgentDelegation, AgentTokenInfo } from '@mini-slock/shared';
+import { activities, agentDelegations, agentTokens, agents, channels, directMessages, machines, messages } from './schema.js';
 
 type Database = LibSQLDatabase<typeof import('./schema.js')>;
 
@@ -32,7 +32,7 @@ async function ensureDbDirectory(path: string): Promise<void> {
 function createDatabase(): Database {
   const path = getDbPath();
   client = createClient({ url: getDbUrl(path) });
-  db = drizzle(client, { schema: { activities, agentDelegations, agents, channels, directMessages, machines, messages } });
+  db = drizzle(client, { schema: { activities, agentDelegations, agentTokens, agents, channels, directMessages, machines, messages } });
   return db;
 }
 
@@ -92,6 +92,13 @@ export async function initDb(): Promise<void> {
         content TEXT NOT NULL,
         status TEXT NOT NULL,
         error TEXT,
+        created_at TEXT NOT NULL
+      )
+    `);
+    await database.run(`
+      CREATE TABLE IF NOT EXISTS agent_tokens (
+        agent_id TEXT PRIMARY KEY,
+        token TEXT NOT NULL,
         created_at TEXT NOT NULL
       )
     `);
@@ -250,6 +257,17 @@ export class SqliteStore {
     await initDb();
     const rows = await getDb().select().from(messages).where(eq(messages.channelId, channelId)).orderBy(asc(messages.createdAt));
     return rows.map(toMessage);
+  }
+
+  async listRecentMessages(channelId: string, limit: number): Promise<Message[]> {
+    await initDb();
+    const rows = await getDb()
+      .select()
+      .from(messages)
+      .where(eq(messages.channelId, channelId))
+      .orderBy(desc(messages.createdAt))
+      .limit(limit);
+    return rows.map(toMessage).reverse();
   }
 
   async createMessage(msg: Omit<Message, 'createdAt'>): Promise<Message> {
@@ -476,6 +494,27 @@ export class SqliteStore {
     return agent;
   }
 
+  async getAgentToken(agentId: string): Promise<AgentTokenInfo | undefined> {
+    await initDb();
+    const [row] = await getDb().select().from(agentTokens).where(eq(agentTokens.agentId, agentId)).limit(1);
+    return row ? { agentId: row.agentId, token: row.token, createdAt: row.createdAt } : undefined;
+  }
+
+  async getOrCreateAgentToken(agentId: string): Promise<AgentTokenInfo> {
+    await initDb();
+    const existing = await this.getAgentToken(agentId);
+    if (existing) return existing;
+    const token = `xox_agent_${crypto.randomUUID().replaceAll('-', '')}`;
+    const created: AgentTokenInfo = { agentId, token, createdAt: new Date().toISOString() };
+    await getDb().insert(agentTokens).values(created);
+    return created;
+  }
+
+  async verifyAgentToken(agentId: string, token: string): Promise<boolean> {
+    const existing = await this.getAgentToken(agentId);
+    return Boolean(existing && existing.token === token);
+  }
+
   async updateAgentStatus(id: string, status: AgentStatus): Promise<Agent | undefined> {
     return this.updateAgent(id, { status });
   }
@@ -517,6 +556,7 @@ export async function resetStore(): Promise<void> {
   await database.delete(activities);
   await database.delete(directMessages);
   await database.delete(agentDelegations);
+  await database.delete(agentTokens);
   await database.delete(agents);
   await database.delete(machines);
   await database.delete(channels);
