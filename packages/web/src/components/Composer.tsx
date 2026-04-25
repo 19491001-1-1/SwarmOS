@@ -66,7 +66,7 @@ export function Composer({ agents, channelName, onSend }: Props) {
   const canSend = content.trim().length > 0;
 
   return (
-    <div style={{
+    <div className="composer-shell" style={{
       padding: '10px 16px 14px',
       background: '#fff',
       borderTop: '2px solid #000',
@@ -109,9 +109,9 @@ export function Composer({ agents, channelName, onSend }: Props) {
       )}
 
       {/* Input row */}
-      <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end', position: 'relative' }}>
+      <div className="composer-input-row" style={{ display: 'flex', gap: 8, alignItems: 'flex-end', position: 'relative' }}>
         {mentionOpen ? (
-          <div style={{
+          <div className="mention-menu" style={{
             position: 'absolute',
             left: 0,
             bottom: '100%',
@@ -160,6 +160,7 @@ export function Composer({ agents, channelName, onSend }: Props) {
           rows={2}
           style={{
             flex: 1,
+            minWidth: 0,
             fontFamily: "'Courier New', monospace",
             fontSize: 13,
             border: '2px solid #000',

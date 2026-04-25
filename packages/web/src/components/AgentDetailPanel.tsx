@@ -29,7 +29,7 @@ export function AgentDetailPanel({ agent, activities, reminders, onReminderUpdat
   const [tab, setTab] = useState<Tab>('profile');
 
   return (
-    <div style={{
+    <div className="right-panel right-panel-detail" style={{
       width: 360,
       background: '#fafaf5',
       borderLeft: '2px solid #000',

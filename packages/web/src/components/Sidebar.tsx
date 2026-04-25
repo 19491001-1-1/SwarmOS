@@ -20,6 +20,8 @@ type Props = {
   onDeleteChannel: (id: string) => Promise<void>;
   onSelectAgent: (id: string) => void;
   onOpenAgents: () => void;
+  className?: string;
+  onNavigate?: () => void;
 };
 
 const S = {
@@ -56,7 +58,7 @@ const S = {
   },
 };
 
-export function Sidebar({ channels, agents, machines, selectedView, selectedChannel, selectedAgentId, webVersion, hubVersion, taskCount, onSelectTasks, onOpenSearch, onSelectChannel, onCreateChannel, onDeleteChannel, onSelectAgent, onOpenAgents }: Props) {
+export function Sidebar({ channels, agents, machines, selectedView, selectedChannel, selectedAgentId, webVersion, hubVersion, taskCount, onSelectTasks, onOpenSearch, onSelectChannel, onCreateChannel, onDeleteChannel, onSelectAgent, onOpenAgents, className, onNavigate }: Props) {
   const [creating, setCreating] = useState(false);
   const [channelName, setChannelName] = useState('');
   const [channelError, setChannelError] = useState('');
@@ -75,7 +77,7 @@ export function Sidebar({ channels, agents, machines, selectedView, selectedChan
   };
 
   return (
-    <div style={S.sidebar}>
+    <div className={`sidebar-shell${className ? ` ${className}` : ''}`} style={S.sidebar}>
       <div className="sidebar-item sidebar-workspace" style={S.workspaceName}>
         <span>▶ {t('nav.workspace')}</span>
         <span title={versionTitle(webVersion, hubVersion)} style={{ fontSize: 10, fontWeight: 400, opacity: 0.65 }}>
@@ -84,11 +86,11 @@ export function Sidebar({ channels, agents, machines, selectedView, selectedChan
       </div>
 
       <div style={{ padding: '4px 0' }}>
-        <button className="sidebar-item" onClick={onOpenSearch} style={navButtonStyle(false)}>
+        <button className="sidebar-item" onClick={() => { onOpenSearch(); onNavigate?.(); }} style={navButtonStyle(false)}>
           <span style={{ flex: 1 }}>{t('nav.search')}</span>
           <span style={{ fontSize: 10 }}>⌘K</span>
         </button>
-        <button className={`sidebar-item${selectedView === 'tasks' ? ' sidebar-item-active' : ''}`} onClick={onSelectTasks} style={{
+        <button className={`sidebar-item${selectedView === 'tasks' ? ' sidebar-item-active' : ''}`} onClick={() => { onSelectTasks(); onNavigate?.(); }} style={{
           display: 'flex',
           alignItems: 'center',
           gap: 7,
@@ -145,17 +147,20 @@ export function Sidebar({ channels, agents, machines, selectedView, selectedChan
             id={ch.id}
             name={ch.name}
             active={selectedView === 'channel' && selectedChannel === ch.id}
-            onClick={() => onSelectChannel(ch.id)}
+            onClick={() => {
+              onSelectChannel(ch.id);
+              onNavigate?.();
+            }}
             onDelete={ch.id === 'general' ? undefined : async () => {
               if (window.confirm(`Delete #${ch.name}?`)) await onDeleteChannel(ch.id);
             }}
           />
         ))}
 
-        <SectionHeader label={t('nav.agents')} count={agents.length} style={{ marginTop: 8 }} action={<button onClick={onOpenAgents} style={miniButtonStyle}>MANAGE</button>} />
+        <SectionHeader label={t('nav.agents')} count={agents.length} style={{ marginTop: 8 }} action={<button onClick={() => { onOpenAgents(); onNavigate?.(); }} style={miniButtonStyle}>MANAGE</button>} />
         {agents.length === 0 && <EmptyHint text="no agents" />}
         {agents.map((a) => (
-          <button key={a.id} className={`sidebar-item${selectedAgentId === a.id ? ' sidebar-item-active' : ''}`} onClick={() => onSelectAgent(a.id)} style={{
+          <button key={a.id} className={`sidebar-item${selectedAgentId === a.id ? ' sidebar-item-active' : ''}`} onClick={() => { onSelectAgent(a.id); onNavigate?.(); }} style={{
             display: 'flex',
             alignItems: 'center',
             gap: 7,

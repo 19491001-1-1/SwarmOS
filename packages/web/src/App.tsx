@@ -6,6 +6,7 @@ import { AgentPanel } from './components/AgentPanel.js';
 import { AgentDetailPanel } from './components/AgentDetailPanel.js';
 import { TaskBoard } from './components/TaskBoard.js';
 import { ThreadPanel } from './components/ThreadPanel.js';
+import { MobileTopBar } from './components/MobileTopBar.js';
 import type { Channel, Message, MessageThread, Agent, Machine, AgentActivity, VersionInfo, Task, Reminder, SearchMessageResult } from './api.js';
 import { WEB_COMMIT_SHA, WEB_VERSION, buildWsUrl, getChannels, getMessages, getMessageThread, sendMessage, getAgents, getMachines, getAgentActivities, getHubVersion, getTasks, messageToTask, getAgentReminders, createChannel, deleteChannel, searchMessages } from './api.js';
 
@@ -22,6 +23,7 @@ export function App() {
   const [selectedChannel, setSelectedChannel] = useState('general');
   const [selectedAgentId, setSelectedAgentId] = useState<string | undefined>();
   const [rightPanel, setRightPanel] = useState<'agents' | undefined>();
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [thread, setThread] = useState<MessageThread | undefined>();
   const [targetMessageId, setTargetMessageId] = useState<string | undefined>();
   const [threadTargetMessageId, setThreadTargetMessageId] = useState<string | undefined>();
@@ -112,16 +114,17 @@ export function App() {
   }, [selectedAgentId]);
 
   useEffect(() => {
-    if (!thread && !selectedAgentId && !rightPanel) return;
+    if (!thread && !selectedAgentId && !rightPanel && !sidebarOpen) return;
     const onKey = (event: KeyboardEvent) => {
       if (event.key !== 'Escape') return;
-      if (thread) setThread(undefined);
+      if (sidebarOpen) setSidebarOpen(false);
+      else if (thread) setThread(undefined);
       else if (selectedAgentId) setSelectedAgentId(undefined);
       else setRightPanel(undefined);
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [rightPanel, selectedAgentId, thread]);
+  }, [rightPanel, selectedAgentId, sidebarOpen, thread]);
 
   // WebSocket for real-time updates. Keep one connection alive and use refs for
   // channel-specific state so channel switching does not churn the socket.
@@ -306,6 +309,11 @@ export function App() {
   const selectedChannelObj = channels.find((c) => c.id === selectedChannel);
   const selectedAgent = selectedAgentId ? agents.find((a) => a.id === selectedAgentId) : undefined;
   const currentMessages = messagesByChannel[selectedChannel] ?? [];
+  const currentTitle = selectedView === 'tasks'
+    ? 'Tasks'
+    : selectedAgent
+      ? selectedAgent.displayName ?? selectedAgent.name
+      : `# ${selectedChannelObj?.name ?? selectedChannel}`;
 
   const handleSearchSelect = async (result: SearchMessageResult) => {
     setSelectedView('channel');
@@ -324,7 +332,17 @@ export function App() {
 
   return (
     <div className="app-shell" style={{ display: 'flex', height: '100vh', fontFamily: "'Courier New', monospace", background: '#fafaf5' }}>
+      <MobileTopBar
+        title={currentTitle}
+        subtitle={thread ? 'Thread' : selectedView === 'tasks' ? `${tasks.filter((task) => task.status !== 'done').length} open` : 'Workspace'}
+        hasThread={!!thread}
+        onOpenMenu={() => setSidebarOpen(true)}
+        onOpenAgents={() => { setRightPanel('agents'); setSelectedAgentId(undefined); setThread(undefined); }}
+        onCloseThread={() => setThread(undefined)}
+      />
+      {sidebarOpen ? <button type="button" className="mobile-scrim" aria-label="Close navigation" onClick={() => setSidebarOpen(false)} /> : null}
       <Sidebar
+        className={sidebarOpen ? 'sidebar-mobile-open' : ''}
         channels={channels}
         agents={agents}
         machines={machines}
@@ -348,8 +366,9 @@ export function App() {
         onDeleteChannel={handleDeleteChannel}
         onSelectAgent={(id) => { setSelectedAgentId(id); }}
         onOpenAgents={() => { setRightPanel((current) => current === 'agents' ? undefined : 'agents'); setSelectedAgentId(undefined); setThread(undefined); }}
+        onNavigate={() => setSidebarOpen(false)}
       />
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, minHeight: 0 }}>
+      <div className="main-pane" style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, minHeight: 0 }}>
         {selectedView === 'tasks' ? (
           <TaskBoard
             tasks={tasks}

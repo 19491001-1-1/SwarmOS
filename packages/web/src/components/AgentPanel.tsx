@@ -64,7 +64,7 @@ export function AgentPanel({ agents, machines, onAgentsChange, onClose }: Props)
   };
 
   return (
-    <div style={{
+    <div className="right-panel right-panel-agents" style={{
       width: 280,
       background: '#fafaf5',
       borderLeft: '2px solid #000',

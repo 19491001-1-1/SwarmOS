@@ -22,6 +22,22 @@ body {
 
 .app-shell {
   position: relative;
+  width: 100vw;
+  height: 100dvh !important;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.main-pane,
+.channel-view,
+.message-list,
+.right-panel {
+  min-width: 0;
+}
+
+.mobile-topbar,
+.mobile-scrim {
+  display: none;
 }
 
 .sidebar-item {
@@ -176,4 +192,195 @@ body {
 .message-row ul:last-child,
 .message-row ol:last-child {
   margin-bottom: 0;
+}
+
+.message-row pre,
+.message-row code,
+.right-panel pre,
+.right-panel code {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.message-row table,
+.right-panel table {
+  max-width: 100%;
+}
+
+@media (max-width: 1023px) {
+  .mobile-topbar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 20;
+    height: 52px;
+    display: grid;
+    grid-template-columns: 44px minmax(0, 1fr) 44px;
+    align-items: center;
+    gap: 8px;
+    border-bottom: 2px solid #000;
+    background: #fff;
+    padding: 0 10px;
+    font-family: var(--font);
+  }
+
+  .mobile-topbar-button {
+    width: 40px;
+    height: 40px;
+    border: 2px solid #000;
+    background: var(--yellow);
+    color: #000;
+    font-family: var(--font);
+    font-size: 20px;
+    font-weight: 700;
+    cursor: pointer;
+    box-shadow: 2px 2px 0 #000;
+  }
+
+  .mobile-topbar-title {
+    display: grid;
+    gap: 2px;
+    min-width: 0;
+    line-height: 1.1;
+  }
+
+  .mobile-topbar-title strong,
+  .mobile-topbar-title span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .mobile-topbar-title strong {
+    font-size: 14px;
+  }
+
+  .mobile-topbar-title span {
+    color: #777;
+    font-size: 11px;
+  }
+
+  .sidebar-shell {
+    position: fixed;
+    inset: 0 auto 0 0;
+    width: min(86vw, 320px) !important;
+    max-width: min(86vw, 320px);
+    height: 100dvh;
+    z-index: 31;
+    transform: translateX(-105%);
+    transition: transform 180ms ease;
+    box-shadow: 8px 0 0 rgba(0, 0, 0, 0.16);
+  }
+
+  .sidebar-shell.sidebar-mobile-open {
+    transform: translateX(0);
+  }
+
+  .mobile-scrim {
+    position: fixed;
+    inset: 0;
+    display: block;
+    z-index: 30;
+    border: 0;
+    background: rgba(0, 0, 0, 0.32);
+    padding: 0;
+  }
+
+  .main-pane {
+    padding-top: 52px;
+    width: 100vw;
+  }
+
+  .channel-header {
+    display: none !important;
+  }
+
+  .right-panel {
+    position: fixed !important;
+    inset: 52px 0 0 0 !important;
+    width: 100vw !important;
+    max-width: none !important;
+    height: calc(100dvh - 52px) !important;
+    z-index: 25;
+    border-left: 0 !important;
+  }
+
+  .right-rail-trigger {
+    top: 60px;
+    right: 10px;
+    min-height: 40px;
+  }
+
+  .message-list {
+    padding: 10px 10px 8px !important;
+  }
+
+  .message-row {
+    max-width: 100% !important;
+    gap: 8px !important;
+  }
+
+  .message-row-grouped {
+    padding-left: 40px !important;
+  }
+
+  .message-actions {
+    opacity: 1 !important;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+
+  .composer-shell {
+    padding: 8px 10px max(10px, env(safe-area-inset-bottom)) !important;
+  }
+
+  .composer-input-row {
+    gap: 6px !important;
+  }
+
+  .composer-input-row textarea {
+    max-height: 136px;
+  }
+
+  .composer-input-row button {
+    min-width: 72px;
+    padding-left: 10px !important;
+    padding-right: 10px !important;
+  }
+
+  .mention-menu {
+    width: min(320px, calc(100vw - 20px));
+    min-width: 0 !important;
+    max-height: 45dvh;
+    overflow-y: auto;
+  }
+}
+
+@media (max-width: 767px) {
+  .app-shell {
+    height: 100dvh !important;
+  }
+
+  .mobile-topbar {
+    height: 50px;
+    grid-template-columns: 42px minmax(0, 1fr) 42px;
+    padding: 0 8px;
+  }
+
+  .main-pane {
+    padding-top: 50px;
+  }
+
+  .right-panel {
+    inset: 50px 0 0 0 !important;
+    height: calc(100dvh - 50px) !important;
+  }
+
+  .right-rail-trigger {
+    top: 58px;
+    padding: 6px 8px;
+    font-size: 11px;
+  }
 }
