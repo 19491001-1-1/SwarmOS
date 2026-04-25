@@ -66,7 +66,7 @@ export function PresenceAvatar({ name, isAgent, status, latestActivity, size = 3
         borderRadius: 99,
         border: '2px solid #fff',
         background: color,
-        boxShadow: active ? `0 0 0 2px ${color}55` : 'none',
+        boxShadow: 'none',
       }} />
     </button>
   );
