@@ -22,6 +22,7 @@ export function App() {
   const [selectedAgentId, setSelectedAgentId] = useState<string | undefined>();
   const [searchOpen, setSearchOpen] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
+  const selectedChannelRef = useRef(selectedChannel);
 
   const loadChannels = useCallback(async () => {
     const data = await getChannels();
@@ -48,6 +49,12 @@ export function App() {
     setTasks(data);
   }, []);
 
+  const upsertMessage = useCallback((message: Message) => {
+    setMessages((prev) => prev.some((candidate) => candidate.id === message.id)
+      ? prev.map((candidate) => (candidate.id === message.id ? message : candidate))
+      : [...prev, message]);
+  }, []);
+
   useEffect(() => {
     loadChannels();
     loadAgents();
@@ -57,6 +64,7 @@ export function App() {
   }, []);
 
   useEffect(() => {
+    selectedChannelRef.current = selectedChannel;
     loadMessages(selectedChannel);
   }, [selectedChannel]);
 
@@ -81,62 +89,112 @@ export function App() {
     });
   }, [selectedAgentId]);
 
-  // WebSocket for real-time updates
+  // WebSocket for real-time updates. Keep one connection alive and use refs for
+  // channel-specific state so channel switching does not churn the socket.
   useEffect(() => {
-    const wsUrl = buildWsUrl('/ws');
-    const ws = new WebSocket(wsUrl);
-    wsRef.current = ws;
+    let closedByEffect = false;
+    let reconnectTimer: ReturnType<typeof setTimeout> | undefined;
+    let heartbeatTimer: ReturnType<typeof setInterval> | undefined;
+    let reconnectDelay = 1000;
 
-    ws.onmessage = (event) => {
-      const msg = JSON.parse(event.data);
-      if (msg.type === 'message:new') {
-        if (msg.message.channelId === selectedChannel) {
-          setMessages((prev) => [...prev, msg.message]);
-        }
-      } else if (msg.type === 'agent:update' || msg.type === 'agent:updated') {
-        setAgents((prev) => prev.map((a) => (a.id === msg.agent.id ? msg.agent : a)));
-      } else if (msg.type === 'agent:activity') {
-        setActivitiesByAgent((prev) => {
-          const current = prev[msg.agentId] ?? [];
-          if (current.some((activity) => activity.id === msg.activity.id)) return prev;
-          return { ...prev, [msg.agentId]: [msg.activity, ...current].slice(0, 200) };
-        });
-      } else if (msg.type === 'machine:update') {
-        setMachines((prev) => {
-          const exists = prev.find((m) => m.id === msg.machine.id);
-          if (exists) return prev.map((m) => (m.id === msg.machine.id ? msg.machine : m));
-          return [...prev, msg.machine];
-        });
-      } else if (msg.type === 'task:update') {
-        setTasks((prev) => {
-          const exists = prev.find((task) => task.id === msg.task.id);
-          if (exists) return prev.map((task) => (task.id === msg.task.id ? msg.task : task));
-          return [...prev, msg.task];
-        });
-      } else if (msg.type === 'channel:created') {
-        setChannels((prev) => prev.some((channel) => channel.id === msg.channel.id) ? prev : [...prev, msg.channel]);
-      } else if (msg.type === 'channel:deleted') {
-        setChannels((prev) => prev.filter((channel) => channel.id !== msg.channelId));
-        if (selectedChannel === msg.channelId) setSelectedChannel('general');
-      } else if (msg.type === 'reminder:update') {
-        setRemindersByAgent((prev) => {
-          const current = prev[msg.reminder.agentId] ?? [];
-          const exists = current.some((reminder) => reminder.id === msg.reminder.id);
-          return {
-            ...prev,
-            [msg.reminder.agentId]: exists
-              ? current.map((reminder) => (reminder.id === msg.reminder.id ? msg.reminder : reminder))
-              : [...current, msg.reminder],
-          };
-        });
-      }
+    const refreshCurrentState = () => {
+      loadChannels();
+      loadAgents();
+      loadMachines();
+      loadTasks();
+      loadMessages(selectedChannelRef.current);
     };
 
-    return () => ws.close();
-  }, [selectedChannel]);
+    const connect = () => {
+      const ws = new WebSocket(buildWsUrl('/ws'));
+      wsRef.current = ws;
+
+      ws.onopen = () => {
+        reconnectDelay = 1000;
+        refreshCurrentState();
+        if (heartbeatTimer) clearInterval(heartbeatTimer);
+        heartbeatTimer = setInterval(() => {
+          if (ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ type: 'browser:ping', at: Date.now() }));
+          }
+        }, 25000);
+      };
+
+      ws.onmessage = (event) => {
+        const msg = JSON.parse(event.data);
+        if (msg.type === 'message:new') {
+          if (msg.message.channelId === selectedChannelRef.current) {
+            upsertMessage(msg.message);
+          }
+        } else if (msg.type === 'agent:update' || msg.type === 'agent:updated') {
+          setAgents((prev) => prev.map((a) => (a.id === msg.agent.id ? msg.agent : a)));
+        } else if (msg.type === 'agent:activity') {
+          setActivitiesByAgent((prev) => {
+            const current = prev[msg.agentId] ?? [];
+            if (current.some((activity) => activity.id === msg.activity.id)) return prev;
+            return { ...prev, [msg.agentId]: [msg.activity, ...current].slice(0, 200) };
+          });
+        } else if (msg.type === 'machine:update') {
+          setMachines((prev) => {
+            const exists = prev.find((m) => m.id === msg.machine.id);
+            if (exists) return prev.map((m) => (m.id === msg.machine.id ? msg.machine : m));
+            return [...prev, msg.machine];
+          });
+        } else if (msg.type === 'task:update') {
+          setTasks((prev) => {
+            const exists = prev.find((task) => task.id === msg.task.id);
+            if (exists) return prev.map((task) => (task.id === msg.task.id ? msg.task : task));
+            return [...prev, msg.task];
+          });
+        } else if (msg.type === 'channel:created') {
+          setChannels((prev) => prev.some((channel) => channel.id === msg.channel.id) ? prev : [...prev, msg.channel]);
+        } else if (msg.type === 'channel:deleted') {
+          setChannels((prev) => prev.filter((channel) => channel.id !== msg.channelId));
+          if (selectedChannelRef.current === msg.channelId) setSelectedChannel('general');
+        } else if (msg.type === 'reminder:update') {
+          setRemindersByAgent((prev) => {
+            const current = prev[msg.reminder.agentId] ?? [];
+            const exists = current.some((reminder) => reminder.id === msg.reminder.id);
+            return {
+              ...prev,
+              [msg.reminder.agentId]: exists
+                ? current.map((reminder) => (reminder.id === msg.reminder.id ? msg.reminder : reminder))
+                : [...current, msg.reminder],
+            };
+          });
+        }
+      };
+
+      ws.onerror = () => {
+        ws.close();
+      };
+
+      ws.onclose = () => {
+        if (heartbeatTimer) {
+          clearInterval(heartbeatTimer);
+          heartbeatTimer = undefined;
+        }
+        if (wsRef.current === ws) wsRef.current = null;
+        if (closedByEffect) return;
+        reconnectTimer = setTimeout(connect, reconnectDelay);
+        reconnectDelay = Math.min(reconnectDelay * 2, 15000);
+      };
+    };
+
+    connect();
+
+    return () => {
+      closedByEffect = true;
+      if (reconnectTimer) clearTimeout(reconnectTimer);
+      if (heartbeatTimer) clearInterval(heartbeatTimer);
+      wsRef.current?.close();
+      wsRef.current = null;
+    };
+  }, [loadAgents, loadChannels, loadMachines, loadMessages, loadTasks, upsertMessage]);
 
   const handleSend = async (content: string, agentId?: string) => {
-    await sendMessage(selectedChannel, 'user', content, agentId);
+    const message = await sendMessage(selectedChannel, 'user', content, agentId);
+    if (message.channelId === selectedChannelRef.current) upsertMessage(message);
   };
 
   const upsertTask = (task: Task) => {
