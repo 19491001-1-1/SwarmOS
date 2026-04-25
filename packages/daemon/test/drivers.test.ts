@@ -72,6 +72,14 @@ describe('Codex driver', () => {
     const modelArg = cmd.args.find((a) => a.startsWith('model='));
     expect(modelArg).toContain('gpt-4o');
   });
+
+  it('bypasses sandbox so agent-facing CLI can reach the hub', () => {
+    const ctx = { ...baseCtx, config: { ...baseCtx.config, runtime: 'codex' as const } };
+    const cmd = codexDriver.buildCommand(ctx);
+    expect(cmd.args).toContain('--dangerously-bypass-approvals-and-sandbox');
+    expect(cmd.args).toContain('--sandbox');
+    expect(cmd.args).toContain('danger-full-access');
+  });
 });
 
 describe('Gemini driver', () => {
@@ -92,5 +100,14 @@ describe('Gemini driver', () => {
     const cmd = geminiDriver.buildCommand(ctx);
     expect(cmd.args).toContain('-m');
     expect(cmd.args).toContain('gemini-pro');
+  });
+
+  it('disables sandbox and uses yolo approval mode', () => {
+    const ctx = { ...baseCtx, config: { ...baseCtx.config, runtime: 'gemini' as const } };
+    const cmd = geminiDriver.buildCommand(ctx);
+    expect(cmd.args).toContain('--sandbox');
+    expect(cmd.args).toContain('false');
+    expect(cmd.args).toContain('--approval-mode');
+    expect(cmd.args).toContain('yolo');
   });
 });

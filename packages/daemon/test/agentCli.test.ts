@@ -63,6 +63,37 @@ describe('agent-facing xoxiang CLI', () => {
     );
   });
 
+  it('lists the agent directory from server info', async () => {
+    const fetchImpl = okFetch({
+      agents: [
+        { id: 'agent-1', name: 'self', runtime: 'codex', status: 'idle' },
+        { id: 'agent-2', name: 'designer', displayName: 'Designer', description: 'UI specialist', runtime: 'claude', status: 'idle' },
+      ],
+    });
+    const result = await run(['agent', 'list'], fetchImpl);
+
+    expect(result.code).toBe(0);
+    expect(fetchImpl).toHaveBeenCalledWith(
+      'http://hub.test/internal/agent/agent-1/server/info',
+      expect.objectContaining({ method: 'GET' })
+    );
+    expect(JSON.parse(result.stdout)).toEqual([
+      { id: 'agent-1', name: 'self', runtime: 'codex', status: 'idle' },
+      { id: 'agent-2', name: 'designer', displayName: 'Designer', description: 'UI specialist', runtime: 'claude', status: 'idle' },
+    ]);
+  });
+
+  it('supports agent directory as an alias for agent list', async () => {
+    const fetchImpl = okFetch({ agents: [] });
+    const result = await run(['agent', 'directory'], fetchImpl);
+
+    expect(result.code).toBe(0);
+    expect(fetchImpl).toHaveBeenCalledWith(
+      'http://hub.test/internal/agent/agent-1/server/info',
+      expect.objectContaining({ method: 'GET' })
+    );
+  });
+
   it('delegates with wake flag', async () => {
     const fetchImpl = okFetch({ id: 'delegation-1' });
     const result = await run(['agent', 'delegate', '--to', 'target', '--content', 'work', '--start-if-inactive'], fetchImpl);

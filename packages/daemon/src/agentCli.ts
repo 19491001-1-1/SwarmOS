@@ -32,7 +32,7 @@ export async function runAgentCli(argv: string[], env: CliEnv = process.env, io:
   try {
     const command = parseCommand(argv);
     const result = await callInternalApi({ command, agentId, serverUrl, token, fetchImpl: io.fetch });
-    io.stdout.write(formatOutput(result) + '\n');
+    io.stdout.write(formatOutput(selectResult(command, result)) + '\n');
     return 0;
   } catch (err) {
     io.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
@@ -41,13 +41,14 @@ export async function runAgentCli(argv: string[], env: CliEnv = process.env, io:
 }
 
 type ParsedCommand =
-  | { method: 'GET'; path: string }
+  | { method: 'GET'; path: string; select?: 'agents' }
   | { method: 'POST'; path: string; body: unknown };
 
 function parseCommand(argv: string[]): ParsedCommand {
   const [group, action, ...rest] = argv;
   if (group === 'auth' && action === 'whoami') return { method: 'GET', path: '/auth/whoami' };
   if (group === 'server' && action === 'info') return { method: 'GET', path: '/server/info' };
+  if (group === 'agent' && (action === 'list' || action === 'directory')) return { method: 'GET', path: '/server/info', select: 'agents' };
   if (group === 'message' && action === 'check') return { method: 'GET', path: '/messages/check' };
   if (group === 'message' && action === 'read') {
     const opts = parseFlags(rest);
@@ -74,6 +75,17 @@ function parseCommand(argv: string[]): ParsedCommand {
     };
   }
   throw new Error('unknown command');
+}
+
+function selectResult(command: ParsedCommand, result: unknown): unknown {
+  if (command.method === 'GET' && command.select === 'agents') {
+    return isRecord(result) && Array.isArray(result.agents) ? result.agents : [];
+  }
+  return result;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
 }
 
 function parseFlags(args: string[]): Record<string, string | boolean> {
