@@ -1,6 +1,6 @@
 import { mkdir, appendFile, chmod, readdir, readFile, stat, writeFile } from 'fs/promises';
 import { existsSync } from 'fs';
-import { dirname, isAbsolute, join, normalize, sep } from 'path';
+import { delimiter, dirname, isAbsolute, join, normalize, sep } from 'path';
 import { fileURLToPath } from 'url';
 import { spawn, type ChildProcess } from 'child_process';
 import type { AgentRuntimeConfig, AgentDelivery, AgentActivity, WorkspaceEntry, WorkspaceError } from '@mini-slock/shared';
@@ -144,7 +144,7 @@ export class AgentProcessManager {
         ...process.env,
         ...cmd.env,
         ...entry.config.envVars,
-        PATH: `${join(entry.workspaceDir, '.xoxiang')}${process.env.PATH ? `${sep}${process.env.PATH}` : ''}`,
+        PATH: `${join(entry.workspaceDir, '.xoxiang')}${process.env.PATH ? `${delimiter}${process.env.PATH}` : ''}`,
         XOXIANG_AGENT_ID: entry.agentId,
         XOXIANG_SERVER_URL: this.serverUrl,
         XOXIANG_AGENT_TOKEN_FILE: join(entry.workspaceDir, '.xoxiang', 'agent-token'),
