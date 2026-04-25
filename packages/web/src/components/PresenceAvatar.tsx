@@ -1,4 +1,5 @@
 import type { AgentActivity } from '../api.js';
+import type { CSSProperties } from 'react';
 import { t } from '../i18n.js';
 
 type PresenceStatus = 'inactive' | 'starting' | 'running' | 'working' | 'idle' | 'error';
@@ -9,6 +10,7 @@ type Props = {
   status?: PresenceStatus;
   latestActivity?: AgentActivity;
   size?: number;
+  onClick?: () => void;
 };
 
 const AVATAR_PALETTES = [
@@ -18,16 +20,32 @@ const AVATAR_PALETTES = [
   ['#f44336', '#FFD700', '#fff', '#000'],
 ];
 
-export function PresenceAvatar({ name, isAgent, status, latestActivity, size = 36 }: Props) {
+export function PresenceAvatar({ name, isAgent, status, latestActivity, size = 36, onClick }: Props) {
   const label = presenceLabel(status, latestActivity, isAgent);
   const color = presenceColor(status, latestActivity, isAgent);
+  const active = status === 'working' || latestActivity?.type === 'thinking';
   const idx = (name.charCodeAt(0) + name.charCodeAt(1 % Math.max(name.length, 1))) % AVATAR_PALETTES.length;
   const palette = AVATAR_PALETTES[idx];
   const hash = name.split('').reduce((sum, char) => sum + char.charCodeAt(0), 0);
   const grid = Array.from({ length: 16 }, (_, i) => palette[(hash * (i + 1) * 7) % palette.length]);
+  const frameStyle: CSSProperties = {
+    position: 'relative',
+    width: size,
+    height: size,
+    flexShrink: 0,
+    cursor: onClick ? 'pointer' : 'default',
+  };
 
   return (
-    <div style={{ position: 'relative', width: size, height: size, flexShrink: 0 }} title={label}>
+    <button
+      type="button"
+      className={active ? 'presence-avatar presence-avatar-active' : 'presence-avatar'}
+      onClick={onClick}
+      aria-disabled={!onClick}
+      tabIndex={onClick ? 0 : -1}
+      style={frameStyle}
+      title={label}
+    >
       <div style={{
         width: size,
         height: size,
@@ -48,9 +66,9 @@ export function PresenceAvatar({ name, isAgent, status, latestActivity, size = 3
         borderRadius: 99,
         border: '2px solid #fff',
         background: color,
-        boxShadow: status === 'working' || latestActivity?.type === 'thinking' ? `0 0 0 2px ${color}55` : 'none',
+        boxShadow: active ? `0 0 0 2px ${color}55` : 'none',
       }} />
-    </div>
+    </button>
   );
 }
 

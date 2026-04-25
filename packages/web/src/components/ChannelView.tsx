@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useLayoutEffect, useRef, useState } from 'react';
 import type { Agent, AgentActivity, Message } from '../api.js';
 import { MessageContent } from './MessageContent.js';
 import { PresenceAvatar } from './PresenceAvatar.js';
@@ -9,16 +9,83 @@ type Props = {
   messages: Message[];
   agents: Agent[];
   activitiesByAgent: Record<string, AgentActivity[]>;
+  channelId: string;
+  targetMessageId?: string;
   onCreateTask?: (messageId: string) => void;
   onOpenThread?: (message: Message) => void;
+  onOpenAgent?: (agentId: string) => void;
+  onTargetMessageSettled?: () => void;
 };
 
-export function ChannelView({ channelName, messages, agents, activitiesByAgent, onCreateTask, onOpenThread }: Props) {
+export function ChannelView({
+  channelName,
+  messages,
+  agents,
+  activitiesByAgent,
+  channelId,
+  targetMessageId,
+  onCreateTask,
+  onOpenThread,
+  onOpenAgent,
+  onTargetMessageSettled,
+}: Props) {
+  const scrollRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const scrollPositions = useRef<Record<string, number>>({});
+  const lastChannelId = useRef(channelId);
+  const lastMessageCount = useRef(messages.length);
+  const wasNearBottom = useRef(true);
+  const [showJumpToLatest, setShowJumpToLatest] = useState(false);
 
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+  useLayoutEffect(() => {
+    const scrollEl = scrollRef.current;
+    if (!scrollEl) return;
+
+    if (lastChannelId.current !== channelId) {
+      lastChannelId.current = channelId;
+      lastMessageCount.current = messages.length;
+      scrollEl.scrollTop = scrollPositions.current[channelId] ?? 0;
+      setShowJumpToLatest(!isNearBottom(scrollEl));
+      return;
+    }
+
+    if (targetMessageId) {
+      const target = scrollEl.querySelector<HTMLElement>(`[data-message-id="${CSS.escape(targetMessageId)}"]`);
+      if (target) {
+        target.scrollIntoView({ block: 'center' });
+        target.classList.add('message-row-target');
+        window.setTimeout(() => target.classList.remove('message-row-target'), 1800);
+        onTargetMessageSettled?.();
+      }
+      lastMessageCount.current = messages.length;
+      setShowJumpToLatest(!isNearBottom(scrollEl));
+      return;
+    }
+
+    if (messages.length > lastMessageCount.current) {
+      if (wasNearBottom.current) {
+        scrollEl.scrollTop = scrollEl.scrollHeight;
+      } else {
+        setShowJumpToLatest(true);
+      }
+    }
+    lastMessageCount.current = messages.length;
+  }, [channelId, messages, targetMessageId, onTargetMessageSettled]);
+
+  const handleScroll = () => {
+    const scrollEl = scrollRef.current;
+    if (!scrollEl) return;
+    scrollPositions.current[channelId] = scrollEl.scrollTop;
+    wasNearBottom.current = isNearBottom(scrollEl);
+    if (wasNearBottom.current) setShowJumpToLatest(false);
+  };
+
+  const jumpToLatest = () => {
+    const scrollEl = scrollRef.current;
+    if (!scrollEl) return;
+    scrollEl.scrollTo({ top: scrollEl.scrollHeight, behavior: 'smooth' });
+    setShowJumpToLatest(false);
+  };
 
   return (
     <div style={{
@@ -58,7 +125,7 @@ export function ChannelView({ channelName, messages, agents, activitiesByAgent, 
       </div>
 
       {/* Messages */}
-      <div style={{
+      <div ref={scrollRef} onScroll={handleScroll} style={{
         flex: 1,
         overflowY: 'auto',
         padding: '12px 16px',
@@ -87,7 +154,7 @@ export function ChannelView({ channelName, messages, agents, activitiesByAgent, 
           const latestActivity = msg.agentId ? activitiesByAgent[msg.agentId]?.[0] : undefined;
 
           return (
-            <div key={msg.id} className="message-row" style={{
+            <div key={msg.id} data-message-id={msg.id} className="message-row" style={{
               display: 'flex',
               gap: 10,
               padding: grouped ? '1px 0 1px 46px' : '8px 0 2px',
@@ -99,6 +166,7 @@ export function ChannelView({ channelName, messages, agents, activitiesByAgent, 
                   isAgent={!!msg.agentId}
                   status={agent?.status as any}
                   latestActivity={latestActivity}
+                  onClick={agent ? () => onOpenAgent?.(agent.id) : undefined}
                 />
               )}
               <div style={{ flex: 1, minWidth: 0 }}>
@@ -130,7 +198,7 @@ export function ChannelView({ channelName, messages, agents, activitiesByAgent, 
                     </div>
                   </div>
                 )}
-                <MessageContent content={msg.content} mentions={msg.mentions} />
+                <MessageContent content={msg.content} mentions={msg.mentions} onOpenAgent={onOpenAgent} />
                 {msg.replyCount ? (
                   <button
                     onClick={() => onOpenThread?.(msg)}
@@ -154,6 +222,11 @@ export function ChannelView({ channelName, messages, agents, activitiesByAgent, 
           );
         })}
         <div ref={bottomRef} />
+        {showJumpToLatest ? (
+          <button type="button" onClick={jumpToLatest} style={jumpButtonStyle}>
+            Jump to latest
+          </button>
+        ) : null}
       </div>
     </div>
   );
@@ -170,6 +243,26 @@ const messageActionStyle: React.CSSProperties = {
   cursor: 'pointer',
   borderRadius: 3,
 };
+
+const jumpButtonStyle: React.CSSProperties = {
+  position: 'sticky',
+  bottom: 10,
+  alignSelf: 'center',
+  border: '1px solid #b8a44a',
+  background: '#fff8c7',
+  color: '#111',
+  fontFamily: "'Courier New', monospace",
+  fontSize: 12,
+  fontWeight: 700,
+  padding: '6px 10px',
+  borderRadius: 999,
+  cursor: 'pointer',
+  boxShadow: '0 2px 8px rgba(0,0,0,0.12)',
+};
+
+function isNearBottom(element: HTMLElement): boolean {
+  return element.scrollHeight - element.scrollTop - element.clientHeight < 80;
+}
 
 function formatTime(iso: string): string {
   const d = new Date(iso);

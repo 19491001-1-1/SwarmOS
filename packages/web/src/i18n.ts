@@ -56,7 +56,6 @@ const dictionaries = {
 } satisfies Record<Locale, Record<string, string>>;
 
 function currentLocale(): Locale {
-  if (typeof navigator !== 'undefined' && navigator.language.toLowerCase().startsWith('zh')) return 'zh';
   return 'en';
 }
 
