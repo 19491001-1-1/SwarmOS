@@ -34,6 +34,10 @@ function createFakeProc(stdout: string[], exitCode = 0) {
   const proc = new EventEmitter() as any;
   proc.stdout = new EventEmitter();
   proc.stderr = new EventEmitter();
+  proc.stdin = {
+    write: vi.fn(),
+    end: vi.fn(),
+  };
   proc.kill = vi.fn();
 
   // Emit output asynchronously
@@ -44,6 +48,18 @@ function createFakeProc(stdout: string[], exitCode = 0) {
     proc.emit('close', exitCode);
   }, 10);
 
+  return proc;
+}
+
+function createManualProc() {
+  const proc = new EventEmitter() as any;
+  proc.stdout = new EventEmitter();
+  proc.stderr = new EventEmitter();
+  proc.stdin = {
+    write: vi.fn(),
+    end: vi.fn(),
+  };
+  proc.kill = vi.fn();
   return proc;
 }
 
@@ -111,6 +127,19 @@ describe('AgentProcessManager', () => {
     expect(manager.listRunningAgentIds()).toEqual(['agent-1']);
   });
 
+  it('startAgent prepares Gemini MCP settings', async () => {
+    await manager.startAgent('agent-1', { runtime: 'gemini', name: 'bot', agentToken: 'token-1' }, 'general');
+
+    expect(vi.mocked(writeFile)).toHaveBeenCalledWith(
+      expect.stringContaining('/tmp/test-workspaces/agent-1/.gemini/settings.json'),
+      expect.stringContaining('"mcpServers"')
+    );
+    expect(vi.mocked(writeFile)).toHaveBeenCalledWith(
+      expect.stringContaining('/tmp/test-workspaces/agent-1/.gemini/settings.json'),
+      expect.stringContaining('--auth-token-file')
+    );
+  });
+
   it('startAgent is idempotent for an already registered agent', async () => {
     await manager.startAgent('agent-1', { runtime: 'claude', name: 'bot' }, 'general');
     await manager.startAgent('agent-1', { runtime: 'gemini', name: 'bot' }, 'other');
@@ -149,6 +178,115 @@ describe('AgentProcessManager', () => {
     expect(spawnOptions.env?.PATH?.startsWith(`/tmp/test-workspaces/agent-1/.xoxiang${delimiter}`)).toBe(true);
     expect(activities.some((a) => a.agentId === 'agent-1' && a.type === 'working' && a.detail === 'Message received')).toBe(true);
     expect(activities.some((a) => a.agentId === 'agent-1' && a.type === 'thinking')).toBe(true);
+    expect(fakeProc.stdin.write).toHaveBeenCalledWith(expect.stringContaining('You have 1 queued message'));
+    expect(fakeProc.stdin.write).toHaveBeenCalledWith(expect.stringContaining('xoxiang message check'));
+  });
+
+  it('deliverMessage auto-registers an unknown agent when config is provided', async () => {
+    const fakeProc = createFakeProc([]);
+    mockSpawn.mockReturnValue(fakeProc);
+
+    await manager.deliverMessage('agent-1', {
+      id: 'msg-1',
+      channelId: 'general',
+      channelName: 'general',
+      senderName: 'user',
+      content: 'Hello',
+      createdAt: new Date().toISOString(),
+    }, { runtime: 'claude', name: 'bot' }, 'general');
+
+    expect(manager.isRunning('agent-1')).toBe(true);
+    expect(mockSpawn).toHaveBeenCalledWith('claude', expect.any(Array), expect.any(Object));
+  });
+
+  it('retains idle config after process exit so later messages can wake the agent', async () => {
+    mockSpawn
+      .mockReturnValueOnce(createFakeProc([]))
+      .mockReturnValueOnce(createFakeProc([]));
+
+    await manager.startAgent('agent-1', { runtime: 'claude', name: 'bot' }, 'general');
+    await manager.deliverMessage('agent-1', {
+      id: 'msg-1',
+      channelId: 'general',
+      channelName: 'general',
+      senderName: 'user',
+      content: 'first',
+      createdAt: new Date().toISOString(),
+    });
+    await new Promise((r) => setTimeout(r, 50));
+
+    await manager.deliverMessage('agent-1', {
+      id: 'msg-2',
+      channelId: 'general',
+      channelName: 'general',
+      senderName: 'user',
+      content: 'second',
+      createdAt: new Date().toISOString(),
+    });
+
+    expect(mockSpawn).toHaveBeenCalledTimes(2);
+  });
+
+  it('queues busy inbox runtimes and runs the next message after process exit', async () => {
+    const firstProc = createManualProc();
+    const secondProc = createFakeProc([]);
+    mockSpawn.mockReturnValueOnce(firstProc).mockReturnValueOnce(secondProc);
+
+    await manager.startAgent('agent-1', { runtime: 'gemini', name: 'bot' }, 'general');
+    await manager.deliverMessage('agent-1', {
+      id: 'msg-1',
+      channelId: 'general',
+      channelName: 'general',
+      senderName: 'user',
+      content: 'first',
+      createdAt: new Date().toISOString(),
+    });
+    await manager.deliverMessage('agent-1', {
+      id: 'msg-2',
+      channelId: 'general',
+      channelName: 'general',
+      senderName: 'user',
+      content: 'second',
+      createdAt: new Date().toISOString(),
+    });
+
+    expect(mockSpawn).toHaveBeenCalledTimes(1);
+    expect(firstProc.stdin.write).not.toHaveBeenCalled();
+
+    firstProc.emit('close', 0);
+    await new Promise((r) => setTimeout(r, 50));
+
+    expect(mockSpawn).toHaveBeenCalledTimes(2);
+  });
+
+  it('keeps queued message when active process fails', async () => {
+    mockSpawn
+      .mockReturnValueOnce(createFakeProc([], 1))
+      .mockReturnValueOnce(createFakeProc([]));
+
+    await manager.startAgent('agent-1', { runtime: 'gemini', name: 'bot' }, 'general');
+    await manager.deliverMessage('agent-1', {
+      id: 'msg-1',
+      channelId: 'general',
+      channelName: 'general',
+      senderName: 'user',
+      content: 'first',
+      createdAt: new Date().toISOString(),
+    });
+    await new Promise((r) => setTimeout(r, 50));
+
+    await manager.deliverMessage('agent-1', {
+      id: 'msg-2',
+      channelId: 'general',
+      channelName: 'general',
+      senderName: 'user',
+      content: 'second',
+      createdAt: new Date().toISOString(),
+    });
+
+    expect(mockSpawn).toHaveBeenCalledTimes(2);
+    const secondPrompt = mockSpawn.mock.calls[1]?.[1]?.[1] as string;
+    expect(secondPrompt).toContain('first');
   });
 
   it('stdout line parsed into agent:message', async () => {

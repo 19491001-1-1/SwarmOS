@@ -11,6 +11,10 @@ const baseCtx: AgentSpawnContext = {
   workspaceDir: '/tmp/workspace',
   transcriptFile: '/tmp/workspace/transcript.txt',
   userMessage: 'hello',
+  formattedMessage: 'You have 1 queued message.\n\nhello',
+  serverUrl: 'http://localhost:3000',
+  agentTokenFile: '/tmp/workspace/.xoxiang/agent-token',
+  contextBlocks: [],
 };
 
 describe('Claude driver', () => {
@@ -28,15 +32,34 @@ describe('Claude driver', () => {
 
   it('includes bridge instruction in system prompt', () => {
     const cmd = claudeDriver.buildCommand(baseCtx);
-    const sysIdx = cmd.args.indexOf('--system-prompt');
+    const sysIdx = cmd.args.indexOf('--append-system-prompt');
     const sysPrompt = cmd.args[sysIdx + 1];
     expect(sysPrompt).toContain(BRIDGE_MARKER);
   });
 
-  it('passes userMessage as -p positional arg', () => {
+  it('uses stream-json stdin transport', () => {
     const cmd = claudeDriver.buildCommand(baseCtx);
-    const pIdx = cmd.args.indexOf('-p');
-    expect(cmd.args[pIdx + 1]).toBe('hello');
+    expect(cmd.args).toContain('--input-format');
+    expect(cmd.args).toContain('stream-json');
+    expect(cmd.args).toContain('--output-format');
+    expect(cmd.stdin).toContain('"type":"user"');
+    expect(cmd.stdin).toContain('You have 1 queued message');
+  });
+
+  it('includes resume session when available', () => {
+    const cmd = claudeDriver.buildCommand({ ...baseCtx, sessionId: 'session-1' });
+    expect(cmd.args).toContain('--resume');
+    expect(cmd.args).toContain('session-1');
+    expect(cmd.stdin).toContain('"session_id":"session-1"');
+  });
+
+  it('declares notification capabilities', () => {
+    expect(claudeDriver.capabilities).toMatchObject({
+      transport: 'stream-json',
+      supportsStdinDelivery: true,
+      busyDeliveryMode: 'notification',
+      supportsSessionResume: true,
+    });
   });
 
   it('parseOutput extracts bridge message', () => {
@@ -48,6 +71,11 @@ describe('Claude driver', () => {
 
   it('parseOutput returns null for normal lines', () => {
     expect(claudeDriver.parseOutput!('just log output')).toBeNull();
+  });
+
+  it('parseOutput extracts session and turn events', () => {
+    expect(claudeDriver.parseOutput!('{"type":"system","subtype":"init","session_id":"s1"}')).toEqual({ type: 'session_init', sessionId: 's1' });
+    expect(claudeDriver.parseOutput!('{"type":"result","session_id":"s1"}')).toEqual({ type: 'turn_end', sessionId: 's1' });
   });
 });
 
@@ -63,7 +91,15 @@ describe('Codex driver', () => {
     const cmd = codexDriver.buildCommand(ctx);
     expect(cmd.args[1]).toContain(BRIDGE_MARKER);
     expect(cmd.args[1]).toContain('Current user message:');
-    expect(cmd.args[1]).toContain('hello');
+    expect(cmd.args[1]).toContain('You have 1 queued message');
+  });
+
+  it('declares inbox capabilities', () => {
+    expect(codexDriver.capabilities).toMatchObject({
+      transport: 'oneshot',
+      supportsStdinDelivery: false,
+      busyDeliveryMode: 'inbox',
+    });
   });
 
   it('includes model when specified', () => {
@@ -95,6 +131,13 @@ describe('Gemini driver', () => {
     expect(cmd.env?.GEMINI_SYSTEM_PROMPT).toContain(BRIDGE_MARKER);
   });
 
+  it('uses formatted wake prompt as prompt', () => {
+    const ctx = { ...baseCtx, config: { ...baseCtx.config, runtime: 'gemini' as const } };
+    const cmd = geminiDriver.buildCommand(ctx);
+    const pIdx = cmd.args.indexOf('-p');
+    expect(cmd.args[pIdx + 1]).toContain('You have 1 queued message');
+  });
+
   it('includes model when specified', () => {
     const ctx = { ...baseCtx, config: { ...baseCtx.config, runtime: 'gemini' as const, model: 'gemini-pro' } };
     const cmd = geminiDriver.buildCommand(ctx);
@@ -109,5 +152,14 @@ describe('Gemini driver', () => {
     expect(cmd.args).toContain('false');
     expect(cmd.args).toContain('--approval-mode');
     expect(cmd.args).toContain('yolo');
+  });
+
+  it('declares conservative MCP inbox capabilities', () => {
+    expect(geminiDriver.capabilities).toMatchObject({
+      transport: 'mcp',
+      supportsStdinDelivery: false,
+      busyDeliveryMode: 'inbox',
+      supportsMcpBridge: true,
+    });
   });
 });

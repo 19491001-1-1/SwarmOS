@@ -1,8 +1,35 @@
 import type { RuntimeDriver, AgentSpawnContext, RuntimeCommand, AgentOutputEvent } from './types.js';
 import { parseBridgeLine, buildBridgeInstruction, buildDmInstruction, parseDmLine, buildDelegateInstruction, parseDelegateLine, buildTaskInstruction, parseCreateTaskLine, parseUpdateTaskLine } from '../bridge/simpleToolBridge.js';
+import { mkdir, writeFile } from 'fs/promises';
+import { join } from 'path';
 
 export const geminiDriver: RuntimeDriver = {
   id: 'gemini',
+  capabilities: {
+    transport: 'mcp',
+    supportsStdinDelivery: false,
+    busyDeliveryMode: 'inbox',
+    supportsSessionResume: false,
+    supportsMcpBridge: true,
+  },
+
+  async prepareWorkspace(ctx: AgentSpawnContext): Promise<void> {
+    const geminiDir = join(ctx.workspaceDir, '.gemini');
+    await mkdir(geminiDir, { recursive: true });
+    await writeFile(join(geminiDir, 'settings.json'), JSON.stringify({
+      mcpServers: {
+        chat: {
+          command: join(ctx.workspaceDir, '.xoxiang', 'xoxiang'),
+          args: [
+            'mcp-bridge',
+            '--agent-id', ctx.agentId,
+            '--server-url', ctx.serverUrl,
+            '--auth-token-file', ctx.agentTokenFile,
+          ],
+        },
+      },
+    }, null, 2));
+  },
 
   buildCommand(ctx: AgentSpawnContext): RuntimeCommand {
     const systemPrompt = [
@@ -18,7 +45,7 @@ export const geminiDriver: RuntimeDriver = {
     // gemini -p "<prompt>" --output-format text -y
     // system prompt via GEMINI_SYSTEM_PROMPT env var (gemini CLI reads it)
     const args = [
-      '-p', ctx.userMessage,
+      '-p', ctx.formattedMessage || ctx.userMessage,
       '--output-format', 'text',
       '-y',
       '--sandbox', 'false',

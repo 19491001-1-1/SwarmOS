@@ -243,7 +243,7 @@ export class XoxiangHub extends DurableObject<Env> {
     const attachment = ws.deserializeAttachment() as SocketAttachment | undefined;
     if (!attachment || attachment.kind !== 'daemon') return;
 
-    if (data.type === 'pong' || data.type === 'agent:deliver:ack') return;
+    if (data.type === 'pong' || data.type === 'agent:deliver:ack' || data.type === 'agent:session') return;
 
     if (data.type === 'ready') {
       const machineId = data.machineId || attachment.machineId;

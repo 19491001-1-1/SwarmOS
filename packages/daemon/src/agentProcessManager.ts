@@ -4,7 +4,7 @@ import { delimiter, dirname, isAbsolute, join, normalize, sep } from 'path';
 import { fileURLToPath } from 'url';
 import { spawn, type ChildProcess } from 'child_process';
 import type { AgentRuntimeConfig, AgentDelivery, AgentActivity, WorkspaceEntry, WorkspaceError, TaskStatus } from '@mini-slock/shared';
-import type { RuntimeDriver } from './drivers/types.js';
+import type { AgentSpawnContext, RuntimeDriver } from './drivers/types.js';
 import { claudeDriver } from './drivers/claude.js';
 import { codexDriver } from './drivers/codex.js';
 import { geminiDriver } from './drivers/gemini.js';
@@ -46,15 +46,22 @@ export type AgentDmCallback = (fromAgentId: string, toAgentId: string, content: 
 export type AgentDelegateCallback = (fromAgentId: string, toAgentId: string, content: string, startIfInactive?: boolean) => void;
 export type AgentCreateTaskCallback = (agentId: string, title: string, channelId?: string, assigneeId?: string) => void;
 export type AgentUpdateTaskCallback = (agentId: string, taskId: string, status: TaskStatus) => void;
+export type AgentSessionCallback = (agentId: string, sessionId: string) => void;
 
 interface AgentEntry {
   agentId: string;
   channelId: string;
+  registered: boolean;
+  processStatus: 'starting' | 'active' | 'idle' | 'exited' | 'error';
   proc: ChildProcess | null;
   workspaceDir: string;
   transcriptFile: string;
-  config: AgentRuntimeConfig;
+  idleConfig: AgentRuntimeConfig;
+  activeConfig?: AgentRuntimeConfig;
   driver: RuntimeDriver;
+  inbox: AgentDelivery[];
+  sessionId?: string;
+  activeDeliveryId?: string;
 }
 
 export class AgentProcessManager {
@@ -67,6 +74,7 @@ export class AgentProcessManager {
   private onDelegate: AgentDelegateCallback;
   private onCreateTask: AgentCreateTaskCallback;
   private onUpdateTask: AgentUpdateTaskCallback;
+  private onSession: AgentSessionCallback;
   private serverUrl: string;
 
   constructor(
@@ -78,6 +86,7 @@ export class AgentProcessManager {
     onDelegate: AgentDelegateCallback = () => {},
     onCreateTask: AgentCreateTaskCallback = () => {},
     onUpdateTask: AgentUpdateTaskCallback = () => {},
+    onSession: AgentSessionCallback = () => {},
     serverUrl = 'http://localhost:3000'
   ) {
     this.workspaceBase = workspaceBase;
@@ -88,20 +97,24 @@ export class AgentProcessManager {
     this.onDelegate = onDelegate;
     this.onCreateTask = onCreateTask;
     this.onUpdateTask = onUpdateTask;
+    this.onSession = onSession;
     this.serverUrl = serverUrl;
   }
 
-  async startAgent(agentId: string, config: AgentRuntimeConfig, channelId: string): Promise<void> {
+  async startAgent(agentId: string, config: AgentRuntimeConfig, channelId: string, wakeMessage?: AgentDelivery): Promise<void> {
     const driver = DRIVERS[config.runtime];
     if (!driver) throw new Error(`Unknown runtime: ${config.runtime}`);
 
     const existing = this.agents.get(agentId);
     if (existing) {
-      existing.config = config;
+      existing.idleConfig = config;
       existing.channelId = channelId;
       existing.driver = driver;
       await this.ensureAgentTools(config, existing.workspaceDir);
+      await this.prepareRuntimeWorkspace(existing, config);
+      if (wakeMessage) await this.enqueueMessage(existing, wakeMessage);
       this.onStatus(agentId, existing.proc ? 'working' : 'idle');
+      this.runNext(existing);
       return;
     }
 
@@ -116,59 +129,100 @@ export class AgentProcessManager {
     this.agents.set(agentId, {
       agentId,
       channelId,
+      registered: true,
+      processStatus: 'idle',
       proc: null,
       workspaceDir,
       transcriptFile,
-      config,
+      idleConfig: config,
       driver,
+      inbox: [],
     });
+    const entry = this.agents.get(agentId)!;
+    await this.prepareRuntimeWorkspace(entry, config);
+    if (wakeMessage) await this.enqueueMessage(entry, wakeMessage);
     this.onStatus(agentId, 'idle');
+    this.runNext(entry);
   }
 
-  async deliverMessage(agentId: string, delivery: AgentDelivery): Promise<void> {
+  async deliverMessage(agentId: string, delivery: AgentDelivery, config?: AgentRuntimeConfig, channelId?: string): Promise<void> {
     let entry = this.agents.get(agentId);
 
-    // Auto-recover: daemon may have restarted and lost the agent entry
     if (!entry) {
-      console.log(`[daemon] agent ${agentId} not in map, auto-recovering for runtime unknown — skipping deliver`);
-      throw new Error(`Agent ${agentId} not started on this daemon`);
+      if (!config) {
+        const message = `Agent ${agentId} is not registered on this daemon`;
+        this.onActivity(agentId, 'error', message);
+        throw new Error(message);
+      }
+      await this.startAgent(agentId, config, channelId ?? delivery.channelId);
+      entry = this.agents.get(agentId);
+      if (!entry) throw new Error(`Agent ${agentId} failed to register`);
+    } else if (config) {
+      entry.idleConfig = config;
+      entry.driver = DRIVERS[config.runtime] ?? entry.driver;
+      entry.channelId = channelId ?? entry.channelId;
+      await this.ensureAgentTools(config, entry.workspaceDir);
+      await this.prepareRuntimeWorkspace(entry, config);
     }
 
-    // Append to transcript for context
-    await this.appendTranscript(entry, delivery.senderName, delivery.content, delivery.createdAt);
-
+    await this.enqueueMessage(entry, delivery);
     this.onActivity(agentId, 'working', 'Message received');
-    this.onStatus(agentId, 'working');
+    if (entry.proc) {
+      if (!entry.activeDeliveryId && entry.driver.capabilities.supportsStdinDelivery) {
+        this.sendNextToActiveProcess(entry);
+      }
+      this.notifyBusyAgent(entry);
+      return;
+    }
+    this.runNext(entry);
+  }
 
-    const ctx = {
-      agentId,
-      config: entry.config,
-      workspaceDir: entry.workspaceDir,
-      transcriptFile: entry.transcriptFile,
-      userMessage: delivery.content,
-    };
+  private async enqueueMessage(entry: AgentEntry, delivery: AgentDelivery): Promise<void> {
+    entry.inbox.push(delivery);
+    await this.appendTranscript(entry, delivery.senderName, delivery.content, delivery.createdAt);
+  }
 
+  private runNext(entry: AgentEntry): void {
+    if (entry.proc || entry.inbox.length === 0) return;
+
+    const delivery = entry.inbox[0];
+    const config = entry.idleConfig;
+    entry.activeConfig = config;
+    entry.activeDeliveryId = delivery.id;
+    entry.processStatus = 'starting';
+    this.onStatus(entry.agentId, 'working');
+
+    const ctx = this.buildSpawnContext(entry, delivery);
     const cmd = entry.driver.buildCommand(ctx);
 
     const displayArgs = cmd.args.map((a) => (a.length > 60 ? a.slice(0, 60) + '…' : a));
     console.log(`[daemon] spawning: ${cmd.cmd} ${displayArgs.join(' ')}`);
-    this.onActivity(agentId, 'thinking');
+    this.onActivity(entry.agentId, 'thinking');
 
     const proc = spawn(cmd.cmd, cmd.args, {
       cwd: entry.workspaceDir,
       env: {
         ...process.env,
         ...cmd.env,
-        ...entry.config.envVars,
+        ...config.envVars,
         PATH: `${join(entry.workspaceDir, '.xoxiang')}${process.env.PATH ? `${delimiter}${process.env.PATH}` : ''}`,
         XOXIANG_AGENT_ID: entry.agentId,
         XOXIANG_SERVER_URL: this.serverUrl,
-        XOXIANG_AGENT_TOKEN_FILE: join(entry.workspaceDir, '.xoxiang', 'agent-token'),
+        XOXIANG_AGENT_TOKEN_FILE: this.agentTokenFile(entry),
       },
-      stdio: ['ignore', 'pipe', 'pipe'],
+      stdio: [cmd.stdin ? 'pipe' : 'ignore', 'pipe', 'pipe'],
     });
 
     entry.proc = proc;
+    entry.processStatus = 'active';
+
+    if (cmd.stdin) {
+      try {
+        proc.stdin?.write(`${cmd.stdin}\n`);
+      } catch (err) {
+        this.onActivity(entry.agentId, 'error', err instanceof Error ? err.message : 'Failed to write stdin');
+      }
+    }
 
     let outputBuffer = '';
     let fullStdout = '';
@@ -176,46 +230,122 @@ export class AgentProcessManager {
 
     proc.stdout?.on('data', (chunk: Buffer) => {
       const text = chunk.toString();
-      process.stdout.write(`[agent:${agentId}:stdout] ${text}`);
+      process.stdout.write(`[agent:${entry.agentId}:stdout] ${text}`);
       fullStdout += text;
       outputBuffer += text;
       const lines = outputBuffer.split('\n');
       outputBuffer = lines.pop() ?? '';
       for (const l of lines) {
-        if (this.handleOutputLine(entry!, l)) bridgeMessageSent = true;
+        if (this.handleOutputLine(entry, l)) bridgeMessageSent = true;
       }
     });
 
     proc.stderr?.on('data', (chunk: Buffer) => {
-      process.stderr.write(`[agent:${agentId}:stderr] ${chunk.toString()}`);
+      process.stderr.write(`[agent:${entry.agentId}:stderr] ${chunk.toString()}`);
     });
 
     proc.on('close', (code) => {
-      console.log(`[daemon] agent ${agentId} process exited with code ${code}`);
+      console.log(`[daemon] agent ${entry.agentId} process exited with code ${code}`);
       if (outputBuffer.trim()) {
-        if (this.handleOutputLine(entry!, outputBuffer.trim())) bridgeMessageSent = true;
+        if (this.handleOutputLine(entry, outputBuffer.trim())) bridgeMessageSent = true;
       }
-      // Fallback: if no bridge message was sent, use the entire stdout as the reply
-      if (!bridgeMessageSent) {
+      if (code === 0 && entry.inbox[0]?.id === entry.activeDeliveryId) {
+        entry.inbox.shift();
+      }
+      if (code === 0 && !bridgeMessageSent) {
         const fallback = fullStdout.trim();
         if (fallback) {
-          console.log(`[daemon] agent ${agentId} fallback reply (no bridge marker found)`);
-          this.appendTranscriptLater(entry!, this.agentTranscriptName(entry!), fallback);
-          this.onMessage(entry!.agentId, entry!.channelId, fallback);
-          this.onActivity(agentId, 'output', fallback.slice(0, 100));
+          console.log(`[daemon] agent ${entry.agentId} fallback reply (no bridge marker found)`);
+          this.appendTranscriptLater(entry, this.agentTranscriptName(entry), fallback);
+          this.onMessage(entry.agentId, entry.channelId, fallback);
+          this.onActivity(entry.agentId, 'output', fallback.slice(0, 100));
         }
       }
-      entry!.proc = null;
-      this.onActivity(agentId, 'idle');
-      this.onStatus(agentId, 'idle');
+      entry.proc = null;
+      entry.activeConfig = undefined;
+      entry.activeDeliveryId = undefined;
+      entry.processStatus = code === 0 ? 'idle' : 'error';
+      this.onActivity(entry.agentId, code === 0 ? 'idle' : 'error', code === 0 ? undefined : `process exited with code ${code}`);
+      this.onStatus(entry.agentId, code === 0 ? 'idle' : 'error');
+      if (code === 0 && entry.inbox.length > 0) {
+        this.runNext(entry);
+      }
     });
 
     proc.on('error', (err) => {
-      console.error(`[daemon] agent ${agentId} spawn error:`, err.message);
-      entry!.proc = null;
-      this.onActivity(agentId, 'error', err.message);
-      this.onStatus(agentId, 'error');
+      console.error(`[daemon] agent ${entry.agentId} spawn error:`, err.message);
+      entry.proc = null;
+      entry.activeConfig = undefined;
+      entry.activeDeliveryId = undefined;
+      entry.processStatus = 'error';
+      this.onActivity(entry.agentId, 'error', err.message);
+      this.onStatus(entry.agentId, 'error');
     });
+  }
+
+  private notifyBusyAgent(entry: AgentEntry): void {
+    if (!entry.driver.capabilities.supportsStdinDelivery || entry.driver.capabilities.busyDeliveryMode !== 'notification') return;
+    const message = this.buildUnreadSummary(entry, entry.inbox.length);
+    try {
+      const encoded = entry.driver.encodeStdinMessage?.(message, entry.sessionId);
+      if (encoded) entry.proc?.stdin?.write(`${encoded}\n`);
+      this.onActivity(entry.agentId, 'working', 'Queued message notification sent');
+    } catch (err) {
+      this.onActivity(entry.agentId, 'error', err instanceof Error ? err.message : 'Failed to send busy notification');
+    }
+  }
+
+  private sendNextToActiveProcess(entry: AgentEntry): void {
+    if (!entry.proc || entry.inbox.length === 0 || !entry.driver.encodeStdinMessage) return;
+    const delivery = entry.inbox[0];
+    const ctx = this.buildSpawnContext(entry, delivery);
+    try {
+      entry.activeDeliveryId = delivery.id;
+      entry.proc.stdin?.write(`${entry.driver.encodeStdinMessage(ctx.formattedMessage, entry.sessionId)}\n`);
+      this.onActivity(entry.agentId, 'thinking');
+    } catch (err) {
+      entry.activeDeliveryId = undefined;
+      this.onActivity(entry.agentId, 'error', err instanceof Error ? err.message : 'Failed to write stdin');
+    }
+  }
+
+  private buildSpawnContext(entry: AgentEntry, delivery: AgentDelivery): AgentSpawnContext {
+    const queuedCount = entry.inbox.length;
+    return {
+      agentId: entry.agentId,
+      config: entry.idleConfig,
+      workspaceDir: entry.workspaceDir,
+      transcriptFile: entry.transcriptFile,
+      userMessage: delivery.content,
+      formattedMessage: this.buildWakePrompt(entry, delivery, queuedCount),
+      sessionId: entry.driver.capabilities.supportsSessionResume ? entry.sessionId : undefined,
+      serverUrl: this.serverUrl,
+      agentTokenFile: this.agentTokenFile(entry),
+      unreadSummary: {
+        queuedCount,
+        newestMessageAt: entry.inbox.at(-1)?.createdAt,
+      },
+      contextBlocks: [],
+    };
+  }
+
+  private buildWakePrompt(entry: AgentEntry, delivery: AgentDelivery, queuedCount: number): string {
+    return [
+      this.buildUnreadSummary(entry, queuedCount),
+      this.formatDelivery(delivery),
+    ].join('\n\n');
+  }
+
+  private buildUnreadSummary(entry: AgentEntry, queuedCount: number): string {
+    const channel = entry.inbox[0]?.channelName ?? entry.channelId;
+    return [
+      `You have ${queuedCount} queued message${queuedCount === 1 ? '' : 's'}.`,
+      `Use \`xoxiang message check\` or \`xoxiang message read --channel ${channel} --limit ${Math.max(queuedCount, 1)}\` if needed.`,
+    ].join('\n');
+  }
+
+  private formatDelivery(delivery: AgentDelivery): string {
+    return `[target=#${delivery.channelName} msg=${delivery.id} time=${delivery.createdAt} type=human] @${delivery.senderName}: ${delivery.content}`;
   }
 
   private handleOutputLine(entry: AgentEntry, line: string): boolean {
@@ -255,6 +385,33 @@ export class AgentProcessManager {
       this.onActivity(entry.agentId, 'sending', `task:${parsed.taskId}`);
       return true;
     }
+    if (parsed?.type === 'session_init') {
+      entry.sessionId = parsed.sessionId;
+      this.onSession(entry.agentId, parsed.sessionId);
+      this.onActivity(entry.agentId, 'working', `session:${parsed.sessionId}`);
+      return true;
+    }
+    if (parsed?.type === 'turn_end') {
+      if (parsed.sessionId) {
+        entry.sessionId = parsed.sessionId;
+        this.onSession(entry.agentId, parsed.sessionId);
+      }
+      if (entry.inbox[0]?.id === entry.activeDeliveryId) {
+        entry.inbox.shift();
+      }
+      entry.activeDeliveryId = undefined;
+      if (entry.inbox.length > 0) {
+        this.sendNextToActiveProcess(entry);
+      } else {
+        this.onActivity(entry.agentId, 'idle');
+        this.onStatus(entry.agentId, 'idle');
+      }
+      return true;
+    }
+    if (parsed?.type === 'activity') {
+      this.onActivity(entry.agentId, 'working', parsed.detail);
+      return true;
+    }
     return false;
   }
 
@@ -269,7 +426,23 @@ export class AgentProcessManager {
   }
 
   private agentTranscriptName(entry: AgentEntry): string {
-    return entry.config.displayName ?? entry.config.name ?? entry.agentId;
+    return entry.idleConfig.displayName ?? entry.idleConfig.name ?? entry.agentId;
+  }
+
+  private agentTokenFile(entry: AgentEntry): string {
+    return join(entry.workspaceDir, '.xoxiang', 'agent-token');
+  }
+
+  private async prepareRuntimeWorkspace(entry: AgentEntry, config: AgentRuntimeConfig): Promise<void> {
+    const ctx = this.buildSpawnContext(entry, {
+      id: 'startup',
+      channelId: entry.channelId,
+      channelName: entry.channelId,
+      senderName: 'system',
+      content: '',
+      createdAt: new Date().toISOString(),
+    });
+    await entry.driver.prepareWorkspace?.({ ...ctx, config, formattedMessage: '', userMessage: '' });
   }
 
   private async ensureAgentTools(config: AgentRuntimeConfig, workspaceDir: string): Promise<void> {

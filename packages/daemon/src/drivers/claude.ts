@@ -3,6 +3,13 @@ import { parseBridgeLine, buildBridgeInstruction, buildDmInstruction, parseDmLin
 
 export const claudeDriver: RuntimeDriver = {
   id: 'claude',
+  capabilities: {
+    transport: 'stream-json',
+    supportsStdinDelivery: true,
+    busyDeliveryMode: 'notification',
+    supportsSessionResume: true,
+    supportsMcpBridge: false,
+  },
 
   buildCommand(ctx: AgentSpawnContext): RuntimeCommand {
     const systemPrompt = [
@@ -15,18 +22,36 @@ export const claudeDriver: RuntimeDriver = {
       .filter(Boolean)
       .join('\n\n');
 
-    // prompt is passed as the positional argument; system prompt via --system-prompt
     const args = [
-      '-p', ctx.userMessage,
-      '--system-prompt', systemPrompt,
-      '--output-format', 'text',
       '--dangerously-skip-permissions',
+      '--verbose',
+      '--output-format', 'stream-json',
+      '--input-format', 'stream-json',
+      '--append-system-prompt', systemPrompt,
     ];
     if (ctx.config.model) {
       args.push('--model', ctx.config.model);
     }
+    if (ctx.sessionId) {
+      args.push('--resume', ctx.sessionId);
+    }
 
-    return { cmd: 'claude', args };
+    return {
+      cmd: 'claude',
+      args,
+      stdin: this.encodeStdinMessage?.(ctx.formattedMessage || ctx.userMessage, ctx.sessionId),
+    };
+  },
+
+  encodeStdinMessage(text: string, sessionId?: string): string {
+    return JSON.stringify({
+      type: 'user',
+      message: {
+        role: 'user',
+        content: [{ type: 'text', text }],
+      },
+      ...(sessionId ? { session_id: sessionId } : {}),
+    });
   },
 
   parseOutput(line: string): AgentOutputEvent | null {
@@ -40,6 +65,27 @@ export const claudeDriver: RuntimeDriver = {
     if (createTask) return { type: 'create_task', title: createTask.title, assigneeId: createTask.assignee, channelId: createTask.channel };
     const updateTask = parseUpdateTaskLine(line);
     if (updateTask) return { type: 'update_task', taskId: updateTask.taskId, status: updateTask.status };
+    try {
+      const event = JSON.parse(line) as any;
+      if (event.type === 'system' && event.subtype === 'init' && event.session_id) {
+        return { type: 'session_init', sessionId: String(event.session_id) };
+      }
+      if (event.type === 'assistant' && Array.isArray(event.message?.content)) {
+        const text = event.message.content
+          .filter((block: any) => block?.type === 'text' && block.text)
+          .map((block: any) => String(block.text))
+          .join('\n')
+          .trim();
+        if (text) return { type: 'message', content: text };
+        const toolUse = event.message.content.find((block: any) => block?.type === 'tool_use');
+        if (toolUse) return { type: 'activity', detail: `tool:${toolUse.name ?? 'unknown_tool'}` };
+      }
+      if (event.type === 'result') {
+        return { type: 'turn_end', sessionId: event.session_id ? String(event.session_id) : undefined };
+      }
+    } catch {
+      // Non-JSON lines are normal when verbose logging is enabled.
+    }
     return null;
   },
 };
