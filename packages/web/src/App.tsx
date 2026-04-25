@@ -5,8 +5,9 @@ import { Composer } from './components/Composer.js';
 import { AgentPanel } from './components/AgentPanel.js';
 import { AgentDetailPanel } from './components/AgentDetailPanel.js';
 import { TaskBoard } from './components/TaskBoard.js';
-import type { Channel, Message, Agent, Machine, AgentActivity, VersionInfo, Task, Reminder, SearchMessageResult } from './api.js';
-import { WEB_COMMIT_SHA, WEB_VERSION, buildWsUrl, getChannels, getMessages, sendMessage, getAgents, getMachines, getAgentActivities, getHubVersion, getTasks, messageToTask, getAgentReminders, createChannel, deleteChannel, searchMessages } from './api.js';
+import { ThreadPanel } from './components/ThreadPanel.js';
+import type { Channel, Message, MessageThread, Agent, Machine, AgentActivity, VersionInfo, Task, Reminder, SearchMessageResult } from './api.js';
+import { WEB_COMMIT_SHA, WEB_VERSION, buildWsUrl, getChannels, getMessages, getMessageThread, sendMessage, getAgents, getMachines, getAgentActivities, getHubVersion, getTasks, messageToTask, getAgentReminders, createChannel, deleteChannel, searchMessages } from './api.js';
 
 export function App() {
   const [channels, setChannels] = useState<Channel[]>([]);
@@ -20,6 +21,7 @@ export function App() {
   const [selectedView, setSelectedView] = useState<'channel' | 'tasks'>('channel');
   const [selectedChannel, setSelectedChannel] = useState('general');
   const [selectedAgentId, setSelectedAgentId] = useState<string | undefined>();
+  const [thread, setThread] = useState<MessageThread | undefined>();
   const [searchOpen, setSearchOpen] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
   const selectedChannelRef = useRef(selectedChannel);
@@ -55,6 +57,11 @@ export function App() {
       : [...prev, message]);
   }, []);
 
+  const updateThreadRoot = useCallback((root: Message) => {
+    setMessages((prev) => prev.map((message) => (message.id === root.id ? root : message)));
+    setThread((current) => current?.root.id === root.id ? { ...current, root } : current);
+  }, []);
+
   useEffect(() => {
     loadChannels();
     loadAgents();
@@ -65,6 +72,7 @@ export function App() {
 
   useEffect(() => {
     selectedChannelRef.current = selectedChannel;
+    setThread(undefined);
     loadMessages(selectedChannel);
   }, [selectedChannel]);
 
@@ -126,6 +134,15 @@ export function App() {
           if (msg.message.channelId === selectedChannelRef.current) {
             upsertMessage(msg.message);
           }
+        } else if (msg.type === 'thread:message:new') {
+          updateThreadRoot(msg.root);
+          setThread((current) => {
+            if (!current || current.root.id !== msg.root.id) return current;
+            const replies = current.replies.some((reply) => reply.id === msg.message.id)
+              ? current.replies.map((reply) => (reply.id === msg.message.id ? msg.message : reply))
+              : [...current.replies, msg.message];
+            return { root: msg.root, replies };
+          });
         } else if (msg.type === 'agent:update' || msg.type === 'agent:updated') {
           setAgents((prev) => prev.map((a) => (a.id === msg.agent.id ? msg.agent : a)));
         } else if (msg.type === 'agent:activity') {
@@ -190,11 +207,29 @@ export function App() {
       wsRef.current?.close();
       wsRef.current = null;
     };
-  }, [loadAgents, loadChannels, loadMachines, loadMessages, loadTasks, upsertMessage]);
+  }, [loadAgents, loadChannels, loadMachines, loadMessages, loadTasks, updateThreadRoot, upsertMessage]);
 
   const handleSend = async (content: string, agentId?: string) => {
     const message = await sendMessage(selectedChannel, 'user', content, agentId);
     if (message.channelId === selectedChannelRef.current) upsertMessage(message);
+  };
+
+  const handleOpenThread = async (message: Message) => {
+    setThread(await getMessageThread(message.threadRootId ?? message.id));
+  };
+
+  const handleThreadSend = async (content: string, agentId?: string) => {
+    if (!thread) return;
+    const reply = await sendMessage(thread.root.channelId, 'user', content, agentId, thread.root.id);
+    const nextRoot = {
+      ...thread.root,
+      replyCount: (thread.root.replyCount ?? thread.replies.length) + 1,
+      latestReplyAt: reply.createdAt,
+    };
+    updateThreadRoot(nextRoot);
+    setThread((current) => current?.root.id === thread.root.id
+      ? { root: nextRoot, replies: current.replies.some((candidate) => candidate.id === reply.id) ? current.replies : [...current.replies, reply] }
+      : current);
   };
 
   const upsertTask = (task: Task) => {
@@ -268,13 +303,25 @@ export function App() {
             <ChannelView
               channelName={selectedChannelObj?.name ?? selectedChannel}
               messages={messages}
+              agents={agents}
+              activitiesByAgent={activitiesByAgent}
               onCreateTask={handleMessageToTask}
+              onOpenThread={handleOpenThread}
             />
             <Composer agents={agents} channelName={selectedChannelObj?.name ?? selectedChannel} onSend={handleSend} />
           </>
         )}
       </div>
-      {selectedAgent ? (
+      {thread ? (
+        <ThreadPanel
+          root={thread.root}
+          replies={thread.replies}
+          agents={agents}
+          activitiesByAgent={activitiesByAgent}
+          onClose={() => setThread(undefined)}
+          onSend={handleThreadSend}
+        />
+      ) : selectedAgent ? (
         <AgentDetailPanel
           agent={selectedAgent}
           activities={activitiesByAgent[selectedAgent.id] ?? []}

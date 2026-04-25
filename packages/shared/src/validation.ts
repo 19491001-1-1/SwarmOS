@@ -8,6 +8,12 @@ export const AgentActivityTypeSchema = z.enum(['thinking', 'working', 'output', 
 export const TaskStatusSchema = z.enum(['todo', 'in_progress', 'in_review', 'done']);
 export const ReminderStatusSchema = z.enum(['pending', 'triggered', 'cancelled']);
 
+export const MentionSchema = z.object({
+  type: z.enum(['agent', 'user']),
+  id: z.string(),
+  label: z.string(),
+});
+
 export const AgentRuntimeConfigSchema = z.object({
   runtime: RuntimeIdSchema,
   model: z.string().optional(),
@@ -238,6 +244,7 @@ export const CreateMessageRequestSchema = z.object({
   senderName: z.string().min(1),
   content: z.string().min(1),
   agentId: z.string().optional(),
+  threadRootId: z.string().optional(),
 });
 
 export const CreateChannelRequestSchema = z.object({

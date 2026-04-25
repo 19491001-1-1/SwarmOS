@@ -1,46 +1,19 @@
 import { useEffect, useRef } from 'react';
-import type { Message } from '../api.js';
+import type { Agent, AgentActivity, Message } from '../api.js';
+import { MessageContent } from './MessageContent.js';
+import { PresenceAvatar } from './PresenceAvatar.js';
+import { t } from '../i18n.js';
 
 type Props = {
   channelName: string;
   messages: Message[];
+  agents: Agent[];
+  activitiesByAgent: Record<string, AgentActivity[]>;
   onCreateTask?: (messageId: string) => void;
+  onOpenThread?: (message: Message) => void;
 };
 
-// Deterministic pixel avatar colors per name
-const AVATAR_PALETTES = [
-  ['#FF4D8D', '#FFD700', '#00c853', '#2196f3'],
-  ['#7c3aed', '#FFD700', '#FF4D8D', '#fff'],
-  ['#00c853', '#2196f3', '#FFD700', '#000'],
-  ['#f44336', '#FFD700', '#fff', '#000'],
-];
-
-function PixelAvatar({ name, isAgent }: { name: string; isAgent: boolean }) {
-  const idx = (name.charCodeAt(0) + name.charCodeAt(1 % name.length)) % AVATAR_PALETTES.length;
-  const palette = AVATAR_PALETTES[idx];
-  // 4x4 pixel grid pattern based on name hash
-  const hash = name.split('').reduce((a, c) => a + c.charCodeAt(0), 0);
-  const grid = Array.from({ length: 16 }, (_, i) => palette[(hash * (i + 1) * 7) % palette.length]);
-
-  return (
-    <div style={{
-      width: 36,
-      height: 36,
-      border: '2px solid #000',
-      flexShrink: 0,
-      display: 'grid',
-      gridTemplateColumns: 'repeat(4, 1fr)',
-      overflow: 'hidden',
-      background: isAgent ? '#7c3aed' : '#1a6b4a',
-    }}>
-      {grid.map((color, i) => (
-        <div key={i} style={{ background: color }} />
-      ))}
-    </div>
-  );
-}
-
-export function ChannelView({ channelName, messages, onCreateTask }: Props) {
+export function ChannelView({ channelName, messages, agents, activitiesByAgent, onCreateTask, onOpenThread }: Props) {
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -92,7 +65,7 @@ export function ChannelView({ channelName, messages, onCreateTask }: Props) {
         display: 'flex',
         flexDirection: 'column',
         gap: 0,
-        background: '#fafaf5',
+        background: '#fbfbf7',
       }}>
         {messages.length === 0 && (
           <div style={{
@@ -110,14 +83,24 @@ export function ChannelView({ channelName, messages, onCreateTask }: Props) {
           const prev = messages[i - 1];
           const grouped = prev && prev.senderName === msg.senderName &&
             new Date(msg.createdAt).getTime() - new Date(prev.createdAt).getTime() < 5 * 60 * 1000;
+          const agent = msg.agentId ? agents.find((candidate) => candidate.id === msg.agentId) : undefined;
+          const latestActivity = msg.agentId ? activitiesByAgent[msg.agentId]?.[0] : undefined;
 
           return (
-            <div key={msg.id} style={{
+            <div key={msg.id} className="message-row" style={{
               display: 'flex',
               gap: 10,
               padding: grouped ? '1px 0 1px 46px' : '8px 0 2px',
+              maxWidth: 1040,
             }}>
-              {!grouped && <PixelAvatar name={msg.senderName} isAgent={!!msg.agentId} />}
+              {!grouped && (
+                <PresenceAvatar
+                  name={msg.senderName}
+                  isAgent={!!msg.agentId}
+                  status={agent?.status as any}
+                  latestActivity={latestActivity}
+                />
+              )}
               <div style={{ flex: 1, minWidth: 0 }}>
                 {!grouped && (
                   <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 3 }}>
@@ -125,36 +108,47 @@ export function ChannelView({ channelName, messages, onCreateTask }: Props) {
                     <span style={{ fontSize: 10, color: '#999', fontFamily: "'Courier New', monospace" }}>
                       {formatTime(msg.createdAt)}
                     </span>
+                    <div className="message-actions" style={{ marginLeft: 'auto', display: 'flex', gap: 4, opacity: 0.18 }}>
+                    {onOpenThread && (
+                      <button
+                        onClick={() => onOpenThread(msg)}
+                        title={t('message.replyInThread')}
+                        style={messageActionStyle}
+                      >
+                        {t('message.replyInThread')}
+                      </button>
+                    )}
                     {onCreateTask && (
                       <button
                         onClick={() => onCreateTask(msg.id)}
-                        title="Create task from message"
-                        style={{
-                          marginLeft: 'auto',
-                          border: '1.5px solid #000',
-                          background: '#fff',
-                          height: 20,
-                          padding: '0 6px',
-                          fontSize: 10,
-                          fontWeight: 700,
-                          fontFamily: "'Courier New', monospace",
-                          cursor: 'pointer',
-                        }}
+                        title={t('message.createTask')}
+                        style={messageActionStyle}
                       >
-                        {'-> TASK'}
+                        {t('message.createTask')}
                       </button>
                     )}
+                    </div>
                   </div>
                 )}
-                <div style={{
-                  fontSize: 13,
-                  lineHeight: 1.55,
-                  color: '#111',
-                  whiteSpace: 'pre-wrap',
-                  wordBreak: 'break-word',
-                }}>
-                  {msg.content}
-                </div>
+                <MessageContent content={msg.content} mentions={msg.mentions} />
+                {msg.replyCount ? (
+                  <button
+                    onClick={() => onOpenThread?.(msg)}
+                    style={{
+                      marginTop: 4,
+                      border: 'none',
+                      background: 'transparent',
+                      color: '#6b4f00',
+                      fontSize: 11,
+                      fontWeight: 700,
+                      fontFamily: "'Courier New', monospace",
+                      cursor: 'pointer',
+                      padding: 0,
+                    }}
+                  >
+                    {t('thread.replies', { count: msg.replyCount })}{msg.latestReplyAt ? ` · ${formatTime(msg.latestReplyAt)}` : ''}
+                  </button>
+                ) : null}
               </div>
             </div>
           );
@@ -164,6 +158,18 @@ export function ChannelView({ channelName, messages, onCreateTask }: Props) {
     </div>
   );
 }
+
+const messageActionStyle: React.CSSProperties = {
+  border: '1px solid #c8c8b8',
+  background: '#fff',
+  minHeight: 20,
+  padding: '0 6px',
+  fontSize: 10,
+  fontWeight: 700,
+  fontFamily: "'Courier New', monospace",
+  cursor: 'pointer',
+  borderRadius: 3,
+};
 
 function formatTime(iso: string): string {
   const d = new Date(iso);

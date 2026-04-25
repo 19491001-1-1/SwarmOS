@@ -4,7 +4,7 @@ import { homedir } from 'node:os';
 import { drizzle, type LibSQLDatabase } from 'drizzle-orm/libsql';
 import { createClient, type Client } from '@libsql/client';
 import { asc, desc, eq, inArray, or } from 'drizzle-orm';
-import type { Channel, Message, Machine, Agent, RuntimeId, AgentStatus, AgentActivity, DirectMessage, DirectMessageThread, AgentDelegation, AgentTokenInfo, Task, TaskStatus, Reminder, ReminderStatus, SearchMessageResult } from '@mini-slock/shared';
+import type { Channel, Message, MessageThread, Machine, Agent, RuntimeId, AgentStatus, AgentActivity, DirectMessage, DirectMessageThread, AgentDelegation, AgentTokenInfo, Task, TaskStatus, Reminder, ReminderStatus, SearchMessageResult } from '@mini-slock/shared';
 import { resolveAgentReference } from '@mini-slock/hub-core';
 import { activities, agentDelegations, agentTokens, agents, channels, directMessages, machines, messages, reminders, tasks } from './schema.js';
 
@@ -64,9 +64,13 @@ export async function initDb(): Promise<void> {
         sender_name TEXT NOT NULL,
         content TEXT NOT NULL,
         agent_id TEXT,
+        thread_root_id TEXT,
+        mentions TEXT,
         created_at TEXT NOT NULL
       )
     `);
+    await database.run(`ALTER TABLE messages ADD COLUMN thread_root_id TEXT`).catch(() => undefined);
+    await database.run(`ALTER TABLE messages ADD COLUMN mentions TEXT`).catch(() => undefined);
     await database.run(`
       CREATE TABLE IF NOT EXISTS activities (
         id TEXT PRIMARY KEY,
@@ -215,7 +219,19 @@ function toMessage(row: typeof messages.$inferSelect): Message {
     senderName: row.senderName,
     content: row.content,
     agentId: row.agentId ?? undefined,
+    threadRootId: row.threadRootId ?? undefined,
+    mentions: row.mentions ? JSON.parse(row.mentions) as Message['mentions'] : undefined,
     createdAt: row.createdAt,
+  };
+}
+
+function withThreadSummary(message: Message, allChannelMessages: Message[]): Message {
+  const replies = allChannelMessages.filter((candidate) => candidate.threadRootId === message.id);
+  if (replies.length === 0) return message;
+  return {
+    ...message,
+    replyCount: replies.length,
+    latestReplyAt: replies.at(-1)?.createdAt,
   };
 }
 
@@ -324,7 +340,8 @@ export class SqliteStore {
   async listMessages(channelId: string): Promise<Message[]> {
     await initDb();
     const rows = await getDb().select().from(messages).where(eq(messages.channelId, channelId)).orderBy(asc(messages.createdAt));
-    return rows.map(toMessage);
+    const all = rows.map(toMessage);
+    return all.filter((message) => !message.threadRootId).map((message) => withThreadSummary(message, all));
   }
 
   async listRecentMessages(channelId: string, limit: number): Promise<Message[]> {
@@ -356,6 +373,8 @@ export class SqliteStore {
     await getDb().insert(messages).values({
       ...message,
       agentId: message.agentId ?? null,
+      threadRootId: message.threadRootId ?? null,
+      mentions: message.mentions ? JSON.stringify(message.mentions) : null,
     });
     return message;
   }
@@ -402,7 +421,29 @@ export class SqliteStore {
   async getMessage(id: string): Promise<Message | undefined> {
     await initDb();
     const [message] = await getDb().select().from(messages).where(eq(messages.id, id)).limit(1);
-    return message ? toMessage(message) : undefined;
+    if (!message) return undefined;
+    const parsed = toMessage(message);
+    if (parsed.threadRootId) return parsed;
+    const channelMessages = (await getDb().select().from(messages).where(eq(messages.channelId, parsed.channelId)).orderBy(asc(messages.createdAt))).map(toMessage);
+    return withThreadSummary(parsed, channelMessages);
+  }
+
+  async getThread(rootId: string): Promise<MessageThread | undefined> {
+    await initDb();
+    const [rootRow] = await getDb().select().from(messages).where(eq(messages.id, rootId)).limit(1);
+    if (!rootRow) return undefined;
+    const root = toMessage(rootRow);
+    const threadRootId = root.threadRootId ?? root.id;
+    const [actualRootRow] = await getDb().select().from(messages).where(eq(messages.id, threadRootId)).limit(1);
+    if (!actualRootRow) return undefined;
+    const actualRoot = toMessage(actualRootRow);
+    const replyRows = await getDb()
+      .select()
+      .from(messages)
+      .where(eq(messages.threadRootId, actualRoot.id))
+      .orderBy(asc(messages.createdAt));
+    const replies = replyRows.map(toMessage);
+    return { root: withThreadSummary(actualRoot, [actualRoot, ...replies]), replies };
   }
 
   async createDirectMessage(dm: Omit<DirectMessage, 'createdAt'>): Promise<DirectMessage> {

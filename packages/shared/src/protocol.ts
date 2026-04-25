@@ -183,7 +183,22 @@ export type Message = {
   agentId?: string;
   senderName: string;
   content: string;
+  threadRootId?: string;
+  replyCount?: number;
+  latestReplyAt?: string;
+  mentions?: Mention[];
   createdAt: string;
+};
+
+export type Mention = {
+  type: 'agent' | 'user';
+  id: string;
+  label: string;
+};
+
+export type MessageThread = {
+  root: Message;
+  replies: Message[];
 };
 
 export type SearchMessageResult = Message & {
@@ -233,6 +248,7 @@ export type Agent = {
 
 export type BrowserEvent =
   | { type: 'message:new'; message: Message }
+  | { type: 'thread:message:new'; root: Message; message: Message }
   | { type: 'channel:created'; channel: Channel }
   | { type: 'channel:deleted'; channelId: string }
   | { type: 'agent:update'; agent: Agent }

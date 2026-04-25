@@ -10,6 +10,7 @@ import type {
   DirectMessageThread,
   Machine,
   Message,
+  Mention,
   Reminder,
   ReminderStatus,
   RuntimeId,
@@ -137,6 +138,13 @@ export class XoxiangHub extends DurableObject<Env> {
 
       if (messagesMatch && request.method === 'POST') {
         return this.createUserMessage(messagesMatch[1], await request.json());
+      }
+
+      const threadMatch = url.pathname.match(/^\/api\/messages\/([^/]+)\/thread$/);
+      if (threadMatch && request.method === 'GET') {
+        const thread = this.getThread(decodeURIComponent(threadMatch[1]));
+        if (!thread) return json({ error: 'Message not found' }, 404);
+        return json(thread);
       }
 
       if (request.method === 'GET' && url.pathname === '/api/tasks') {
@@ -468,9 +476,21 @@ export class XoxiangHub extends DurableObject<Env> {
         sender_name TEXT NOT NULL,
         content TEXT NOT NULL,
         agent_id TEXT,
+        thread_root_id TEXT,
+        mentions TEXT,
         created_at TEXT NOT NULL
       )
     `);
+    try {
+      this.ctx.storage.sql.exec('ALTER TABLE messages ADD COLUMN thread_root_id TEXT');
+    } catch {
+      // Existing Durable Objects may already have the column.
+    }
+    try {
+      this.ctx.storage.sql.exec('ALTER TABLE messages ADD COLUMN mentions TEXT');
+    } catch {
+      // Existing Durable Objects may already have the column.
+    }
     this.ctx.storage.sql.exec(`
       CREATE TABLE IF NOT EXISTS tasks (
         id TEXT PRIMARY KEY,
@@ -600,6 +620,13 @@ export class XoxiangHub extends DurableObject<Env> {
       return json({ error: 'Invalid request body', issues: parsed.error.issues }, 400);
     }
     const payload = parsed.data;
+    let threadRootId = payload.threadRootId;
+    if (threadRootId) {
+      const thread = this.getThread(threadRootId);
+      if (!thread) return json({ error: 'Thread root not found' }, 404);
+      if (thread.root.channelId !== channelId) return json({ error: 'Thread root belongs to another channel' }, 400);
+      threadRootId = thread.root.id;
+    }
 
     const message = this.createMessage({
       id: crypto.randomUUID(),
@@ -607,8 +634,15 @@ export class XoxiangHub extends DurableObject<Env> {
       senderName: payload.senderName,
       content: payload.content,
       agentId: payload.agentId,
+      threadRootId,
+      mentions: this.parseMentions(payload.content),
     });
-    this.broadcast({ type: 'message:new', message });
+    if (message.threadRootId) {
+      const thread = this.getThread(message.threadRootId);
+      if (thread) this.broadcast({ type: 'thread:message:new', root: thread.root, message });
+    } else {
+      this.broadcast({ type: 'message:new', message });
+    }
 
     if (payload.agentId) {
       const agent = this.getAgent(payload.agentId);
@@ -1096,14 +1130,46 @@ export class XoxiangHub extends DurableObject<Env> {
 
   private getMessage(id: string): Message | undefined {
     const row = this.ctx.storage.sql.exec<Row>('SELECT * FROM messages WHERE id = ? LIMIT 1', id).toArray()[0];
-    return row ? toMessage(row) : undefined;
+    if (!row) return undefined;
+    const message = toMessage(row);
+    if (message.threadRootId) return message;
+    return this.withThreadSummary(message);
   }
 
   private listMessages(channelId: string): Message[] {
-    return this.ctx.storage.sql
+    const all = this.ctx.storage.sql
       .exec<Row>('SELECT * FROM messages WHERE channel_id = ? ORDER BY created_at', channelId)
       .toArray()
       .map(toMessage);
+    return all.filter((message) => !message.threadRootId).map((message) => this.withThreadSummary(message, all));
+  }
+
+  private getThread(messageId: string): { root: Message; replies: Message[] } | undefined {
+    const message = this.getMessage(messageId);
+    if (!message) return undefined;
+    const rootId = message.threadRootId ?? message.id;
+    const rootRow = this.ctx.storage.sql.exec<Row>('SELECT * FROM messages WHERE id = ? LIMIT 1', rootId).toArray()[0];
+    if (!rootRow) return undefined;
+    const root = toMessage(rootRow);
+    const replies = this.ctx.storage.sql
+      .exec<Row>('SELECT * FROM messages WHERE thread_root_id = ? ORDER BY created_at', root.id)
+      .toArray()
+      .map(toMessage);
+    return { root: this.withThreadSummary(root, [root, ...replies]), replies };
+  }
+
+  private withThreadSummary(message: Message, channelMessages?: Message[]): Message {
+    const candidates = channelMessages ?? this.ctx.storage.sql
+      .exec<Row>('SELECT * FROM messages WHERE channel_id = ? ORDER BY created_at', message.channelId)
+      .toArray()
+      .map(toMessage);
+    const replies = candidates.filter((candidate) => candidate.threadRootId === message.id);
+    if (replies.length === 0) return message;
+    return {
+      ...message,
+      replyCount: replies.length,
+      latestReplyAt: replies.at(-1)?.createdAt,
+    };
   }
 
   private listRecentMessages(channelId: string, limit: number): Message[] {
@@ -1162,16 +1228,33 @@ export class XoxiangHub extends DurableObject<Env> {
   private createMessage(message: Omit<Message, 'createdAt'>): Message {
     const created: Message = { ...message, createdAt: new Date().toISOString() };
     this.ctx.storage.sql.exec(
-      `INSERT INTO messages (id, channel_id, sender_name, content, agent_id, created_at)
-       VALUES (?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO messages (id, channel_id, sender_name, content, agent_id, thread_root_id, mentions, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       created.id,
       created.channelId,
       created.senderName,
       created.content,
       created.agentId ?? null,
+      created.threadRootId ?? null,
+      created.mentions ? JSON.stringify(created.mentions) : null,
       created.createdAt
     );
     return created;
+  }
+
+  private parseMentions(content: string): Mention[] | undefined {
+    const mentions = new Map<string, Mention>();
+    if (/@user\b/.test(content)) mentions.set('user:user', { type: 'user', id: 'user', label: 'user' });
+    for (const agent of this.listAgents()) {
+      const labels = [agent.displayName, agent.name].filter(Boolean) as string[];
+      for (const label of labels) {
+        if (content.includes(`@${label}`)) {
+          mentions.set(`agent:${agent.id}`, { type: 'agent', id: agent.id, label });
+          break;
+        }
+      }
+    }
+    return mentions.size ? [...mentions.values()] : undefined;
   }
 
   private createTask(task: Omit<Task, 'createdAt' | 'updatedAt'>): Task {
@@ -1799,6 +1882,8 @@ function toMessage(row: Row): Message {
     senderName: String(row.sender_name),
     content: String(row.content),
     agentId: row.agent_id ? String(row.agent_id) : undefined,
+    threadRootId: row.thread_root_id ? String(row.thread_root_id) : undefined,
+    mentions: row.mentions ? JSON.parse(String(row.mentions)) as Message['mentions'] : undefined,
     createdAt: String(row.created_at),
   };
 }

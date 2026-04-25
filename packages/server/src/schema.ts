@@ -12,6 +12,8 @@ export const messages = sqliteTable('messages', {
   senderName: text('sender_name').notNull(),
   content: text('content').notNull(),
   agentId: text('agent_id'),
+  threadRootId: text('thread_root_id'),
+  mentions: text('mentions'),
   createdAt: text('created_at').notNull(),
 });
 

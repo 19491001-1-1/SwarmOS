@@ -240,6 +240,44 @@ describe('input validation', () => {
     expect(res.status).toBe(400);
   });
 
+  it('persists thread replies separately from channel messages', async () => {
+    const agentCreated = await SELF.fetch('https://hub.test/api/agents', {
+      method: 'POST',
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ name: `mention-target-${crypto.randomUUID()}`, displayName: '产品经理', runtime: 'claude' }),
+    });
+    const agent = (await agentCreated.json()) as { id: string };
+
+    const rootCreated = await SELF.fetch('https://hub.test/api/channels/general/messages', {
+      method: 'POST',
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ senderName: 'user', content: 'Root @产品经理' }),
+    });
+    expect(rootCreated.status).toBe(201);
+    const root = (await rootCreated.json()) as { id: string; mentions?: Array<{ id: string; label: string }> };
+    expect(root.mentions).toEqual([{ type: 'agent', id: agent.id, label: '产品经理' }]);
+
+    const replyCreated = await SELF.fetch('https://hub.test/api/channels/general/messages', {
+      method: 'POST',
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ senderName: 'user', content: 'Thread reply', threadRootId: root.id }),
+    });
+    expect(replyCreated.status).toBe(201);
+    const reply = (await replyCreated.json()) as { id: string; threadRootId?: string };
+    expect(reply.threadRootId).toBe(root.id);
+
+    const listed = await SELF.fetch('https://hub.test/api/channels/general/messages', { headers: authHeaders() });
+    expect(listed.status).toBe(200);
+    const messages = (await listed.json()) as Array<{ id: string; replyCount?: number }>;
+    const listedRoot = messages.find((message) => message.id === root.id);
+    expect(listedRoot).toMatchObject({ replyCount: 1 });
+    expect(messages.find((message) => message.id === reply.id)).toBeUndefined();
+
+    const thread = await SELF.fetch(`https://hub.test/api/messages/${root.id}/thread`, { headers: authHeaders() });
+    expect(thread.status).toBe(200);
+    expect(await thread.json()).toMatchObject({ root: { id: root.id }, replies: [{ id: reply.id }] });
+  });
+
   it('supports task board CRUD and message conversion', async () => {
     const title = `cf task ${crypto.randomUUID()}`;
     const created = await SELF.fetch('https://hub.test/api/tasks', {

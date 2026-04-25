@@ -354,6 +354,15 @@ describe('CreateMessageRequestSchema', () => {
     expect(result.success).toBe(true);
   });
 
+  it('accepts a message with thread root metadata', () => {
+    const result = CreateMessageRequestSchema.safeParse({
+      senderName: 'u',
+      content: '@产品经理 please review',
+      threadRootId: 'msg-root',
+    });
+    expect(result.success).toBe(true);
+  });
+
   it('rejects empty senderName', () => {
     expect(
       CreateMessageRequestSchema.safeParse({ senderName: '', content: 'hi' }).success,
