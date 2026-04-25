@@ -22,15 +22,15 @@
 | v0.7 | Reminders | Agent 设置定时提醒，实时推送到 UI | v0.3 |
 | v0.8 | 多 Channel + 搜索 | 创建/删除 channel，全局消息搜索 | v0.2 |
 | v0.9 | Chat Experience + Threads | 头像状态、Markdown 消息、@mention 渲染、群聊 Thread 聚焦讨论 | v0.8 |
-| v1.0 | Organization Graph | 部门、岗位、汇报关系、职责和能力模型 | v0.6/v0.8 |
-| v1.1 | Goals, Projects & Work Breakdown | 目标、项目、里程碑、任务依赖图和验收标准 | v1.0 |
-| v1.2 | Boss Command Center | 用户指令转 brief/计划/分工，老板驾驶舱 | v1.1 |
+| v1.0 | Lightweight Agent Roles | 轻量角色、职责、能力、工作风格和交接偏好，复用当前 profile | v0.6/v0.8 |
+| v1.1 | Goal Brief & Work Breakdown | 用户目标结构化成 brief、任务、依赖和验收标准 | v1.0 |
+| v1.2 | Goal Alignment in Chat | 复用当前聊天完成目标澄清、计划对齐、分工和确认 | v1.1 |
 | v1.3 | Autonomous Work Loop | Agent 主动拉取、认领、推进、交接、升级任务 | v1.1 |
 | v1.4 | Quality & Review System | Reviewer、QA gate、验收证据、返工流程 | v1.3 |
-| v1.5 | Organization Knowledge Base | 组织知识库、项目档案、经验沉淀和检索 | v1.3 |
-| v1.6 | Tooling, Credentials & External Work | 角色化工具权限、凭据治理、外部服务集成 | v1.4 |
-| v1.7 | Creative Strategy Layer | 方案生成、研究、批判、创新提案和超预期交付 | v1.5 |
-| v1.8 | Governance, Metrics & Scale | 审计、成本、SLA、容量、多 daemon、可靠队列 | v1.6 |
+| v1.5 | Knowledge & Memory Layer | 项目知识、决策沉淀、经验检索、外部知识库 adapter 预研 | v1.3 |
+| v1.6 | Draft: Tools & Credentials | 草稿：工具权限、凭据治理、外部服务集成，待重新设计 | v1.4 |
+| v1.7 | Draft: Strategy & Research | 草稿：研究、批判、方案生成和创新提案，待重新设计 | v1.5 |
+| v1.8 | Draft: Reliability & Scale | 草稿：审计、成本、SLA、多 daemon、可靠队列，待重新设计 | v1.6 |
 
 ---
 
@@ -52,5 +52,5 @@
 - [v0.7 — Reminders](./v0.7-reminders.md)
 - [v0.8 — 多 Channel + 搜索](./v0.8-channels-search.md)
 - [v0.9 — Chat Experience, Presence & Threads](./v0.9-chat-experience.md)
-- [v1.0 — Organization Graph](./v1.0-organization-graph.md)
-- [v1.x — Phase Two Roadmap: Agent-Native Company](./v1-phase-two-roadmap.md)
+- [v1.0 — Lightweight Agent Roles & Capabilities](./v1.0-agent-roles.md)
+- [v1.x — Phase Two Roadmap: Role, Goal & Memory](./v1-phase-two-roadmap.md)
