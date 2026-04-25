@@ -57,16 +57,16 @@ export function PresenceAvatar({ name, isAgent, status, latestActivity, size = 3
       }}>
         {grid.map((cellColor, i) => <div key={i} style={{ background: cellColor }} />)}
       </div>
-      <span className={active ? 'presence-status-dot presence-status-dot-active' : 'presence-status-dot'} style={{
+      <span style={{
         position: 'absolute',
         right: -1,
         bottom: -1,
         width: Math.max(9, Math.round(size * 0.28)),
         height: Math.max(9, Math.round(size * 0.28)),
-        borderRadius: active ? 0 : 99,
-        border: active ? '1px solid #000' : '2px solid #fff',
-        background: active ? '#39FF14' : color,
-        boxShadow: 'none',
+        borderRadius: 99,
+        border: '2px solid #fff',
+        background: color,
+        boxShadow: active ? `0 0 0 2px ${color}55` : 'none',
       }} />
     </button>
   );
