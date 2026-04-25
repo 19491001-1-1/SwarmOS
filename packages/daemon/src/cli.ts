@@ -1,5 +1,6 @@
 import { DaemonClient } from './daemonClient.js';
 import { DAEMON_VERSION } from './daemonClient.js';
+import { loadNearestDotenv } from './env.js';
 
 const args = process.argv.slice(2);
 
@@ -15,6 +16,11 @@ const apiKey = getArg('--api-key') ?? 'dev-machine-key';
 if (args.includes('--version') || args.includes('-v')) {
   console.log(DAEMON_VERSION);
   process.exit(0);
+}
+
+const dotenv = loadNearestDotenv();
+if (dotenv.path && dotenv.loaded.length > 0) {
+  console.log(`[daemon] Loaded env from ${dotenv.path}: ${dotenv.loaded.join(', ')}`);
 }
 
 console.log(`[daemon] Starting version=${DAEMON_VERSION} server=${serverUrl}`);
