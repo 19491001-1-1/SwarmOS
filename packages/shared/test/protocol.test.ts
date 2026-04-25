@@ -20,8 +20,12 @@ import {
   InternalDmSendRequestSchema,
   InternalMessageReadRequestSchema,
   InternalMessageSendRequestSchema,
+  InternalInboxRequestSchema,
+  InternalTaskBlockRequestSchema,
+  InternalTaskEscalateRequestSchema,
   InternalTaskHandoffRequestSchema,
   InternalTaskListRequestSchema,
+  InternalTaskProgressRequestSchema,
   InternalTaskUpdateRequestSchema,
   InternalGoalCreateRequestSchema,
   InternalGoalCreateTasksRequestSchema,
@@ -215,6 +219,10 @@ describe('Internal agent API schemas', () => {
     expect(InternalAgentDelegateRequestSchema.safeParse({ to: 'agent-2', content: 'work', startIfInactive: true }).success).toBe(true);
     expect(InternalTaskListRequestSchema.safeParse({ status: 'todo', all: 'true' }).success).toBe(true);
     expect(InternalTaskUpdateRequestSchema.safeParse({ status: 'in_progress' }).success).toBe(true);
+    expect(InternalInboxRequestSchema.safeParse({ limit: '10' }).success).toBe(true);
+    expect(InternalTaskProgressRequestSchema.safeParse({ detail: 'still working' }).success).toBe(true);
+    expect(InternalTaskBlockRequestSchema.safeParse({ reason: 'missing input', needs: 'user decision' }).success).toBe(true);
+    expect(InternalTaskEscalateRequestSchema.safeParse({ reason: 'blocked too long' }).success).toBe(true);
     expect(InternalGoalListRequestSchema.safeParse({ channel: 'general', status: 'draft' }).success).toBe(true);
     expect(InternalGoalCreateRequestSchema.safeParse({ objective: 'ship v1.1', successCriteria: ['tasks have context'] }).success).toBe(true);
     expect(InternalGoalCreateTasksRequestSchema.safeParse({ tasks: [{ title: 'write plan' }] }).success).toBe(true);
@@ -339,6 +347,8 @@ describe('Task schemas', () => {
         goal: 'ship context',
         acceptanceCriteria: ['passes tests'],
         handoffNotes: ['from agent: continue here'],
+        blockedReason: 'missing input',
+        progressEvents: [{ id: 'evt-1', taskId: 'task-1', agentId: 'agent-1', type: 'heartbeat', detail: 'working', createdAt: new Date().toISOString() }],
       },
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),

@@ -50,6 +50,32 @@ export type TaskStatus = 'todo' | 'in_progress' | 'in_review' | 'done';
 export type GoalBriefStatus = 'draft' | 'confirmed' | 'cancelled' | 'completed';
 export type GoalAlignmentStatus = 'needs_clarification' | 'awaiting_confirmation' | 'confirmed' | 'cancelled';
 export type GoalAlignmentRiskLevel = 'low' | 'medium' | 'high';
+export type WorkItemKind = 'mention' | 'dm' | 'assigned_task' | 'claimable_task' | 'reminder' | 'review_request' | 'blocked_escalation';
+export type WorkItemPriority = 'low' | 'normal' | 'high' | 'urgent';
+export type TaskProgressEventType = 'claimed' | 'started' | 'heartbeat' | 'blocked' | 'handoff' | 'completed' | 'escalated';
+
+export type AgentInboxItem = {
+  id: string;
+  kind: WorkItemKind;
+  agentId: string;
+  channelId?: string;
+  messageId?: string;
+  taskId?: string;
+  goalId?: string;
+  priority: WorkItemPriority;
+  summary: string;
+  dueAt?: string;
+  createdAt: string;
+};
+
+export type TaskProgressEvent = {
+  id: string;
+  taskId: string;
+  agentId: string;
+  type: TaskProgressEventType;
+  detail: string;
+  createdAt: string;
+};
 
 export type GoalBrief = {
   id: string;
@@ -118,6 +144,11 @@ export type TaskContext = {
   previousAgentId?: string;
   handoffNotes?: string[];
   privateNotes?: string[];
+  claimedByAgentId?: string;
+  blockedReason?: string;
+  blockedNeeds?: string;
+  escalatedReason?: string;
+  progressEvents?: TaskProgressEvent[];
 };
 
 export type Task = {

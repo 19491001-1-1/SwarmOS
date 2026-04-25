@@ -25,7 +25,8 @@ export type TaskStatus = 'todo' | 'in_progress' | 'in_review' | 'done';
 export type GoalBriefStatus = 'draft' | 'confirmed' | 'cancelled' | 'completed';
 export type GoalAlignmentStatus = 'needs_clarification' | 'awaiting_confirmation' | 'confirmed' | 'cancelled';
 export type GoalAlignmentRiskLevel = 'low' | 'medium' | 'high';
-export type TaskContext = { goalId?: string; goalObjective?: string; goal?: string; background?: string; acceptanceCriteria?: string[]; constraints?: string[]; assumptions?: string[]; risks?: string[]; dependencies?: string[]; sourceMessageIds?: string[]; artifacts?: string[]; requesterAgentId?: string; previousAgentId?: string; handoffNotes?: string[]; privateNotes?: string[] };
+export type TaskProgressEvent = { id: string; taskId: string; agentId: string; type: 'claimed' | 'started' | 'heartbeat' | 'blocked' | 'handoff' | 'completed' | 'escalated'; detail: string; createdAt: string };
+export type TaskContext = { goalId?: string; goalObjective?: string; goal?: string; background?: string; acceptanceCriteria?: string[]; constraints?: string[]; assumptions?: string[]; risks?: string[]; dependencies?: string[]; sourceMessageIds?: string[]; artifacts?: string[]; requesterAgentId?: string; previousAgentId?: string; handoffNotes?: string[]; privateNotes?: string[]; claimedByAgentId?: string; blockedReason?: string; blockedNeeds?: string; escalatedReason?: string; progressEvents?: TaskProgressEvent[] };
 export type Task = { id: string; channelId: string; messageId?: string; title: string; status: TaskStatus; creatorName: string; assigneeId?: string; context?: TaskContext; createdAt: string; updatedAt: string };
 export type GoalBrief = { id: string; channelId: string; sourceMessageId?: string; requesterName: string; objective: string; background: string[]; successCriteria: string[]; constraints: string[]; assumptions: string[]; risks: string[]; status: GoalBriefStatus; createdAt: string; updatedAt: string };
 export type GoalAlignmentTaskDraft = { title: string; assigneeId?: string; dependencies?: string[]; acceptanceCriteria?: string[]; artifacts?: string[]; role?: 'owner' | 'reviewer' | 'support' };
@@ -33,6 +34,7 @@ export type GoalAlignment = { id: string; channelId: string; threadRootId: strin
 export type ReminderStatus = 'pending' | 'triggered' | 'cancelled';
 export type Reminder = { id: string; agentId: string; channelId: string; message: string; triggerAt: string; status: ReminderStatus; createdAt: string };
 export type AuthWhoami = { authenticated: boolean; mode: 'token' | 'anonymous' };
+export type AgentInboxItem = { id: string; kind: 'mention' | 'dm' | 'assigned_task' | 'claimable_task' | 'reminder' | 'review_request' | 'blocked_escalation'; agentId: string; channelId?: string; messageId?: string; taskId?: string; goalId?: string; priority: 'low' | 'normal' | 'high' | 'urgent'; summary: string; dueAt?: string; createdAt: string };
 
 export class AuthError extends Error {
   constructor(message = 'Unauthorized') {

@@ -100,7 +100,7 @@ describe('agent internal API', () => {
       headers: authHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({ name: `internal-agent-${crypto.randomUUID()}`, runtime: 'claude' }),
     });
-    const agent = (await created.json()) as { id: string };
+    const agent = (await created.json()) as { id: string; name: string };
 
     const startMsgPromise = waitForMessage(daemon, 'agent:start');
     const started = await SELF.fetch(`https://hub.test/api/agents/${agent.id}/start`, { method: 'POST', headers: authHeaders() });
@@ -215,6 +215,41 @@ describe('agent internal API', () => {
     expect(await internalGoalTasks.json()).toMatchObject({
       tasks: [expect.objectContaining({ context: expect.objectContaining({ goalId: internalGoal.id, acceptanceCriteria: ['tasks have context'] }) })],
     });
+
+    const claimableTask = await SELF.fetch('https://hub.test/api/tasks', {
+      method: 'POST',
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ channelId: 'general', title: `${agent.name} coding work ${crypto.randomUUID()}`, creatorName: 'user', context: { goal: 'coding' } }),
+    });
+    const claimable = (await claimableTask.json()) as { id: string };
+
+    const inbox = await SELF.fetch(`https://hub.test/internal/agent/${agent.id}/inbox`, { headers: internalHeaders });
+    expect(inbox.status).toBe(200);
+    expect((await inbox.json()) as Array<{ kind: string; taskId?: string }>).toContainEqual(expect.objectContaining({ kind: 'claimable_task', taskId: claimable.id }));
+
+    const claimed = await SELF.fetch(`https://hub.test/internal/agent/${agent.id}/tasks/${claimable.id}/claim`, {
+      method: 'POST',
+      headers: internalHeaders,
+      body: JSON.stringify({}),
+    });
+    expect(claimed.status).toBe(200);
+    expect(await claimed.json()).toMatchObject({ assigneeId: agent.id, context: expect.objectContaining({ claimedByAgentId: agent.id }) });
+
+    const progress = await SELF.fetch(`https://hub.test/internal/agent/${agent.id}/tasks/${claimable.id}/progress`, {
+      method: 'POST',
+      headers: internalHeaders,
+      body: JSON.stringify({ detail: 'heartbeat' }),
+    });
+    expect(progress.status).toBe(200);
+    expect(await progress.json()).toMatchObject({ context: expect.objectContaining({ progressEvents: expect.arrayContaining([expect.objectContaining({ type: 'heartbeat' })]) }) });
+
+    const blocked = await SELF.fetch(`https://hub.test/internal/agent/${agent.id}/tasks/${claimable.id}/block`, {
+      method: 'POST',
+      headers: internalHeaders,
+      body: JSON.stringify({ reason: 'missing input', needs: 'user decision' }),
+    });
+    expect(blocked.status).toBe(200);
+    expect(await blocked.json()).toMatchObject({ context: expect.objectContaining({ blockedReason: 'missing input', blockedNeeds: 'user decision' }) });
     daemon.close();
   });
 });
