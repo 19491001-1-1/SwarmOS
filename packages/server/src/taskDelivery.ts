@@ -54,9 +54,12 @@ export async function buildOpenTaskSummary(agent: Agent): Promise<string | undef
   if (tasks.length === 0) return undefined;
   return [
     'Open tasks assigned to you:',
-    ...tasks.map((task) => `- ${task.id} [${task.status}] #${task.channelId}: ${task.title}`),
+    ...tasks.map((task) => {
+      const goal = task.context?.goal ? ` goal: ${task.context.goal}` : '';
+      return `- ${task.id} [${task.status}] #${task.channelId}: ${task.title}${goal}`;
+    }),
     '',
-    'Use `xoxiang task list`, `xoxiang task read <taskId>`, and `xoxiang task update <taskId> --status in_progress|in_review|done` to manage them.',
+    'Use `xoxiang task read <taskId> --context`, `xoxiang task update <taskId> --status in_progress|in_review|done`, and `xoxiang task handoff <taskId> --to agentName --notes "..."` to manage them.',
   ].join('\n');
 }
 
@@ -71,9 +74,12 @@ export function toTaskDelivery(task: Task) {
       `Task ID: ${task.id}`,
       `Status: ${task.status}`,
       `Channel: ${task.channelId}`,
+      task.context?.goal ? `Goal: ${task.context.goal}` : undefined,
+      task.context?.background ? `Background: ${task.context.background}` : undefined,
+      task.context?.handoffNotes?.length ? `Latest handoff: ${task.context.handoffNotes.at(-1)}` : undefined,
       '',
-      'Use `xoxiang task read <taskId>` for details and `xoxiang task update <taskId> --status in_progress|in_review|done` when you make progress.',
-    ].join('\n'),
+      'Use `xoxiang task read <taskId> --context` for details and `xoxiang task update <taskId> --status in_progress|in_review|done` when you make progress.',
+    ].filter(Boolean).join('\n'),
     createdAt: task.updatedAt,
   };
 }

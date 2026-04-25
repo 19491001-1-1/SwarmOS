@@ -48,6 +48,19 @@ export type AgentDelegation = {
 
 export type TaskStatus = 'todo' | 'in_progress' | 'in_review' | 'done';
 
+export type TaskContext = {
+  goal?: string;
+  background?: string;
+  acceptanceCriteria?: string[];
+  constraints?: string[];
+  sourceMessageIds?: string[];
+  artifacts?: string[];
+  requesterAgentId?: string;
+  previousAgentId?: string;
+  handoffNotes?: string[];
+  privateNotes?: string[];
+};
+
 export type Task = {
   id: string;
   channelId: string;
@@ -56,6 +69,7 @@ export type Task = {
   status: TaskStatus;
   creatorName: string;
   assigneeId?: string;
+  context?: TaskContext;
   createdAt: string;
   updatedAt: string;
 };

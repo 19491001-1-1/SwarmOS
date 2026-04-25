@@ -6,6 +6,7 @@ import {
   InternalDmSendRequestSchema,
   InternalMessageReadRequestSchema,
   InternalMessageSendRequestSchema,
+  InternalTaskHandoffRequestSchema,
   InternalTaskListRequestSchema,
   InternalTaskUpdateRequestSchema,
   type Agent,
@@ -16,6 +17,7 @@ import { getStore } from '../db.js';
 import { eventBus } from '../events.js';
 import { daemonRegistry } from '../daemonRegistry.js';
 import { delegateAgent } from '../delegation.js';
+import { notifyTaskAssignee } from '../taskDelivery.js';
 
 export async function internalAgentRoutes(app: FastifyInstance) {
   app.addHook('preHandler', async (req, reply) => {
@@ -172,6 +174,36 @@ export async function internalAgentRoutes(app: FastifyInstance) {
     const task = await store.updateTask(req.params.taskId, parsed.data);
     if (!task) return reply.status(404).send({ error: 'Task not found' });
     eventBus.emit({ type: 'task:update', task });
+    return task;
+  });
+
+  app.post<{ Params: { agentId: string; taskId: string } }>('/internal/agent/:agentId/tasks/:taskId/handoff', async (req, reply) => {
+    const store = getStore();
+    const agent = await store.getAgent(req.params.agentId);
+    if (!agent) return reply.status(404).send({ error: 'Agent not found' });
+    const existing = await store.getTask(req.params.taskId);
+    if (!existing) return reply.status(404).send({ error: 'Task not found' });
+    if (existing.assigneeId && existing.assigneeId !== agent.id) return reply.status(403).send({ error: 'Task is assigned to another agent' });
+    const parsed = InternalTaskHandoffRequestSchema.safeParse(req.body);
+    if (!parsed.success) return reply.status(400).send({ error: 'Invalid request body', issues: parsed.error.issues });
+    const target = await store.findAgentByNameOrId(parsed.data.to);
+    if (!target) return reply.status(404).send({ error: 'Target agent not found' });
+    const nextNote = [
+      `from ${agent.displayName ?? agent.name}: ${parsed.data.notes}`,
+      parsed.data.nextStep ? `next: ${parsed.data.nextStep}` : undefined,
+    ].filter(Boolean).join('\n');
+    const task = await store.updateTask(existing.id, {
+      assigneeId: target.id,
+      context: {
+        ...existing.context,
+        goal: parsed.data.goal ?? existing.context?.goal,
+        previousAgentId: agent.id,
+        handoffNotes: [...(existing.context?.handoffNotes ?? []), nextNote],
+      },
+    });
+    if (!task) return reply.status(404).send({ error: 'Task not found' });
+    eventBus.emit({ type: 'task:update', task });
+    await notifyTaskAssignee(task);
     return task;
   });
 }

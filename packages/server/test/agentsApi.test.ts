@@ -353,6 +353,14 @@ describe('agent internal API', () => {
       status: 'todo',
       creatorName: 'user',
       assigneeId: 'agent-1',
+      context: { goal: 'complete assigned task' },
+    });
+    await store.createAgent({
+      id: 'agent-2',
+      name: 'target',
+      runtime: 'claude',
+      status: 'inactive',
+      createdAt: new Date().toISOString(),
     });
     await store.createTask({
       id: 'task-2',
@@ -371,6 +379,7 @@ describe('agent internal API', () => {
     const read = await app.inject({ method: 'GET', url: '/internal/agent/agent-1/tasks/task-1', headers });
     expect(read.statusCode).toBe(200);
     expect(read.json().title).toBe('agent task');
+    expect(read.json().context.goal).toBe('complete assigned task');
 
     const forbidden = await app.inject({ method: 'GET', url: '/internal/agent/agent-1/tasks/task-2', headers });
     expect(forbidden.statusCode).toBe(403);
@@ -383,6 +392,20 @@ describe('agent internal API', () => {
     });
     expect(updated.statusCode).toBe(200);
     expect(updated.json().status).toBe('in_progress');
+
+    const handedOff = await app.inject({
+      method: 'POST',
+      url: '/internal/agent/agent-1/tasks/task-1/handoff',
+      headers,
+      payload: { to: 'target', notes: 'analysis done', nextStep: 'write tests' },
+    });
+    expect(handedOff.statusCode).toBe(200);
+    expect(handedOff.json().assigneeId).toBe('agent-2');
+    expect(handedOff.json().context).toMatchObject({
+      goal: 'complete assigned task',
+      previousAgentId: 'agent-1',
+      handoffNotes: ['from Bot: analysis done\nnext: write tests'],
+    });
     await app.close();
   });
 });

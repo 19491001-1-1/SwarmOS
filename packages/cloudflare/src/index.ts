@@ -27,6 +27,7 @@ import {
   InternalDmSendRequestSchema,
   InternalMessageReadRequestSchema,
   InternalMessageSendRequestSchema,
+  InternalTaskHandoffRequestSchema,
   InternalTaskListRequestSchema,
   InternalTaskUpdateRequestSchema,
   CreateMessageRequestSchema,
@@ -415,10 +416,16 @@ export class XoxiangHub extends DurableObject<Env> {
         status TEXT NOT NULL,
         creator_name TEXT NOT NULL,
         assignee_id TEXT,
+        context TEXT,
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL
       )
     `);
+    try {
+      this.ctx.storage.sql.exec('ALTER TABLE tasks ADD COLUMN context TEXT');
+    } catch {
+      // Existing Durable Objects may already have the column.
+    }
     this.ctx.storage.sql.exec(`
       CREATE TABLE IF NOT EXISTS activities (
         id TEXT PRIMARY KEY,
@@ -553,6 +560,7 @@ export class XoxiangHub extends DurableObject<Env> {
       status: 'todo',
       creatorName: parsed.data.creatorName,
       assigneeId: parsed.data.assigneeId,
+      context: parsed.data.context,
     });
     this.broadcast({ type: 'task:update', task });
     this.notifyTaskAssignee(task);
@@ -589,6 +597,10 @@ export class XoxiangHub extends DurableObject<Env> {
       status: 'todo',
       creatorName: parsed.data.creatorName,
       assigneeId: parsed.data.assigneeId,
+      context: {
+        ...parsed.data.context,
+        sourceMessageIds: Array.from(new Set([...(parsed.data.context?.sourceMessageIds ?? []), message.id])),
+      },
     });
     this.broadcast({ type: 'task:update', task });
     this.notifyTaskAssignee(task);
@@ -685,6 +697,34 @@ export class XoxiangHub extends DurableObject<Env> {
       const task = this.updateTask(existing.id, parsed.data);
       if (!task) return json({ error: 'Task not found' }, 404);
       this.broadcast({ type: 'task:update', task });
+      return json(task);
+    }
+
+    const taskHandoffMatch = path.match(/^\/tasks\/([^/]+)\/handoff$/);
+    if (request.method === 'POST' && taskHandoffMatch) {
+      const existing = this.getTask(decodeURIComponent(taskHandoffMatch[1]));
+      if (!existing) return json({ error: 'Task not found' }, 404);
+      if (existing.assigneeId && existing.assigneeId !== agent.id) return json({ error: 'Task is assigned to another agent' }, 403);
+      const parsed = InternalTaskHandoffRequestSchema.safeParse(await request.json());
+      if (!parsed.success) return json({ error: 'Invalid request body', issues: parsed.error.issues }, 400);
+      const target = this.findAgentByNameOrId(parsed.data.to);
+      if (!target) return json({ error: 'Target agent not found' }, 404);
+      const nextNote = [
+        `from ${agent.displayName ?? agent.name}: ${parsed.data.notes}`,
+        parsed.data.nextStep ? `next: ${parsed.data.nextStep}` : undefined,
+      ].filter(Boolean).join('\n');
+      const task = this.updateTask(existing.id, {
+        assigneeId: target.id,
+        context: {
+          ...existing.context,
+          goal: parsed.data.goal ?? existing.context?.goal,
+          previousAgentId: agent.id,
+          handoffNotes: [...(existing.context?.handoffNotes ?? []), nextNote],
+        },
+      });
+      if (!task) return json({ error: 'Task not found' }, 404);
+      this.broadcast({ type: 'task:update', task });
+      this.notifyTaskAssignee(task);
       return json(task);
     }
 
@@ -939,8 +979,8 @@ export class XoxiangHub extends DurableObject<Env> {
     const now = new Date().toISOString();
     const created: Task = { ...task, title: task.title.slice(0, 200), createdAt: now, updatedAt: now };
     this.ctx.storage.sql.exec(
-      `INSERT INTO tasks (id, channel_id, message_id, title, status, creator_name, assignee_id, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO tasks (id, channel_id, message_id, title, status, creator_name, assignee_id, context, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       created.id,
       created.channelId,
       created.messageId ?? null,
@@ -948,20 +988,22 @@ export class XoxiangHub extends DurableObject<Env> {
       created.status,
       created.creatorName,
       created.assigneeId ?? null,
+      created.context ? JSON.stringify(created.context) : null,
       created.createdAt,
       created.updatedAt
     );
     return created;
   }
 
-  private updateTask(id: string, patch: Partial<Pick<Task, 'status' | 'assigneeId'>>): Task | undefined {
+  private updateTask(id: string, patch: Partial<Pick<Task, 'status' | 'assigneeId' | 'context'>>): Task | undefined {
     const existing = this.getTask(id);
     if (!existing) return undefined;
     const updated: Task = { ...existing, ...patch, updatedAt: new Date().toISOString() };
     this.ctx.storage.sql.exec(
-      'UPDATE tasks SET status = ?, assignee_id = ?, updated_at = ? WHERE id = ?',
+      'UPDATE tasks SET status = ?, assignee_id = ?, context = ?, updated_at = ? WHERE id = ?',
       updated.status,
       updated.assigneeId ?? null,
+      updated.context ? JSON.stringify(updated.context) : null,
       updated.updatedAt,
       id,
     );
@@ -1281,9 +1323,12 @@ export class XoxiangHub extends DurableObject<Env> {
       senderName: 'task-board',
       content: [
         'Open tasks assigned to you:',
-        ...tasks.map((task) => `- ${task.id} [${task.status}] #${task.channelId}: ${task.title}`),
+        ...tasks.map((task) => {
+          const goal = task.context?.goal ? ` goal: ${task.context.goal}` : '';
+          return `- ${task.id} [${task.status}] #${task.channelId}: ${task.title}${goal}`;
+        }),
         '',
-        'Use `xoxiang task list`, `xoxiang task read <taskId>`, and `xoxiang task update <taskId> --status in_progress|in_review|done` to manage them.',
+        'Use `xoxiang task read <taskId> --context`, `xoxiang task update <taskId> --status in_progress|in_review|done`, and `xoxiang task handoff <taskId> --to agentName --notes "..."` to manage them.',
       ].join('\n'),
       createdAt: new Date().toISOString(),
     };
@@ -1556,6 +1601,7 @@ function toTask(row: Row): Task {
     status: String(row.status) as TaskStatus,
     creatorName: String(row.creator_name),
     assigneeId: row.assignee_id ? String(row.assignee_id) : undefined,
+    context: row.context ? JSON.parse(String(row.context)) as Task['context'] : undefined,
     createdAt: String(row.created_at),
     updatedAt: String(row.updated_at),
   };
@@ -1583,9 +1629,12 @@ function toTaskDelivery(task: Task) {
       `Task ID: ${task.id}`,
       `Status: ${task.status}`,
       `Channel: ${task.channelId}`,
+      task.context?.goal ? `Goal: ${task.context.goal}` : undefined,
+      task.context?.background ? `Background: ${task.context.background}` : undefined,
+      task.context?.handoffNotes?.length ? `Latest handoff: ${task.context.handoffNotes.at(-1)}` : undefined,
       '',
-      'Use `xoxiang task read <taskId>` for details and `xoxiang task update <taskId> --status in_progress|in_review|done` when you make progress.',
-    ].join('\n'),
+      'Use `xoxiang task read <taskId> --context` for details and `xoxiang task update <taskId> --status in_progress|in_review|done` when you make progress.',
+    ].filter(Boolean).join('\n'),
     createdAt: task.updatedAt,
   };
 }

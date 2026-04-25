@@ -111,10 +111,12 @@ export async function initDb(): Promise<void> {
         status TEXT NOT NULL,
         creator_name TEXT NOT NULL,
         assignee_id TEXT,
+        context TEXT,
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL
       )
     `);
+    await database.run(`ALTER TABLE tasks ADD COLUMN context TEXT`).catch(() => undefined);
     await database.run(`
       CREATE TABLE IF NOT EXISTS agents (
         id TEXT PRIMARY KEY,
@@ -243,6 +245,7 @@ function toTask(row: typeof tasks.$inferSelect): Task {
     status: row.status as TaskStatus,
     creatorName: row.creatorName,
     assigneeId: row.assigneeId ?? undefined,
+    context: row.context ? JSON.parse(row.context) as Task['context'] : undefined,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   };
@@ -420,11 +423,12 @@ export class SqliteStore {
       ...created,
       messageId: created.messageId ?? null,
       assigneeId: created.assigneeId ?? null,
+      context: created.context ? JSON.stringify(created.context) : null,
     });
     return created;
   }
 
-  async updateTask(id: string, patch: Partial<Pick<Task, 'status' | 'assigneeId'>>): Promise<Task | undefined> {
+  async updateTask(id: string, patch: Partial<Pick<Task, 'status' | 'assigneeId' | 'context'>>): Promise<Task | undefined> {
     await initDb();
     const existing = await this.getTask(id);
     if (!existing) return undefined;
@@ -434,6 +438,7 @@ export class SqliteStore {
       .set({
         status: updated.status,
         assigneeId: updated.assigneeId ?? null,
+        context: updated.context ? JSON.stringify(updated.context) : null,
         updatedAt: updated.updatedAt,
       })
       .where(eq(tasks.id, id));
