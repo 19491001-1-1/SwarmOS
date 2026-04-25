@@ -15,8 +15,9 @@ For every development task:
 5. Make all code, test, and documentation changes on that branch.
 6. Run the required verification commands.
 7. Commit on the task branch.
-8. Merge back to `main` only after verification passes.
-9. Push `main`.
+8. Push the task branch to GitHub so the development process is preserved remotely.
+9. Merge back to `main` only after verification passes.
+10. Push `main`.
 
 Use concise branch names:
 
@@ -64,10 +65,13 @@ After verification passes:
 git status --short
 git add -A
 git commit -m "<type>(scope): <summary>"
+git push -u origin <task-branch>
 git switch main
 git merge --no-ff <task-branch>
 git push origin main
 ```
+
+If the task branch already has an upstream, use `git push origin <task-branch>` after the commit. Do not delete the remote task branch unless the user explicitly asks; it is part of the development record.
 
 Do not use `git reset --hard`, `git checkout --`, or destructive cleanup unless the user explicitly asks.
 
