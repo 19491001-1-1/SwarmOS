@@ -14,7 +14,7 @@
 | v0.4.1 | Agent 恢复与 daemon 自动启动 | 修复冷启动误停 agent，daemon 连接后自动恢复应运行的 agent | v0.4 |
 | v0.4.2 | Agent 委派与按需唤醒 | Agent 可主动委派并拉起另一个 agent 处理任务 | v0.4.1 |
 | v0.4.3 | Agent-facing CLI + Internal API | 给 agent 注入 `xoxiang` CLI 和 per-agent token，支持查询/发送/委派 | v0.4.2 |
-| v0.4.4 | Runtime Transport + Daemon Inbox | 按 runtime 能力分层，支持 inbox、wake message、busy 投递和 Claude session resume | v0.4.3 |
+| v0.4.4 | Reliable Delivery + Daemon Inbox | 可靠投递与恢复调度层，支持 idleConfig、inbox、wake summary 和 Claude best-effort resume | v0.4.3 |
 | v0.4.5 | Agent Memory + Workspace Foundation | 每个 agent 有持久 workspace、MEMORY.md 和 notes | v0.4.4 |
 | v0.4.6 | Agent MCP Bridge | MCP tools 复用 internal API，补齐结构化协作工具通道 | v0.4.3 |
 | v0.5 | Workspace 文件浏览器 | Agent 工作目录文件树 + 文件预览 | v0.4 |
@@ -33,7 +33,7 @@
 - [v0.4.2 — Agent Delegation & Wake-on-Demand](./v0.4.2-agent-delegation.md)
 - [v0.4.3 — Agent-Facing CLI & Internal Agent API](./v0.4.3-agent-facing-cli.md)
 - [Agent-Facing CLI Reference](./agent-facing-cli-reference.md)
-- [v0.4.4 — Runtime Transport, Daemon Inbox & Resume](./v0.4.4-daemon-inbox-resume.md)
+- [v0.4.4 — Reliable Delivery, Daemon Inbox & Resume](./v0.4.4-daemon-inbox-resume.md)
 - [v0.4.5 — Agent Memory, Notes & Workspace Foundation](./v0.4.5-agent-memory-workspace.md)
 - [v0.4.6 — Agent MCP Bridge & Collaboration Tool Parity](./v0.4.6-agent-mcp-and-tools.md)
 - [v0.5 — Workspace 文件浏览器](./v0.5-workspace-browser.md)
