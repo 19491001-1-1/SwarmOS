@@ -4,9 +4,9 @@ import { homedir } from 'node:os';
 import { drizzle, type LibSQLDatabase } from 'drizzle-orm/libsql';
 import { createClient, type Client } from '@libsql/client';
 import { asc, desc, eq, inArray, or } from 'drizzle-orm';
-import type { Channel, Message, MessageThread, Machine, Agent, RuntimeId, AgentStatus, AgentActivity, DirectMessage, DirectMessageThread, AgentDelegation, AgentTokenInfo, Task, TaskStatus, Reminder, ReminderStatus, SearchMessageResult } from '@mini-slock/shared';
+import type { Channel, Message, MessageThread, Machine, Agent, RuntimeId, AgentStatus, AgentActivity, DirectMessage, DirectMessageThread, AgentDelegation, AgentTokenInfo, Task, TaskStatus, GoalBrief, GoalBriefStatus, Reminder, ReminderStatus, SearchMessageResult } from '@mini-slock/shared';
 import { resolveAgentReference } from '@mini-slock/hub-core';
-import { activities, agentDelegations, agentTokens, agents, channels, directMessages, machines, messages, reminders, tasks } from './schema.js';
+import { activities, agentDelegations, agentTokens, agents, channels, directMessages, goals, machines, messages, reminders, tasks } from './schema.js';
 
 type Database = LibSQLDatabase<typeof import('./schema.js')>;
 
@@ -33,7 +33,7 @@ async function ensureDbDirectory(path: string): Promise<void> {
 function createDatabase(): Database {
   const path = getDbPath();
   client = createClient({ url: getDbUrl(path) });
-  db = drizzle(client, { schema: { activities, agentDelegations, agentTokens, agents, channels, directMessages, machines, messages, reminders, tasks } });
+  db = drizzle(client, { schema: { activities, agentDelegations, agentTokens, agents, channels, directMessages, goals, machines, messages, reminders, tasks } });
   return db;
 }
 
@@ -117,6 +117,23 @@ export async function initDb(): Promise<void> {
         creator_name TEXT NOT NULL,
         assignee_id TEXT,
         context TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      )
+    `);
+    await database.run(`
+      CREATE TABLE IF NOT EXISTS goals (
+        id TEXT PRIMARY KEY,
+        channel_id TEXT NOT NULL,
+        source_message_id TEXT,
+        requester_name TEXT NOT NULL,
+        objective TEXT NOT NULL,
+        background TEXT NOT NULL,
+        success_criteria TEXT NOT NULL,
+        constraints TEXT NOT NULL,
+        assumptions TEXT NOT NULL,
+        risks TEXT NOT NULL,
+        status TEXT NOT NULL,
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL
       )
@@ -282,6 +299,24 @@ function toTask(row: typeof tasks.$inferSelect): Task {
   };
 }
 
+function toGoal(row: typeof goals.$inferSelect): GoalBrief {
+  return {
+    id: row.id,
+    channelId: row.channelId,
+    sourceMessageId: row.sourceMessageId ?? undefined,
+    requesterName: row.requesterName,
+    objective: row.objective,
+    background: JSON.parse(row.background) as string[],
+    successCriteria: JSON.parse(row.successCriteria) as string[],
+    constraints: JSON.parse(row.constraints) as string[],
+    assumptions: JSON.parse(row.assumptions) as string[],
+    risks: JSON.parse(row.risks) as string[],
+    status: row.status as GoalBriefStatus,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+  };
+}
+
 function toReminder(row: typeof reminders.$inferSelect): Reminder {
   return {
     id: row.id,
@@ -332,6 +367,7 @@ export class SqliteStore {
     if (!existing) return false;
     await getDb().delete(messages).where(eq(messages.channelId, id));
     await getDb().delete(tasks).where(eq(tasks.channelId, id));
+    await getDb().delete(goals).where(eq(goals.channelId, id));
     await getDb().delete(reminders).where(eq(reminders.channelId, id));
     await getDb().delete(channels).where(eq(channels.id, id));
     return true;
@@ -542,6 +578,60 @@ export class SqliteStore {
     if (!existing) return false;
     await getDb().delete(tasks).where(eq(tasks.id, id));
     return true;
+  }
+
+  async listGoals(filter: { channelId?: string; status?: GoalBriefStatus } = {}): Promise<GoalBrief[]> {
+    await initDb();
+    const rows = await getDb().select().from(goals).orderBy(asc(goals.createdAt));
+    return rows
+      .map(toGoal)
+      .filter((goal) =>
+        (!filter.channelId || goal.channelId === filter.channelId) &&
+        (!filter.status || goal.status === filter.status)
+      );
+  }
+
+  async getGoal(id: string): Promise<GoalBrief | undefined> {
+    await initDb();
+    const [goal] = await getDb().select().from(goals).where(eq(goals.id, id)).limit(1);
+    return goal ? toGoal(goal) : undefined;
+  }
+
+  async createGoal(goal: Omit<GoalBrief, 'createdAt' | 'updatedAt'>): Promise<GoalBrief> {
+    await initDb();
+    const now = new Date().toISOString();
+    const created: GoalBrief = { ...goal, createdAt: now, updatedAt: now };
+    await getDb().insert(goals).values({
+      ...created,
+      sourceMessageId: created.sourceMessageId ?? null,
+      background: JSON.stringify(created.background),
+      successCriteria: JSON.stringify(created.successCriteria),
+      constraints: JSON.stringify(created.constraints),
+      assumptions: JSON.stringify(created.assumptions),
+      risks: JSON.stringify(created.risks),
+    });
+    return created;
+  }
+
+  async updateGoal(id: string, patch: Partial<Pick<GoalBrief, 'objective' | 'background' | 'successCriteria' | 'constraints' | 'assumptions' | 'risks' | 'status'>>): Promise<GoalBrief | undefined> {
+    await initDb();
+    const existing = await this.getGoal(id);
+    if (!existing) return undefined;
+    const updated: GoalBrief = { ...existing, ...patch, updatedAt: new Date().toISOString() };
+    await getDb()
+      .update(goals)
+      .set({
+        objective: updated.objective,
+        background: JSON.stringify(updated.background),
+        successCriteria: JSON.stringify(updated.successCriteria),
+        constraints: JSON.stringify(updated.constraints),
+        assumptions: JSON.stringify(updated.assumptions),
+        risks: JSON.stringify(updated.risks),
+        status: updated.status,
+        updatedAt: updated.updatedAt,
+      })
+      .where(eq(goals.id, id));
+    return updated;
   }
 
   async listReminders(agentId?: string): Promise<Reminder[]> {
@@ -769,6 +859,7 @@ export async function resetStore(): Promise<void> {
   await database.delete(agentDelegations);
   await database.delete(agentTokens);
   await database.delete(tasks);
+  await database.delete(goals);
   await database.delete(reminders);
   await database.delete(agents);
   await database.delete(machines);

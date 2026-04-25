@@ -188,6 +188,78 @@ describe('agent-facing xoxiang CLI', () => {
       })
     );
   });
+
+  it('lists goals with optional filters', async () => {
+    const fetchImpl = okFetch([{ id: 'goal-1', objective: 'ship v1.1' }]);
+    const result = await run(['goal', 'list', '--channel', 'general', '--status', 'draft'], fetchImpl);
+
+    expect(result.code).toBe(0);
+    expect(fetchImpl).toHaveBeenCalledWith(
+      'http://hub.test/internal/agent/agent-1/goals?channel=general&status=draft',
+      expect.objectContaining({ method: 'GET' })
+    );
+  });
+
+  it('creates goals from CLI flags', async () => {
+    const fetchImpl = okFetch({ id: 'goal-1' });
+    const result = await run([
+      'goal',
+      'create',
+      '--channel',
+      'general',
+      '--objective',
+      'ship v1.1',
+      '--success',
+      'tasks have context|agents can read it',
+      '--constraint',
+      'stay in test env',
+    ], fetchImpl);
+
+    expect(result.code).toBe(0);
+    expect(fetchImpl).toHaveBeenCalledWith(
+      'http://hub.test/internal/agent/agent-1/goals',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({
+          channel: 'general',
+          objective: 'ship v1.1',
+          background: [],
+          successCriteria: ['tasks have context', 'agents can read it'],
+          constraints: ['stay in test env'],
+          assumptions: [],
+          risks: [],
+        }),
+      })
+    );
+  });
+
+  it('reads a goal with linked task summaries', async () => {
+    const fetchImpl = okFetch({ goal: { id: 'goal-1' }, tasks: [] });
+    const result = await run(['goal', 'read', 'goal-1'], fetchImpl);
+
+    expect(result.code).toBe(0);
+    expect(fetchImpl).toHaveBeenCalledWith(
+      'http://hub.test/internal/agent/agent-1/goals/goal-1',
+      expect.objectContaining({ method: 'GET' })
+    );
+  });
+
+  it('creates goal tasks from JSON', async () => {
+    const fetchImpl = okFetch({ tasks: [{ id: 'task-1' }] });
+    const result = await run(['goal', 'create-tasks', 'goal-1', '--tasks-json', '[{"title":"Draft MVP","acceptanceCriteria":["clear scope"]}]'], fetchImpl);
+
+    expect(result.code).toBe(0);
+    expect(fetchImpl).toHaveBeenCalledWith(
+      'http://hub.test/internal/agent/agent-1/goals/goal-1/tasks',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({
+          creatorName: 'user',
+          tasks: [{ title: 'Draft MVP', acceptanceCriteria: ['clear scope'] }],
+        }),
+      })
+    );
+  });
 });
 
 function okFetch(body: unknown): typeof fetch {

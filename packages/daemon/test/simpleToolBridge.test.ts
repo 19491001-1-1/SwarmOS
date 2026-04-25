@@ -68,6 +68,15 @@ describe('parseBridgeLine', () => {
     expect(instruction).toContain('unassigned tasks');
     expect(instruction).toContain('do not infer global task state from plain `xoxiang task list`');
   });
+
+  it('instructs agents to use goal briefs for broad multi-step objectives', () => {
+    const instruction = buildBridgeInstruction();
+    expect(instruction).toContain('xoxiang goal list');
+    expect(instruction).toContain('xoxiang goal create');
+    expect(instruction).toContain('xoxiang goal create-tasks');
+    expect(instruction).toContain('broad multi-step objective');
+    expect(instruction).toContain('success criteria');
+  });
 });
 
 describe('memory instruction', () => {

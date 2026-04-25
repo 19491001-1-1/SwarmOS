@@ -10,6 +10,9 @@ import {
   CreateDirectMessageRequestSchema,
   CreateAgentDelegationRequestSchema,
   CreateTaskRequestSchema,
+  CreateGoalBriefRequestSchema,
+  CreateGoalTasksRequestSchema,
+  GoalBriefSchema,
   InternalAgentResolveRequestSchema,
   InternalAgentDelegateRequestSchema,
   InternalDmSendRequestSchema,
@@ -18,7 +21,12 @@ import {
   InternalTaskHandoffRequestSchema,
   InternalTaskListRequestSchema,
   InternalTaskUpdateRequestSchema,
+  InternalGoalCreateRequestSchema,
+  InternalGoalCreateTasksRequestSchema,
+  InternalGoalListRequestSchema,
+  MessageToGoalBriefRequestSchema,
   MessageToTaskRequestSchema,
+  PatchGoalBriefRequestSchema,
   PatchTaskRequestSchema,
   TaskSchema,
 } from '../src/validation.js';
@@ -204,6 +212,9 @@ describe('Internal agent API schemas', () => {
     expect(InternalAgentDelegateRequestSchema.safeParse({ to: 'agent-2', content: 'work', startIfInactive: true }).success).toBe(true);
     expect(InternalTaskListRequestSchema.safeParse({ status: 'todo', all: 'true' }).success).toBe(true);
     expect(InternalTaskUpdateRequestSchema.safeParse({ status: 'in_progress' }).success).toBe(true);
+    expect(InternalGoalListRequestSchema.safeParse({ channel: 'general', status: 'draft' }).success).toBe(true);
+    expect(InternalGoalCreateRequestSchema.safeParse({ objective: 'ship v1.1', successCriteria: ['tasks have context'] }).success).toBe(true);
+    expect(InternalGoalCreateTasksRequestSchema.safeParse({ tasks: [{ title: 'write plan' }] }).success).toBe(true);
   });
 
   it('rejects empty internal agent API content', () => {
@@ -212,6 +223,7 @@ describe('Internal agent API schemas', () => {
     expect(InternalAgentResolveRequestSchema.safeParse({ query: '' }).success).toBe(false);
     expect(InternalAgentDelegateRequestSchema.safeParse({ to: '', content: 'work' }).success).toBe(false);
     expect(InternalTaskUpdateRequestSchema.safeParse({}).success).toBe(false);
+    expect(InternalGoalCreateRequestSchema.safeParse({ objective: '' }).success).toBe(false);
   });
 });
 
@@ -337,6 +349,39 @@ describe('Task schemas', () => {
   it('rejects invalid task status and empty patches', () => {
     expect(PatchTaskRequestSchema.safeParse({ status: 'blocked' }).success).toBe(false);
     expect(PatchTaskRequestSchema.safeParse({}).success).toBe(false);
+  });
+});
+
+describe('Goal schemas', () => {
+  it('accepts goal objects and request bodies', () => {
+    const now = new Date().toISOString();
+    expect(GoalBriefSchema.safeParse({
+      id: 'goal-1',
+      channelId: 'general',
+      sourceMessageId: 'msg-1',
+      requesterName: 'user',
+      objective: 'Ship v1.1',
+      background: ['User wants agent company workflow'],
+      successCriteria: ['Goal creates contextual tasks'],
+      constraints: ['Do not deploy to production'],
+      assumptions: ['Agents use CLI'],
+      risks: ['Scope may grow'],
+      status: 'draft',
+      createdAt: now,
+      updatedAt: now,
+    }).success).toBe(true);
+    expect(CreateGoalBriefRequestSchema.safeParse({ objective: 'Ship v1.1' }).success).toBe(true);
+    expect(PatchGoalBriefRequestSchema.safeParse({ status: 'confirmed' }).success).toBe(true);
+    expect(MessageToGoalBriefRequestSchema.safeParse({ successCriteria: ['ready for agents'] }).success).toBe(true);
+    expect(CreateGoalTasksRequestSchema.safeParse({
+      tasks: [{ title: 'write implementation plan', dependencies: ['goal confirmed'], acceptanceCriteria: ['task context is complete'] }],
+    }).success).toBe(true);
+  });
+
+  it('rejects invalid goal bodies', () => {
+    expect(CreateGoalBriefRequestSchema.safeParse({ objective: '' }).success).toBe(false);
+    expect(PatchGoalBriefRequestSchema.safeParse({}).success).toBe(false);
+    expect(CreateGoalTasksRequestSchema.safeParse({ tasks: [] }).success).toBe(false);
   });
 });
 

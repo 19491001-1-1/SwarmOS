@@ -6,6 +6,7 @@ export const AgentStatusSchema = z.enum(['inactive', 'starting', 'running', 'wor
 
 export const AgentActivityTypeSchema = z.enum(['thinking', 'working', 'output', 'idle', 'sending', 'error']);
 export const TaskStatusSchema = z.enum(['todo', 'in_progress', 'in_review', 'done']);
+export const GoalBriefStatusSchema = z.enum(['draft', 'confirmed', 'cancelled', 'completed']);
 export const ReminderStatusSchema = z.enum(['pending', 'triggered', 'cancelled']);
 
 export const MentionSchema = z.object({
@@ -74,10 +75,15 @@ export const WorkspaceErrorSchema = z.object({
 });
 
 export const TaskContextSchema = z.object({
+  goalId: z.string().optional(),
+  goalObjective: z.string().optional(),
   goal: z.string().optional(),
   background: z.string().optional(),
   acceptanceCriteria: z.array(z.string()).optional(),
   constraints: z.array(z.string()).optional(),
+  assumptions: z.array(z.string()).optional(),
+  risks: z.array(z.string()).optional(),
+  dependencies: z.array(z.string()).optional(),
   sourceMessageIds: z.array(z.string()).optional(),
   artifacts: z.array(z.string()).optional(),
   requesterAgentId: z.string().optional(),
@@ -95,6 +101,22 @@ export const TaskSchema = z.object({
   creatorName: z.string(),
   assigneeId: z.string().optional(),
   context: TaskContextSchema.optional(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+
+export const GoalBriefSchema = z.object({
+  id: z.string(),
+  channelId: z.string(),
+  sourceMessageId: z.string().optional(),
+  requesterName: z.string(),
+  objective: z.string(),
+  background: z.array(z.string()),
+  successCriteria: z.array(z.string()),
+  constraints: z.array(z.string()),
+  assumptions: z.array(z.string()),
+  risks: z.array(z.string()),
+  status: GoalBriefStatusSchema,
   createdAt: z.string(),
   updatedAt: z.string(),
 });
@@ -302,6 +324,58 @@ export const MessageToTaskRequestSchema = z.object({
   context: TaskContextSchema.optional(),
 });
 
+const GoalTextArraySchema = z.array(z.string().min(1)).default([]);
+
+export const CreateGoalBriefRequestSchema = z.object({
+  channelId: z.string().min(1).default('general'),
+  sourceMessageId: z.string().optional(),
+  requesterName: z.string().min(1).default('user'),
+  objective: z.string().min(1),
+  background: GoalTextArraySchema,
+  successCriteria: GoalTextArraySchema,
+  constraints: GoalTextArraySchema,
+  assumptions: GoalTextArraySchema,
+  risks: GoalTextArraySchema,
+  status: GoalBriefStatusSchema.default('draft'),
+});
+
+export const PatchGoalBriefRequestSchema = z
+  .object({
+    objective: z.string().min(1).optional(),
+    background: z.array(z.string().min(1)).optional(),
+    successCriteria: z.array(z.string().min(1)).optional(),
+    constraints: z.array(z.string().min(1)).optional(),
+    assumptions: z.array(z.string().min(1)).optional(),
+    risks: z.array(z.string().min(1)).optional(),
+    status: GoalBriefStatusSchema.optional(),
+  })
+  .refine((val) => Object.values(val).some((value) => value !== undefined), {
+    message: 'At least one field must be provided',
+  });
+
+export const MessageToGoalBriefRequestSchema = z.object({
+  requesterName: z.string().min(1).default('user'),
+  objective: z.string().min(1).optional(),
+  background: z.array(z.string().min(1)).default([]),
+  successCriteria: z.array(z.string().min(1)).default([]),
+  constraints: z.array(z.string().min(1)).default([]),
+  assumptions: z.array(z.string().min(1)).default([]),
+  risks: z.array(z.string().min(1)).default([]),
+});
+
+export const GoalTaskDraftSchema = z.object({
+  title: z.string().min(1).max(200),
+  assigneeId: z.string().optional(),
+  dependencies: z.array(z.string().min(1)).default([]),
+  acceptanceCriteria: z.array(z.string().min(1)).default([]),
+  artifacts: z.array(z.string().min(1)).default([]),
+});
+
+export const CreateGoalTasksRequestSchema = z.object({
+  creatorName: z.string().min(1).default('user'),
+  tasks: z.array(GoalTaskDraftSchema).min(1),
+});
+
 export const InternalMessageSendRequestSchema = z.object({
   channel: z.string().min(1).default('general'),
   content: z.string().min(1),
@@ -356,6 +430,23 @@ export const InternalTaskHandoffRequestSchema = z.object({
   nextStep: z.string().optional(),
 });
 
+export const InternalGoalListRequestSchema = z.object({
+  channel: z.string().min(1).optional(),
+  status: GoalBriefStatusSchema.optional(),
+});
+
+export const InternalGoalCreateRequestSchema = z.object({
+  channel: z.string().min(1).default('general'),
+  objective: z.string().min(1),
+  background: z.array(z.string().min(1)).default([]),
+  successCriteria: z.array(z.string().min(1)).default([]),
+  constraints: z.array(z.string().min(1)).default([]),
+  assumptions: z.array(z.string().min(1)).default([]),
+  risks: z.array(z.string().min(1)).default([]),
+});
+
+export const InternalGoalCreateTasksRequestSchema = CreateGoalTasksRequestSchema;
+
 export type CreateAgentRequest = z.infer<typeof CreateAgentRequestSchema>;
 export type PatchAgentRequest = z.infer<typeof PatchAgentRequestSchema>;
 export type CreateMessageRequest = z.infer<typeof CreateMessageRequestSchema>;
@@ -364,6 +455,10 @@ export type CreateAgentDelegationRequest = z.infer<typeof CreateAgentDelegationR
 export type CreateTaskRequest = z.infer<typeof CreateTaskRequestSchema>;
 export type PatchTaskRequest = z.infer<typeof PatchTaskRequestSchema>;
 export type MessageToTaskRequest = z.infer<typeof MessageToTaskRequestSchema>;
+export type CreateGoalBriefRequest = z.infer<typeof CreateGoalBriefRequestSchema>;
+export type PatchGoalBriefRequest = z.infer<typeof PatchGoalBriefRequestSchema>;
+export type MessageToGoalBriefRequest = z.infer<typeof MessageToGoalBriefRequestSchema>;
+export type CreateGoalTasksRequest = z.infer<typeof CreateGoalTasksRequestSchema>;
 export type TaskContextRequest = z.infer<typeof TaskContextSchema>;
 export type InternalMessageSendRequest = z.infer<typeof InternalMessageSendRequestSchema>;
 export type InternalMessageReadRequest = z.infer<typeof InternalMessageReadRequestSchema>;
@@ -373,6 +468,9 @@ export type InternalAgentResolveRequest = z.infer<typeof InternalAgentResolveReq
 export type InternalTaskListRequest = z.infer<typeof InternalTaskListRequestSchema>;
 export type InternalTaskUpdateRequest = z.infer<typeof InternalTaskUpdateRequestSchema>;
 export type InternalTaskHandoffRequest = z.infer<typeof InternalTaskHandoffRequestSchema>;
+export type InternalGoalListRequest = z.infer<typeof InternalGoalListRequestSchema>;
+export type InternalGoalCreateRequest = z.infer<typeof InternalGoalCreateRequestSchema>;
+export type InternalGoalCreateTasksRequest = z.infer<typeof InternalGoalCreateTasksRequestSchema>;
 
 export const ServerToDaemonSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('ping') }),

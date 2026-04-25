@@ -12,6 +12,7 @@ type Props = {
   channelId: string;
   targetMessageId?: string;
   onCreateTask?: (messageId: string) => void;
+  onCreateGoal?: (messageId: string) => void;
   onOpenThread?: (message: Message) => void;
   onOpenAgent?: (agentId: string) => void;
   onTargetMessageSettled?: () => void;
@@ -25,6 +26,7 @@ export function ChannelView({
   channelId,
   targetMessageId,
   onCreateTask,
+  onCreateGoal,
   onOpenThread,
   onOpenAgent,
   onTargetMessageSettled,
@@ -240,6 +242,15 @@ export function ChannelView({
                         style={messageActionStyle}
                       >
                         {t('message.createTask')}
+                      </button>
+                    )}
+                    {onCreateGoal && (
+                      <button
+                        onClick={() => onCreateGoal(msg.id)}
+                        title={t('message.planGoal')}
+                        style={messageActionStyle}
+                      >
+                        {t('message.planGoal')}
                       </button>
                     )}
                     </div>

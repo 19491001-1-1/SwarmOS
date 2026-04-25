@@ -8,6 +8,8 @@ import type {
   DaemonToServer,
   DirectMessage,
   DirectMessageThread,
+  GoalBrief,
+  GoalBriefStatus,
   Machine,
   Message,
   Mention,
@@ -26,18 +28,26 @@ import {
   CreateAgentDelegationRequestSchema,
   CreateAgentRequestSchema,
   CreateDirectMessageRequestSchema,
+  CreateGoalBriefRequestSchema,
+  CreateGoalTasksRequestSchema,
   CreateReminderRequestSchema,
   CreateTaskRequestSchema,
+  GoalBriefStatusSchema,
   InternalAgentDelegateRequestSchema,
   InternalAgentResolveRequestSchema,
   InternalDmSendRequestSchema,
+  InternalGoalCreateRequestSchema,
+  InternalGoalCreateTasksRequestSchema,
+  InternalGoalListRequestSchema,
   InternalMessageReadRequestSchema,
   InternalMessageSendRequestSchema,
   InternalTaskHandoffRequestSchema,
   InternalTaskListRequestSchema,
   InternalTaskUpdateRequestSchema,
   CreateMessageRequestSchema,
+  MessageToGoalBriefRequestSchema,
   MessageToTaskRequestSchema,
+  PatchGoalBriefRequestSchema,
   PatchAgentRequestSchema,
   PatchReminderRequestSchema,
   PatchTaskRequestSchema,
@@ -177,6 +187,41 @@ export class XoxiangHub extends DurableObject<Env> {
       const messageTaskMatch = url.pathname.match(/^\/api\/messages\/([^/]+)\/to-task$/);
       if (messageTaskMatch && request.method === 'POST') {
         return this.createTaskFromMessage(decodeURIComponent(messageTaskMatch[1]), await request.json().catch(() => ({})));
+      }
+
+      if (request.method === 'GET' && url.pathname === '/api/goals') {
+        const statusValue = url.searchParams.get('status') ?? undefined;
+        const status = statusValue === undefined ? undefined : GoalBriefStatusSchema.safeParse(statusValue);
+        if (status && !status.success) return json({ error: 'Invalid status' }, 400);
+        return json(this.listGoals({
+          channelId: url.searchParams.get('channelId') ?? undefined,
+          status: status?.success ? status.data : undefined,
+        }));
+      }
+
+      if (request.method === 'POST' && url.pathname === '/api/goals') {
+        return this.createUserGoal(await request.json());
+      }
+
+      const goalMatch = url.pathname.match(/^\/api\/goals\/([^/]+)$/);
+      if (goalMatch && request.method === 'GET') {
+        const goal = this.getGoal(decodeURIComponent(goalMatch[1]));
+        if (!goal) return json({ error: 'Goal not found' }, 404);
+        return json({ goal, tasks: this.listTasks({ channelId: goal.channelId }).filter((task) => task.context?.goalId === goal.id) });
+      }
+
+      if (goalMatch && request.method === 'PATCH') {
+        return this.patchGoal(decodeURIComponent(goalMatch[1]), await request.json());
+      }
+
+      const goalTasksMatch = url.pathname.match(/^\/api\/goals\/([^/]+)\/tasks$/);
+      if (goalTasksMatch && request.method === 'POST') {
+        return this.createTasksFromGoal(decodeURIComponent(goalTasksMatch[1]), await request.json());
+      }
+
+      const messageGoalMatch = url.pathname.match(/^\/api\/messages\/([^/]+)\/to-goal$/);
+      if (messageGoalMatch && request.method === 'POST') {
+        return this.createGoalFromMessage(decodeURIComponent(messageGoalMatch[1]), await request.json().catch(() => ({})));
       }
 
       if (request.method === 'GET' && url.pathname === '/api/agents') {
@@ -521,6 +566,23 @@ export class XoxiangHub extends DurableObject<Env> {
         updated_at TEXT NOT NULL
       )
     `);
+    this.ctx.storage.sql.exec(`
+      CREATE TABLE IF NOT EXISTS goals (
+        id TEXT PRIMARY KEY,
+        channel_id TEXT NOT NULL,
+        source_message_id TEXT,
+        requester_name TEXT NOT NULL,
+        objective TEXT NOT NULL,
+        background TEXT NOT NULL,
+        success_criteria TEXT NOT NULL,
+        constraints TEXT NOT NULL,
+        assumptions TEXT NOT NULL,
+        risks TEXT NOT NULL,
+        status TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      )
+    `);
     try {
       this.ctx.storage.sql.exec('ALTER TABLE tasks ADD COLUMN context TEXT');
     } catch {
@@ -722,6 +784,33 @@ export class XoxiangHub extends DurableObject<Env> {
     return json(task, 201);
   }
 
+  private createUserGoal(body: unknown): Response {
+    const parsed = CreateGoalBriefRequestSchema.safeParse(body);
+    if (!parsed.success) return json({ error: 'Invalid request body', issues: parsed.error.issues }, 400);
+    const channel = this.getChannel(parsed.data.channelId);
+    if (!channel) return json({ error: 'Channel not found' }, 404);
+    if (parsed.data.sourceMessageId) {
+      const source = this.getMessage(parsed.data.sourceMessageId);
+      if (!source) return json({ error: 'Source message not found' }, 404);
+      if (source.channelId !== channel.id) return json({ error: 'Source message belongs to another channel' }, 400);
+    }
+    const goal = this.createGoal({
+      id: crypto.randomUUID(),
+      channelId: channel.id,
+      sourceMessageId: parsed.data.sourceMessageId,
+      requesterName: parsed.data.requesterName,
+      objective: parsed.data.objective,
+      background: parsed.data.background,
+      successCriteria: parsed.data.successCriteria,
+      constraints: parsed.data.constraints,
+      assumptions: parsed.data.assumptions,
+      risks: parsed.data.risks,
+      status: parsed.data.status,
+    });
+    this.broadcast({ type: 'goal:update', goal });
+    return json(goal, 201);
+  }
+
   private createUserReminder(agentId: string, body: unknown): Response {
     const agent = this.getAgent(agentId);
     if (!agent) return json({ error: 'Agent not found' }, 404);
@@ -760,6 +849,15 @@ export class XoxiangHub extends DurableObject<Env> {
     return json(task);
   }
 
+  private patchGoal(goalId: string, body: unknown): Response {
+    const parsed = PatchGoalBriefRequestSchema.safeParse(body);
+    if (!parsed.success) return json({ error: 'Invalid request body', issues: parsed.error.issues }, 400);
+    const goal = this.updateGoal(goalId, parsed.data);
+    if (!goal) return json({ error: 'Goal not found' }, 404);
+    this.broadcast({ type: 'goal:update', goal });
+    return json(goal);
+  }
+
   private deleteTask(taskId: string): Response {
     if (!this.getTask(taskId)) return json({ error: 'Task not found' }, 404);
     this.ctx.storage.sql.exec('DELETE FROM tasks WHERE id = ?', taskId);
@@ -788,6 +886,63 @@ export class XoxiangHub extends DurableObject<Env> {
     this.broadcast({ type: 'task:update', task });
     this.notifyTaskAssignee(task);
     return json(task, 201);
+  }
+
+  private createGoalFromMessage(messageId: string, body: unknown): Response {
+    const message = this.getMessage(messageId);
+    if (!message) return json({ error: 'Message not found' }, 404);
+    const parsed = MessageToGoalBriefRequestSchema.safeParse(body);
+    if (!parsed.success) return json({ error: 'Invalid request body', issues: parsed.error.issues }, 400);
+    const goal = this.createGoal({
+      id: crypto.randomUUID(),
+      channelId: message.channelId,
+      sourceMessageId: message.id,
+      requesterName: parsed.data.requesterName,
+      objective: parsed.data.objective ?? message.content.slice(0, 240),
+      background: parsed.data.background,
+      successCriteria: parsed.data.successCriteria,
+      constraints: parsed.data.constraints,
+      assumptions: parsed.data.assumptions,
+      risks: parsed.data.risks,
+      status: 'draft',
+    });
+    this.broadcast({ type: 'goal:update', goal });
+    return json(goal, 201);
+  }
+
+  private createTasksFromGoal(goalId: string, body: unknown): Response {
+    const goal = this.getGoal(goalId);
+    if (!goal) return json({ error: 'Goal not found' }, 404);
+    const parsed = CreateGoalTasksRequestSchema.safeParse(body);
+    if (!parsed.success) return json({ error: 'Invalid request body', issues: parsed.error.issues }, 400);
+    const tasks = parsed.data.tasks.map((draft) => {
+      const task = this.createTask({
+        id: crypto.randomUUID(),
+        channelId: goal.channelId,
+        messageId: goal.sourceMessageId,
+        title: draft.title,
+        status: 'todo',
+        creatorName: parsed.data.creatorName,
+        assigneeId: draft.assigneeId,
+        context: {
+          goalId: goal.id,
+          goalObjective: goal.objective,
+          goal: goal.objective,
+          background: goal.background.join('\n'),
+          acceptanceCriteria: draft.acceptanceCriteria.length > 0 ? draft.acceptanceCriteria : goal.successCriteria,
+          constraints: goal.constraints,
+          assumptions: goal.assumptions,
+          risks: goal.risks,
+          dependencies: draft.dependencies,
+          artifacts: draft.artifacts,
+          sourceMessageIds: goal.sourceMessageId ? [goal.sourceMessageId] : undefined,
+        },
+      });
+      this.broadcast({ type: 'task:update', task });
+      this.notifyTaskAssignee(task);
+      return task;
+    });
+    return json({ tasks }, 201);
   }
 
   private async handleInternalAgentRequest(request: Request, url: URL): Promise<Response> {
@@ -866,6 +1021,78 @@ export class XoxiangHub extends DurableObject<Env> {
         status: parsed.data.status,
         assigneeId: parsed.data.all ? undefined : agent.id,
       }));
+    }
+
+    if (request.method === 'GET' && path === '/goals') {
+      const parsed = InternalGoalListRequestSchema.safeParse(Object.fromEntries(url.searchParams.entries()));
+      if (!parsed.success) return json({ error: 'Invalid query', issues: parsed.error.issues }, 400);
+      const channel = parsed.data.channel ? this.findChannel(parsed.data.channel) : undefined;
+      if (parsed.data.channel && !channel) return json({ error: 'Channel not found' }, 404);
+      return json(this.listGoals({ channelId: channel?.id, status: parsed.data.status }));
+    }
+
+    if (request.method === 'POST' && path === '/goals') {
+      const parsed = InternalGoalCreateRequestSchema.safeParse(await request.json());
+      if (!parsed.success) return json({ error: 'Invalid request body', issues: parsed.error.issues }, 400);
+      const channel = this.findChannel(parsed.data.channel);
+      if (!channel) return json({ error: 'Channel not found' }, 404);
+      const goal = this.createGoal({
+        id: crypto.randomUUID(),
+        channelId: channel.id,
+        requesterName: agent.displayName ?? agent.name,
+        objective: parsed.data.objective,
+        background: parsed.data.background,
+        successCriteria: parsed.data.successCriteria,
+        constraints: parsed.data.constraints,
+        assumptions: parsed.data.assumptions,
+        risks: parsed.data.risks,
+        status: 'draft',
+      });
+      this.broadcast({ type: 'goal:update', goal });
+      return json(goal, 201);
+    }
+
+    const goalMatch = path.match(/^\/goals\/([^/]+)$/);
+    if (request.method === 'GET' && goalMatch) {
+      const goal = this.getGoal(decodeURIComponent(goalMatch[1]));
+      if (!goal) return json({ error: 'Goal not found' }, 404);
+      return json({ goal, tasks: this.listTasks({ channelId: goal.channelId }).filter((task) => task.context?.goalId === goal.id) });
+    }
+
+    const goalTasksMatch = path.match(/^\/goals\/([^/]+)\/tasks$/);
+    if (request.method === 'POST' && goalTasksMatch) {
+      const goal = this.getGoal(decodeURIComponent(goalTasksMatch[1]));
+      if (!goal) return json({ error: 'Goal not found' }, 404);
+      const parsed = InternalGoalCreateTasksRequestSchema.safeParse(await request.json());
+      if (!parsed.success) return json({ error: 'Invalid request body', issues: parsed.error.issues }, 400);
+      const tasks = parsed.data.tasks.map((draft) => {
+        const task = this.createTask({
+          id: crypto.randomUUID(),
+          channelId: goal.channelId,
+          messageId: goal.sourceMessageId,
+          title: draft.title,
+          status: 'todo',
+          creatorName: parsed.data.creatorName,
+          assigneeId: draft.assigneeId,
+          context: {
+            goalId: goal.id,
+            goalObjective: goal.objective,
+            goal: goal.objective,
+            background: goal.background.join('\n'),
+            acceptanceCriteria: draft.acceptanceCriteria.length > 0 ? draft.acceptanceCriteria : goal.successCriteria,
+            constraints: goal.constraints,
+            assumptions: goal.assumptions,
+            risks: goal.risks,
+            dependencies: draft.dependencies,
+            artifacts: draft.artifacts,
+            sourceMessageIds: goal.sourceMessageId ? [goal.sourceMessageId] : undefined,
+          },
+        });
+        this.broadcast({ type: 'task:update', task });
+        this.notifyTaskAssignee(task);
+        return task;
+      });
+      return json({ tasks }, 201);
     }
 
     if (request.method === 'GET' && path === '/reminders') {
@@ -1160,6 +1387,7 @@ export class XoxiangHub extends DurableObject<Env> {
   private deleteChannel(id: string): void {
     this.ctx.storage.sql.exec('DELETE FROM messages WHERE channel_id = ?', id);
     this.ctx.storage.sql.exec('DELETE FROM tasks WHERE channel_id = ?', id);
+    this.ctx.storage.sql.exec('DELETE FROM goals WHERE channel_id = ?', id);
     this.ctx.storage.sql.exec('DELETE FROM reminders WHERE channel_id = ?', id);
     this.ctx.storage.sql.exec('DELETE FROM channels WHERE id = ?', id);
   }
@@ -1251,6 +1479,22 @@ export class XoxiangHub extends DurableObject<Env> {
     return row ? toTask(row) : undefined;
   }
 
+  private listGoals(filter: { channelId?: string; status?: GoalBriefStatus } = {}): GoalBrief[] {
+    return this.ctx.storage.sql
+      .exec<Row>('SELECT * FROM goals ORDER BY created_at')
+      .toArray()
+      .map(toGoal)
+      .filter((goal) =>
+        (!filter.channelId || goal.channelId === filter.channelId) &&
+        (!filter.status || goal.status === filter.status)
+      );
+  }
+
+  private getGoal(id: string): GoalBrief | undefined {
+    const row = this.ctx.storage.sql.exec<Row>('SELECT * FROM goals WHERE id = ? LIMIT 1', id).toArray()[0];
+    return row ? toGoal(row) : undefined;
+  }
+
   private listReminders(agentId?: string): Reminder[] {
     const rows = this.ctx.storage.sql.exec<Row>('SELECT * FROM reminders ORDER BY trigger_at').toArray().map(toReminder);
     return rows.filter((reminder) => !agentId || reminder.agentId === agentId);
@@ -1313,6 +1557,29 @@ export class XoxiangHub extends DurableObject<Env> {
     return created;
   }
 
+  private createGoal(goal: Omit<GoalBrief, 'createdAt' | 'updatedAt'>): GoalBrief {
+    const now = new Date().toISOString();
+    const created: GoalBrief = { ...goal, createdAt: now, updatedAt: now };
+    this.ctx.storage.sql.exec(
+      `INSERT INTO goals (id, channel_id, source_message_id, requester_name, objective, background, success_criteria, constraints, assumptions, risks, status, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      created.id,
+      created.channelId,
+      created.sourceMessageId ?? null,
+      created.requesterName,
+      created.objective,
+      JSON.stringify(created.background),
+      JSON.stringify(created.successCriteria),
+      JSON.stringify(created.constraints),
+      JSON.stringify(created.assumptions),
+      JSON.stringify(created.risks),
+      created.status,
+      created.createdAt,
+      created.updatedAt
+    );
+    return created;
+  }
+
   private createReminder(reminder: Omit<Reminder, 'createdAt'>): Reminder {
     const created: Reminder = { ...reminder, createdAt: new Date().toISOString() };
     this.ctx.storage.sql.exec(
@@ -1365,6 +1632,27 @@ export class XoxiangHub extends DurableObject<Env> {
       updated.status,
       updated.assigneeId ?? null,
       updated.context ? JSON.stringify(updated.context) : null,
+      updated.updatedAt,
+      id,
+    );
+    return updated;
+  }
+
+  private updateGoal(id: string, patch: Partial<Pick<GoalBrief, 'objective' | 'background' | 'successCriteria' | 'constraints' | 'assumptions' | 'risks' | 'status'>>): GoalBrief | undefined {
+    const existing = this.getGoal(id);
+    if (!existing) return undefined;
+    const updated: GoalBrief = { ...existing, ...patch, updatedAt: new Date().toISOString() };
+    this.ctx.storage.sql.exec(
+      `UPDATE goals
+       SET objective = ?, background = ?, success_criteria = ?, constraints = ?, assumptions = ?, risks = ?, status = ?, updated_at = ?
+       WHERE id = ?`,
+      updated.objective,
+      JSON.stringify(updated.background),
+      JSON.stringify(updated.successCriteria),
+      JSON.stringify(updated.constraints),
+      JSON.stringify(updated.assumptions),
+      JSON.stringify(updated.risks),
+      updated.status,
       updated.updatedAt,
       id,
     );
@@ -1966,6 +2254,24 @@ function toTask(row: Row): Task {
     creatorName: String(row.creator_name),
     assigneeId: row.assignee_id ? String(row.assignee_id) : undefined,
     context: row.context ? JSON.parse(String(row.context)) as Task['context'] : undefined,
+    createdAt: String(row.created_at),
+    updatedAt: String(row.updated_at),
+  };
+}
+
+function toGoal(row: Row): GoalBrief {
+  return {
+    id: String(row.id),
+    channelId: String(row.channel_id),
+    sourceMessageId: row.source_message_id ? String(row.source_message_id) : undefined,
+    requesterName: String(row.requester_name),
+    objective: String(row.objective),
+    background: JSON.parse(String(row.background)) as string[],
+    successCriteria: JSON.parse(String(row.success_criteria)) as string[],
+    constraints: JSON.parse(String(row.constraints)) as string[],
+    assumptions: JSON.parse(String(row.assumptions)) as string[],
+    risks: JSON.parse(String(row.risks)) as string[],
+    status: String(row.status) as GoalBriefStatus,
     createdAt: String(row.created_at),
     updatedAt: String(row.updated_at),
   };

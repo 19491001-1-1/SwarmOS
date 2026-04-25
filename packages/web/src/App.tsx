@@ -6,10 +6,11 @@ import { AgentPanel } from './components/AgentPanel.js';
 import { AgentDetailPanel } from './components/AgentDetailPanel.js';
 import { TaskBoard } from './components/TaskBoard.js';
 import { ThreadPanel } from './components/ThreadPanel.js';
+import { GoalDraftPanel } from './components/GoalDraftPanel.js';
 import { MobileTopBar } from './components/MobileTopBar.js';
 import { LoginView } from './components/LoginView.js';
-import type { Channel, Message, MessageThread, Agent, Machine, AgentActivity, VersionInfo, Task, Reminder, SearchMessageResult } from './api.js';
-import { AuthError, WEB_COMMIT_SHA, WEB_VERSION, buildWsUrl, getChannels, getMessages, getMessageThread, sendMessage, getAgents, getMachines, getAgentActivities, getHubVersion, getTasks, messageToTask, getAgentReminders, createChannel, deleteChannel, searchMessages, setAuthFailureHandler, verifyAuthToken } from './api.js';
+import type { Channel, Message, MessageThread, Agent, Machine, AgentActivity, VersionInfo, Task, Reminder, SearchMessageResult, GoalBrief } from './api.js';
+import { AuthError, WEB_COMMIT_SHA, WEB_VERSION, buildWsUrl, getChannels, getMessages, getMessageThread, sendMessage, getAgents, getMachines, getAgentActivities, getHubVersion, getTasks, messageToTask, messageToGoal, getAgentReminders, createChannel, deleteChannel, searchMessages, setAuthFailureHandler, verifyAuthToken } from './api.js';
 import { clearStoredAuthToken, getEffectiveAuthToken, markSignedOut, setStoredAuthToken } from './auth.js';
 
 export function App() {
@@ -29,6 +30,7 @@ export function App() {
   const [rightPanel, setRightPanel] = useState<'agents' | undefined>();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [thread, setThread] = useState<MessageThread | undefined>();
+  const [goalDraft, setGoalDraft] = useState<GoalBrief | undefined>();
   const [targetMessageId, setTargetMessageId] = useState<string | undefined>();
   const [threadTargetMessageId, setThreadTargetMessageId] = useState<string | undefined>();
   const [searchOpen, setSearchOpen] = useState(false);
@@ -51,6 +53,7 @@ export function App() {
     setRightPanel(undefined);
     setSidebarOpen(false);
     setThread(undefined);
+    setGoalDraft(undefined);
     setTargetMessageId(undefined);
     setThreadTargetMessageId(undefined);
     setSearchOpen(false);
@@ -271,6 +274,8 @@ export function App() {
             if (exists) return prev.map((task) => (task.id === msg.task.id ? msg.task : task));
             return [...prev, msg.task];
           });
+        } else if (msg.type === 'goal:update') {
+          setGoalDraft((current) => current?.id === msg.goal.id ? msg.goal : current);
         } else if (msg.type === 'channel:created') {
           setChannels((prev) => prev.some((channel) => channel.id === msg.channel.id) ? prev : [...prev, msg.channel]);
         } else if (msg.type === 'channel:deleted') {
@@ -331,6 +336,7 @@ export function App() {
     setThreadTargetMessageId(undefined);
     setRightPanel(undefined);
     setSelectedAgentId(undefined);
+    setGoalDraft(undefined);
     setThread(await getMessageThread(rootId));
   };
 
@@ -339,6 +345,7 @@ export function App() {
     setSelectedAgentId(agentId);
     setThread(undefined);
     setRightPanel(undefined);
+    setGoalDraft(undefined);
   };
 
   const handleThreadSend = async (content: string, agentId?: string) => {
@@ -375,6 +382,14 @@ export function App() {
 
   const handleMessageToTask = async (messageId: string) => {
     upsertTask(await messageToTask(messageId, { creatorName: 'user' }));
+  };
+
+  const handleMessageToGoal = async (messageId: string) => {
+    const goal = await messageToGoal(messageId, { requesterName: 'user' });
+    setGoalDraft(goal);
+    setThread(undefined);
+    setSelectedAgentId(undefined);
+    setRightPanel(undefined);
   };
 
   const handleCreateChannel = async (name: string) => {
@@ -452,13 +467,14 @@ export function App() {
           setSelectedChannel(id);
           setSelectedAgentId(undefined);
           setThread(undefined);
+          setGoalDraft(undefined);
           setTargetMessageId(undefined);
           setThreadTargetMessageId(undefined);
         }}
         onCreateChannel={handleCreateChannel}
         onDeleteChannel={handleDeleteChannel}
         onSelectAgent={(id) => { setSelectedAgentId(id); }}
-        onOpenAgents={() => { setRightPanel((current) => current === 'agents' ? undefined : 'agents'); setSelectedAgentId(undefined); setThread(undefined); }}
+        onOpenAgents={() => { setRightPanel((current) => current === 'agents' ? undefined : 'agents'); setSelectedAgentId(undefined); setThread(undefined); setGoalDraft(undefined); }}
         onNavigate={() => setSidebarOpen(false)}
         onSignOut={handleSignOut}
       />
@@ -481,6 +497,7 @@ export function App() {
               activitiesByAgent={activitiesByAgent}
               targetMessageId={targetMessageId}
               onCreateTask={handleMessageToTask}
+              onCreateGoal={handleMessageToGoal}
               onOpenThread={handleOpenThread}
               onOpenAgent={handleOpenAgent}
               onTargetMessageSettled={() => setTargetMessageId(undefined)}
@@ -489,7 +506,18 @@ export function App() {
           </>
         )}
       </div>
-      {thread ? (
+      {goalDraft ? (
+        <GoalDraftPanel
+          goal={goalDraft}
+          agents={agents}
+          onClose={() => setGoalDraft(undefined)}
+          onGoalUpdated={setGoalDraft}
+          onTasksCreated={(createdTasks) => {
+            for (const task of createdTasks) upsertTask(task);
+            setSelectedView('tasks');
+          }}
+        />
+      ) : thread ? (
         <ThreadPanel
           root={thread.root}
           replies={thread.replies}
