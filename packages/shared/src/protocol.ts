@@ -53,6 +53,7 @@ export type GoalAlignmentRiskLevel = 'low' | 'medium' | 'high';
 export type WorkItemKind = 'mention' | 'dm' | 'assigned_task' | 'claimable_task' | 'reminder' | 'review_request' | 'blocked_escalation';
 export type WorkItemPriority = 'low' | 'normal' | 'high' | 'urgent';
 export type TaskProgressEventType = 'claimed' | 'started' | 'heartbeat' | 'blocked' | 'handoff' | 'completed' | 'escalated';
+export type ReviewStatus = 'requested' | 'changes_requested' | 'approved' | 'cancelled';
 
 export type AgentInboxItem = {
   id: string;
@@ -75,6 +76,19 @@ export type TaskProgressEvent = {
   type: TaskProgressEventType;
   detail: string;
   createdAt: string;
+};
+
+export type TaskReview = {
+  id: string;
+  taskId: string;
+  requesterAgentId?: string;
+  reviewerAgentId?: string;
+  status: ReviewStatus;
+  evidence: string[];
+  checklist: Array<{ label: string; checked: boolean }>;
+  comment?: string;
+  createdAt: string;
+  updatedAt: string;
 };
 
 export type GoalBrief = {
@@ -149,6 +163,12 @@ export type TaskContext = {
   blockedNeeds?: string;
   escalatedReason?: string;
   progressEvents?: TaskProgressEvent[];
+  reviewerAgentId?: string;
+  evidence?: string[];
+  acceptanceChecklist?: string[];
+  reviewIds?: string[];
+  reviewNotes?: string[];
+  reviews?: TaskReview[];
 };
 
 export type Task = {

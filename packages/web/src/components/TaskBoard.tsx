@@ -150,6 +150,8 @@ function TaskCard({ task, agents, channels, onStatus, onDelete, compact = false 
   const claimedBy = agents.find((agent) => agent.id === task.context?.claimedByAgentId);
   const channel = channels.find((candidate) => candidate.id === task.channelId);
   const lastProgress = task.context?.progressEvents?.at(-1);
+  const latestReview = task.context?.reviews?.at(-1);
+  const reviewer = agents.find((agent) => agent.id === (latestReview?.reviewerAgentId ?? task.context?.reviewerAgentId));
   const blocked = Boolean(task.context?.blockedReason);
   return (
     <article style={{
@@ -187,6 +189,16 @@ function TaskCard({ task, agents, channels, onStatus, onDelete, compact = false 
           <ul style={{ margin: '4px 0 0 16px', padding: 0 }}>
             {task.context.acceptanceCriteria.slice(0, 3).map((item) => <li key={item}>{item}</li>)}
           </ul>
+        </div>
+      ) : null}
+      {latestReview || task.context?.evidence?.length || task.context?.acceptanceChecklist?.length ? (
+        <div style={{ marginTop: 8, border: '2px solid #000', background: latestReview?.status === 'approved' ? '#dcfce7' : '#e0f2fe', padding: 7, fontSize: 11, lineHeight: 1.35 }}>
+          <strong>{latestReview?.status === 'approved' ? 'ACCEPTED' : 'REVIEW'}</strong>
+          <div>Status: {latestReview?.status ?? 'requested'}</div>
+          {reviewer ? <div>Reviewer: @{reviewer.displayName ?? reviewer.name}</div> : null}
+          <div>Evidence: {(latestReview?.evidence ?? task.context?.evidence ?? []).length}</div>
+          <div>Checklist: {(latestReview?.checklist ?? task.context?.acceptanceChecklist ?? []).length}</div>
+          {latestReview?.comment ? <div>Note: {latestReview.comment}</div> : null}
         </div>
       ) : null}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 4, marginTop: 10 }}>

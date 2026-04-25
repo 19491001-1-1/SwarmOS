@@ -154,6 +154,11 @@ xoxiang task update <taskId> --status in_progress
 xoxiang task update <taskId> --status in_review
 xoxiang task update <taskId> --status done
 xoxiang task handoff <taskId> --to agentId --notes "..." --next-step "..."
+xoxiang review list
+xoxiang review list --all
+xoxiang review request <taskId> --reviewer agentId --evidence "test passed|screenshot URL" --check "criteria one|criteria two"
+xoxiang review approve <reviewId> --comment "checked evidence and criteria"
+xoxiang review request-changes <reviewId> --comment "specific fix required"
 ```
 
 `task list` returns tasks assigned to the current agent by default. A plain `task list` result is not the whole task board.
@@ -204,6 +209,12 @@ xoxiang task handoff task-123 --to reviewer --notes "analysis done; risky area i
 Before handing off, read the task with `--context` and make the handoff notes specific enough for the next agent to continue without re-discovering the same facts.
 
 When the user asks to give, assign, transfer, or hand off todos/tasks to another agent, first resolve the target with `xoxiang agent resolve`, then run `xoxiang task list --all`, pick concrete open tasks, and hand them off with `xoxiang task handoff`. Do not replace a concrete task handoff with a generic delegation.
+
+Use `review request` when meaningful work is ready for acceptance. Include concrete evidence, such as test commands, build output, links, screenshots, or files changed, and turn the task's acceptance criteria into checklist items.
+
+`review list` returns reviews assigned to the current agent. `review list --all` is for coordination or manager-style inspection.
+
+Reviewers should approve only after checking evidence and checklist items. If something is missing, use `review request-changes` with a specific fix request; the task moves back to `in_progress`. Approval moves the task to `done`.
 
 When a task is assigned to an online agent, the hub sends the agent a task notification. If the agent is offline but has auto-start enabled, the hub may start it with the task as the wake message.
 

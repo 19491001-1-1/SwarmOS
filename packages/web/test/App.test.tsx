@@ -239,6 +239,52 @@ describe('App', () => {
       expect(screen.getByText('BLOCKED 1')).toBeTruthy();
     });
   });
+
+  it('shows review evidence and acceptance status on the task board', async () => {
+    vi.mocked(api.getAgents).mockResolvedValue([{
+      id: 'agent-qa',
+      name: 'qa',
+      displayName: 'QA',
+      runtime: 'codex',
+      status: 'idle',
+      organization: { roles: ['QA'], capabilities: ['review'] },
+      createdAt: '2026-04-25T00:00:00.000Z',
+    }]);
+    vi.mocked(api.getTasks).mockResolvedValue([{
+      id: 'task-review',
+      channelId: 'general',
+      title: 'Ship reviewed feature',
+      status: 'done',
+      creatorName: 'user',
+      context: {
+        reviews: [{
+          id: 'review-1',
+          taskId: 'task-review',
+          reviewerAgentId: 'agent-qa',
+          status: 'approved',
+          evidence: ['pnpm verify passed', 'web review badge visible'],
+          checklist: [{ label: 'tests pass', checked: true }, { label: 'review badge visible', checked: true }],
+          comment: 'verified',
+          createdAt: '2026-04-25T00:00:00.000Z',
+          updatedAt: '2026-04-25T00:00:01.000Z',
+        }],
+      },
+      createdAt: '2026-04-25T00:00:00.000Z',
+      updatedAt: '2026-04-25T00:00:01.000Z',
+    }]);
+
+    render(<App />);
+
+    fireEvent.click(await screen.findByText('Tasks'));
+    await waitFor(() => {
+      expect(screen.getByText('Ship reviewed feature')).toBeTruthy();
+      expect(screen.getByText('ACCEPTED')).toBeTruthy();
+      expect(screen.getByText('Status: approved')).toBeTruthy();
+      expect(screen.getByText('Reviewer: @QA')).toBeTruthy();
+      expect(screen.getByText('Evidence: 2')).toBeTruthy();
+      expect(screen.getByText('Checklist: 2')).toBeTruthy();
+    });
+  });
 });
 
 vi.mock('../src/api.js', () => ({

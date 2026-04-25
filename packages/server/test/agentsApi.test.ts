@@ -580,6 +580,69 @@ describe('agent internal API', () => {
     expect(escalated.json().context).toMatchObject({ escalatedReason: 'blocked after retry' });
     await app.close();
   });
+
+  it('lets agents request and complete task reviews', async () => {
+    const { app, store, headers } = await createInternalAgent();
+    await store.createAgent({
+      id: 'agent-qa',
+      name: 'qa',
+      displayName: 'QA',
+      runtime: 'claude',
+      status: 'idle',
+      createdAt: new Date().toISOString(),
+    });
+    const qaToken = (await store.getOrCreateAgentToken('agent-qa')).token;
+    const qaHeaders = { Authorization: `Bearer ${qaToken}`, 'X-Agent-Id': 'agent-qa' };
+    await store.createTask({
+      id: 'task-review',
+      channelId: 'general',
+      title: 'review me',
+      status: 'in_progress',
+      creatorName: 'user',
+      assigneeId: 'agent-1',
+      context: { acceptanceCriteria: ['has evidence'] },
+    });
+
+    const requested = await app.inject({
+      method: 'POST',
+      url: '/internal/agent/agent-1/tasks/task-review/reviews',
+      headers,
+      payload: { reviewerAgentId: 'agent-qa', evidence: ['server test passed'], checklist: ['has evidence'], comment: 'ready' },
+    });
+    expect(requested.statusCode).toBe(201);
+    const review = requested.json();
+    expect(review).toMatchObject({ requesterAgentId: 'agent-1', reviewerAgentId: 'agent-qa', status: 'requested' });
+    expect((await store.getTask('task-review'))?.status).toBe('in_review');
+
+    const qaInbox = await app.inject({ method: 'GET', url: '/internal/agent/agent-qa/inbox', headers: qaHeaders });
+    expect(qaInbox.statusCode).toBe(200);
+    expect(qaInbox.json()).toContainEqual(expect.objectContaining({ kind: 'review_request', taskId: 'task-review' }));
+
+    const listed = await app.inject({ method: 'GET', url: '/internal/agent/agent-qa/reviews', headers: qaHeaders });
+    expect(listed.statusCode).toBe(200);
+    expect(listed.json()).toContainEqual(expect.objectContaining({ id: review.id, task: expect.objectContaining({ id: 'task-review' }) }));
+
+    const changes = await app.inject({
+      method: 'POST',
+      url: `/internal/agent/agent-qa/reviews/${review.id}/request-changes`,
+      headers: qaHeaders,
+      payload: { comment: 'add web evidence' },
+    });
+    expect(changes.statusCode).toBe(200);
+    expect(changes.json()).toMatchObject({ status: 'changes_requested', reviewerAgentId: 'agent-qa' });
+    expect((await store.getTask('task-review'))?.status).toBe('in_progress');
+
+    const approved = await app.inject({
+      method: 'POST',
+      url: `/internal/agent/agent-qa/reviews/${review.id}/approve`,
+      headers: qaHeaders,
+      payload: { comment: 'verified' },
+    });
+    expect(approved.statusCode).toBe(200);
+    expect(approved.json()).toMatchObject({ status: 'approved', reviewerAgentId: 'agent-qa' });
+    expect((await store.getTask('task-review'))?.status).toBe('done');
+    await app.close();
+  });
 });
 
 describe('GET /api/machines', () => {

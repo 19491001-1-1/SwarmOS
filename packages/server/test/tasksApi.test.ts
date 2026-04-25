@@ -78,4 +78,95 @@ describe('task API', () => {
     expect((await app.inject({ method: 'GET', url: '/api/tasks?status=blocked' })).statusCode).toBe(400);
     await app.close();
   });
+
+  it('requests review with evidence, approves, and requests changes', async () => {
+    const app = await buildApp();
+    const created = await app.inject({
+      method: 'POST',
+      url: '/api/tasks',
+      payload: {
+        channelId: 'general',
+        title: 'reviewable task',
+        creatorName: 'user',
+        context: { risks: ['medium'], acceptanceCriteria: ['evidence exists'] },
+      },
+    });
+    const taskId = created.json().id;
+
+    const requested = await app.inject({
+      method: 'POST',
+      url: `/api/tasks/${taskId}/reviews`,
+      payload: {
+        requesterAgentId: 'agent-dev',
+        reviewerAgentId: 'agent-qa',
+        evidence: ['pnpm verify passed'],
+        checklist: ['evidence exists'],
+        comment: 'ready for QA',
+      },
+    });
+    expect(requested.statusCode).toBe(201);
+    const review = requested.json();
+    expect(review).toMatchObject({ taskId, reviewerAgentId: 'agent-qa', status: 'requested', evidence: ['pnpm verify passed'] });
+
+    const inReview = await getStore().getTask(taskId);
+    expect(inReview?.status).toBe('in_review');
+    expect(inReview?.context?.evidence).toEqual(['pnpm verify passed']);
+
+    const changes = await app.inject({
+      method: 'POST',
+      url: `/api/reviews/${review.id}/request-changes`,
+      payload: { reviewerAgentId: 'agent-qa', comment: 'add browser test evidence' },
+    });
+    expect(changes.statusCode).toBe(200);
+    expect(changes.json()).toMatchObject({ status: 'changes_requested', comment: 'add browser test evidence' });
+    expect((await getStore().getTask(taskId))?.status).toBe('in_progress');
+
+    const approved = await app.inject({
+      method: 'POST',
+      url: `/api/reviews/${review.id}/approve`,
+      payload: { reviewerAgentId: 'agent-qa', comment: 'evidence and checklist verified' },
+    });
+    expect(approved.statusCode).toBe(200);
+    expect(approved.json()).toMatchObject({ status: 'approved' });
+    expect(approved.json().checklist[0].checked).toBe(true);
+    expect((await getStore().getTask(taskId))?.status).toBe('done');
+    await app.close();
+  });
+
+  it('blocks high-risk self-review unless explicitly allowed with a reason', async () => {
+    const app = await buildApp();
+    const created = await app.inject({
+      method: 'POST',
+      url: '/api/tasks',
+      payload: {
+        channelId: 'general',
+        title: 'production deploy',
+        creatorName: 'user',
+        context: { risks: ['high production risk'] },
+      },
+    });
+    const taskId = created.json().id;
+    const blocked = await app.inject({
+      method: 'POST',
+      url: `/api/tasks/${taskId}/reviews`,
+      payload: { requesterAgentId: 'agent-1', reviewerAgentId: 'agent-1', evidence: ['deploy log'], checklist: ['rollback ready'] },
+    });
+    expect(blocked.statusCode).toBe(400);
+
+    const allowed = await app.inject({
+      method: 'POST',
+      url: `/api/tasks/${taskId}/reviews`,
+      payload: {
+        requesterAgentId: 'agent-1',
+        reviewerAgentId: 'agent-1',
+        evidence: ['deploy log'],
+        checklist: ['rollback ready'],
+        allowSelfReview: true,
+        selfReviewReason: 'single-agent emergency drill',
+      },
+    });
+    expect(allowed.statusCode).toBe(201);
+    expect((await getStore().getTask(taskId))?.context?.reviewNotes?.at(-1)).toContain('single-agent emergency drill');
+    await app.close();
+  });
 });

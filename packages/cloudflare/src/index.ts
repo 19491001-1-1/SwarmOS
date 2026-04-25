@@ -22,6 +22,7 @@ import type {
   ServerToDaemon,
   Task,
   TaskProgressEventType,
+  TaskReview,
   TaskStatus,
   WorkspaceEntry,
   WorkspaceError,
@@ -36,6 +37,7 @@ import {
   CreateGoalTasksRequestSchema,
   ConfirmGoalAlignmentRequestSchema,
   CreateReminderRequestSchema,
+  CreateTaskReviewRequestSchema,
   CreateTaskRequestSchema,
   GoalBriefStatusSchema,
   GoalAlignmentStatusSchema,
@@ -50,6 +52,7 @@ import {
   InternalInboxRequestSchema,
   InternalMessageReadRequestSchema,
   InternalMessageSendRequestSchema,
+  InternalReviewListRequestSchema,
   InternalTaskBlockRequestSchema,
   InternalTaskEscalateRequestSchema,
   InternalTaskHandoffRequestSchema,
@@ -64,6 +67,7 @@ import {
   PatchAgentRequestSchema,
   PatchReminderRequestSchema,
   PatchTaskRequestSchema,
+  ReviewDecisionRequestSchema,
   SearchRequestSchema,
   StartGoalAlignmentRequestSchema,
   TaskStatusSchema,
@@ -196,6 +200,27 @@ export class XoxiangHub extends DurableObject<Env> {
 
       if (taskMatch && request.method === 'DELETE') {
         return this.deleteTask(decodeURIComponent(taskMatch[1]));
+      }
+
+      const taskReviewsMatch = url.pathname.match(/^\/api\/tasks\/([^/]+)\/reviews$/);
+      if (taskReviewsMatch && request.method === 'GET') {
+        const task = this.getTask(decodeURIComponent(taskReviewsMatch[1]));
+        if (!task) return json({ error: 'Task not found' }, 404);
+        return json(task.context?.reviews ?? []);
+      }
+
+      if (taskReviewsMatch && request.method === 'POST') {
+        return this.createTaskReview(decodeURIComponent(taskReviewsMatch[1]), await request.json());
+      }
+
+      const reviewApproveMatch = url.pathname.match(/^\/api\/reviews\/([^/]+)\/approve$/);
+      if (reviewApproveMatch && request.method === 'POST') {
+        return this.reviewDecision(decodeURIComponent(reviewApproveMatch[1]), await request.json(), 'approved');
+      }
+
+      const reviewChangesMatch = url.pathname.match(/^\/api\/reviews\/([^/]+)\/request-changes$/);
+      if (reviewChangesMatch && request.method === 'POST') {
+        return this.reviewDecision(decodeURIComponent(reviewChangesMatch[1]), await request.json(), 'changes_requested');
       }
 
       const messageTaskMatch = url.pathname.match(/^\/api\/messages\/([^/]+)\/to-task$/);
@@ -923,6 +948,65 @@ export class XoxiangHub extends DurableObject<Env> {
     return json(task);
   }
 
+  private createTaskReview(taskId: string, body: unknown, requesterAgentId?: string): Response {
+    const task = this.getTask(taskId);
+    if (!task) return json({ error: 'Task not found' }, 404);
+    const parsed = CreateTaskReviewRequestSchema.safeParse(body);
+    if (!parsed.success) return json({ error: 'Invalid request body', issues: parsed.error.issues }, 400);
+    const requester = requesterAgentId ?? parsed.data.requesterAgentId;
+    if (isHighRiskTask(task) && requester && parsed.data.reviewerAgentId === requester && !parsed.data.allowSelfReview) {
+      return json({ error: 'High risk task requires a different reviewer' }, 400);
+    }
+    const review = makeTaskReview(task.id, { ...parsed.data, requesterAgentId: requester });
+    const updated = this.updateTask(task.id, {
+      status: 'in_review',
+      context: {
+        ...task.context,
+        reviewerAgentId: parsed.data.reviewerAgentId,
+        evidence: review.evidence,
+        acceptanceChecklist: review.checklist.map((item) => item.label),
+        reviewIds: [...(task.context?.reviewIds ?? []), review.id],
+        reviewNotes: [...(task.context?.reviewNotes ?? []), parsed.data.selfReviewReason ? `self-review allowed: ${parsed.data.selfReviewReason}` : parsed.data.comment ?? 'review requested'],
+        reviews: [...(task.context?.reviews ?? []), review],
+      },
+    });
+    if (!updated) return json({ error: 'Task not found' }, 404);
+    this.broadcast({ type: 'task:update', task: updated });
+    return json(review, 201);
+  }
+
+  private reviewDecision(reviewId: string, body: unknown, status: 'approved' | 'changes_requested', reviewerAgentId?: string): Response {
+    const parsed = ReviewDecisionRequestSchema.safeParse(body);
+    if (!parsed.success) return json({ error: 'Invalid request body', issues: parsed.error.issues }, 400);
+    const task = this.listTasks().find((candidate) => candidate.context?.reviews?.some((review) => review.id === reviewId));
+    if (!task) return json({ error: 'Review not found' }, 404);
+    const review = task.context?.reviews?.find((candidate) => candidate.id === reviewId);
+    const reviewer = reviewerAgentId ?? parsed.data.reviewerAgentId;
+    if (reviewerAgentId && review?.reviewerAgentId && review.reviewerAgentId !== reviewerAgentId) return json({ error: 'Review is assigned to another agent' }, 403);
+    const now = new Date().toISOString();
+    const reviews = (task.context?.reviews ?? []).map((candidate) => candidate.id === reviewId
+      ? {
+        ...candidate,
+        reviewerAgentId: reviewer ?? candidate.reviewerAgentId,
+        status,
+        comment: parsed.data.comment,
+        checklist: candidate.checklist.map((item) => ({ ...item, checked: status === 'approved' ? true : item.checked })),
+        updatedAt: now,
+      }
+      : candidate);
+    const updated = this.updateTask(task.id, {
+      status: status === 'approved' ? 'done' : 'in_progress',
+      context: {
+        ...task.context,
+        reviewNotes: [...(task.context?.reviewNotes ?? []), `${status}: ${parsed.data.comment}`],
+        reviews,
+      },
+    });
+    if (!updated) return json({ error: 'Task not found' }, 404);
+    this.broadcast({ type: 'task:update', task: updated });
+    return json(reviews.find((candidate) => candidate.id === reviewId));
+  }
+
   private patchGoal(goalId: string, body: unknown): Response {
     const parsed = PatchGoalBriefRequestSchema.safeParse(body);
     if (!parsed.success) return json({ error: 'Invalid request body', issues: parsed.error.issues }, 400);
@@ -1234,6 +1318,13 @@ export class XoxiangHub extends DurableObject<Env> {
       return json({ inbox: this.buildInbox(agent, parsed.data.limit), next: 'Work assigned tasks first, claim only matching open tasks, and report blockers with task block/escalate.' });
     }
 
+    if (request.method === 'GET' && path === '/reviews') {
+      const parsed = InternalReviewListRequestSchema.safeParse(Object.fromEntries(url.searchParams.entries()));
+      if (!parsed.success) return json({ error: 'Invalid query', issues: parsed.error.issues }, 400);
+      const reviews = this.listTasks().flatMap((task) => (task.context?.reviews ?? []).map((review) => ({ ...review, task })));
+      return json(reviews.filter((review) => parsed.data.all || review.reviewerAgentId === agent.id));
+    }
+
     if (request.method === 'GET' && path === '/goals') {
       const parsed = InternalGoalListRequestSchema.safeParse(Object.fromEntries(url.searchParams.entries()));
       if (!parsed.success) return json({ error: 'Invalid query', issues: parsed.error.issues }, 400);
@@ -1371,6 +1462,30 @@ export class XoxiangHub extends DurableObject<Env> {
       if (!task) return json({ error: 'Task not found' }, 404);
       if (task.assigneeId && task.assigneeId !== agent.id) return json({ error: 'Task is assigned to another agent' }, 403);
       return json(task);
+    }
+
+    const internalTaskReviewsMatch = path.match(/^\/tasks\/([^/]+)\/reviews$/);
+    if (request.method === 'POST' && internalTaskReviewsMatch) {
+      return this.createTaskReview(decodeURIComponent(internalTaskReviewsMatch[1]), {
+        ...(await request.json().catch(() => ({})) as object),
+        requesterAgentId: agent.id,
+      }, agent.id);
+    }
+
+    const internalReviewApproveMatch = path.match(/^\/reviews\/([^/]+)\/approve$/);
+    if (request.method === 'POST' && internalReviewApproveMatch) {
+      return this.reviewDecision(decodeURIComponent(internalReviewApproveMatch[1]), {
+        ...(await request.json().catch(() => ({})) as object),
+        reviewerAgentId: agent.id,
+      }, 'approved', agent.id);
+    }
+
+    const internalReviewChangesMatch = path.match(/^\/reviews\/([^/]+)\/request-changes$/);
+    if (request.method === 'POST' && internalReviewChangesMatch) {
+      return this.reviewDecision(decodeURIComponent(internalReviewChangesMatch[1]), {
+        ...(await request.json().catch(() => ({})) as object),
+        reviewerAgentId: agent.id,
+      }, 'changes_requested', agent.id);
     }
 
     const taskUpdateMatch = path.match(/^\/tasks\/([^/]+)\/update$/);
@@ -1793,6 +1908,22 @@ export class XoxiangHub extends DurableObject<Env> {
     const items: AgentInboxItem[] = [];
     for (const task of this.listTasks()) {
       if (task.status === 'done') continue;
+      for (const review of task.context?.reviews ?? []) {
+        if (review.status === 'requested' && review.reviewerAgentId === agent.id) {
+          items.push({
+            id: `review_request:${review.id}`,
+            kind: 'review_request',
+            agentId: agent.id,
+            channelId: task.channelId,
+            messageId: task.messageId,
+            taskId: task.id,
+            goalId: task.context?.goalId,
+            priority: isHighRiskTask(task) ? 'high' : 'normal',
+            summary: `Review requested: ${task.title}`,
+            createdAt: review.createdAt,
+          });
+        }
+      }
       if (task.assigneeId === agent.id) {
         items.push({
           id: `assigned_task:${task.id}`,
@@ -2808,6 +2939,26 @@ function appendProgress(task: Task, agentId: string, type: TaskProgressEventType
     claimedByAgentId: type === 'claimed' ? agentId : task.context?.claimedByAgentId,
     progressEvents: [...(task.context?.progressEvents ?? []), event].slice(-20),
   };
+}
+
+function makeTaskReview(taskId: string, data: { requesterAgentId?: string; reviewerAgentId?: string; evidence: string[]; checklist: Array<string | { label: string; checked: boolean }>; comment?: string }): TaskReview {
+  const now = new Date().toISOString();
+  return {
+    id: crypto.randomUUID(),
+    taskId,
+    requesterAgentId: data.requesterAgentId,
+    reviewerAgentId: data.reviewerAgentId,
+    status: 'requested',
+    evidence: data.evidence,
+    checklist: data.checklist.map((item) => typeof item === 'string' ? { label: item, checked: false } : item),
+    comment: data.comment,
+    createdAt: now,
+    updatedAt: now,
+  };
+}
+
+function isHighRiskTask(task: { context?: { risks?: string[] } }): boolean {
+  return (task.context?.risks ?? []).some((risk) => /high|production|payment|legal|privacy|credential|高风险|上线|支付|隐私/.test(risk.toLowerCase()));
 }
 
 function toReminder(row: Row): Reminder {

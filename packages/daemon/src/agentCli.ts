@@ -161,6 +161,39 @@ function parseCommand(argv: string[]): ParsedCommand {
     const opts = parseFlags(rest.slice(1));
     return { method: 'POST', path: `/tasks/${encodeURIComponent(taskId)}/escalate`, body: { reason: required(opts.reason, '--reason') } };
   }
+  if (group === 'review' && action === 'list') {
+    const opts = parseFlags(rest);
+    const params = new URLSearchParams();
+    if (opts.all === true) params.set('all', 'true');
+    const query = params.toString();
+    return { method: 'GET', path: `/reviews${query ? `?${query}` : ''}` };
+  }
+  if (group === 'review' && action === 'request') {
+    const taskId = required(rest[0], 'task id');
+    const opts = parseFlags(rest.slice(1));
+    return {
+      method: 'POST',
+      path: `/tasks/${encodeURIComponent(taskId)}/reviews`,
+      body: {
+        reviewerAgentId: required(opts.reviewer, '--reviewer'),
+        evidence: splitList(opts.evidence),
+        checklist: splitList(opts.check),
+        comment: typeof opts.comment === 'string' ? opts.comment : undefined,
+        allowSelfReview: opts['allow-self-review'] === true,
+        selfReviewReason: typeof opts['self-review-reason'] === 'string' ? opts['self-review-reason'] : undefined,
+      },
+    };
+  }
+  if (group === 'review' && action === 'approve') {
+    const reviewId = required(rest[0], 'review id');
+    const opts = parseFlags(rest.slice(1));
+    return { method: 'POST', path: `/reviews/${encodeURIComponent(reviewId)}/approve`, body: { comment: required(opts.comment, '--comment') } };
+  }
+  if (group === 'review' && action === 'request-changes') {
+    const reviewId = required(rest[0], 'review id');
+    const opts = parseFlags(rest.slice(1));
+    return { method: 'POST', path: `/reviews/${encodeURIComponent(reviewId)}/request-changes`, body: { comment: required(opts.comment, '--comment') } };
+  }
   if (group === 'goal' && action === 'list') {
     const opts = parseFlags(rest);
     const params = new URLSearchParams();

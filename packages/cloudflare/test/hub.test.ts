@@ -250,6 +250,32 @@ describe('agent internal API', () => {
     });
     expect(blocked.status).toBe(200);
     expect(await blocked.json()).toMatchObject({ context: expect.objectContaining({ blockedReason: 'missing input', blockedNeeds: 'user decision' }) });
+
+    const reviewTaskCreated = await SELF.fetch('https://hub.test/api/tasks', {
+      method: 'POST',
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ channelId: 'general', title: `cf review task ${crypto.randomUUID()}`, creatorName: 'user', assigneeId: agent.id }),
+    });
+    const reviewTask = (await reviewTaskCreated.json()) as { id: string };
+    const reviewRequested = await SELF.fetch(`https://hub.test/internal/agent/${agent.id}/tasks/${reviewTask.id}/reviews`, {
+      method: 'POST',
+      headers: internalHeaders,
+      body: JSON.stringify({ reviewerAgentId: agent.id, evidence: ['cloudflare tests passed'], checklist: ['evidence exists'] }),
+    });
+    expect(reviewRequested.status).toBe(201);
+    const review = (await reviewRequested.json()) as { id: string };
+
+    const reviews = await SELF.fetch(`https://hub.test/internal/agent/${agent.id}/reviews`, { headers: internalHeaders });
+    expect(reviews.status).toBe(200);
+    expect((await reviews.json()) as Array<{ id: string }>).toContainEqual(expect.objectContaining({ id: review.id }));
+
+    const approved = await SELF.fetch(`https://hub.test/internal/agent/${agent.id}/reviews/${review.id}/approve`, {
+      method: 'POST',
+      headers: internalHeaders,
+      body: JSON.stringify({ comment: 'verified' }),
+    });
+    expect(approved.status).toBe(200);
+    expect(await approved.json()).toMatchObject({ status: 'approved' });
     daemon.close();
   });
 });
@@ -380,6 +406,42 @@ describe('input validation', () => {
     });
     expect(converted.status).toBe(201);
     expect(await converted.json()).toMatchObject({ messageId: msg.id, title: msg.content });
+  });
+
+  it('supports public task review request and decisions', async () => {
+    const created = await SELF.fetch('https://hub.test/api/tasks', {
+      method: 'POST',
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ channelId: 'general', title: `cf public review ${crypto.randomUUID()}`, creatorName: 'user', context: { risks: ['medium'] } }),
+    });
+    const task = (await created.json()) as { id: string };
+    const requested = await SELF.fetch(`https://hub.test/api/tasks/${task.id}/reviews`, {
+      method: 'POST',
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ requesterAgentId: 'dev', reviewerAgentId: 'qa', evidence: ['dry run passed'], checklist: ['evidence exists'] }),
+    });
+    expect(requested.status).toBe(201);
+    const review = (await requested.json()) as { id: string };
+
+    const reviews = await SELF.fetch(`https://hub.test/api/tasks/${task.id}/reviews`, { headers: authHeaders() });
+    expect(reviews.status).toBe(200);
+    expect((await reviews.json()) as Array<{ id: string }>).toContainEqual(expect.objectContaining({ id: review.id }));
+
+    const changes = await SELF.fetch(`https://hub.test/api/reviews/${review.id}/request-changes`, {
+      method: 'POST',
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ reviewerAgentId: 'qa', comment: 'add web evidence' }),
+    });
+    expect(changes.status).toBe(200);
+    expect(await changes.json()).toMatchObject({ status: 'changes_requested' });
+
+    const approved = await SELF.fetch(`https://hub.test/api/reviews/${review.id}/approve`, {
+      method: 'POST',
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ reviewerAgentId: 'qa', comment: 'verified' }),
+    });
+    expect(approved.status).toBe(200);
+    expect(await approved.json()).toMatchObject({ status: 'approved', checklist: [expect.objectContaining({ checked: true })] });
   });
 
   it('supports goal brief CRUD, message conversion, and task breakdown', async () => {
