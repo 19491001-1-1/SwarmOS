@@ -22,6 +22,7 @@
 | v0.7 | Reminders | Agent 设置定时提醒，实时推送到 UI | v0.3 |
 | v0.8 | 多 Channel + 搜索 | 创建/删除 channel，全局消息搜索 | v0.2 |
 | v0.9 | Chat Experience + Threads | 头像状态、Markdown 消息、@mention 渲染、群聊 Thread 聚焦讨论 | v0.8 |
+| v0.9.1 | UI Polish | 右侧边栏按需出现，左侧菜单 hover/active 动效和布局微调 | v0.9 |
 | v1.0 | Lightweight Agent Roles | 轻量角色、职责、能力、工作风格和交接偏好，复用当前 profile | v0.6/v0.8 |
 | v1.1 | Goal Brief & Work Breakdown | 用户目标结构化成 brief、任务、依赖和验收标准 | v1.0 |
 | v1.2 | Goal Alignment in Chat | 复用当前聊天完成目标澄清、计划对齐、分工和确认 | v1.1 |
@@ -52,5 +53,6 @@
 - [v0.7 — Reminders](./v0.7-reminders.md)
 - [v0.8 — 多 Channel + 搜索](./v0.8-channels-search.md)
 - [v0.9 — Chat Experience, Presence & Threads](./v0.9-chat-experience.md)
+- [v0.9.1 — UI Polish: Adaptive Right Rail & Sidebar Hover](./v0.9.1-ui-polish.md)
 - [v1.0 — Lightweight Agent Roles & Capabilities](./v1.0-agent-roles.md)
 - [v1.x — Phase Two Roadmap: Role, Goal & Memory](./v1-phase-two-roadmap.md)
