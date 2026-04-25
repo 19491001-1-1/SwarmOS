@@ -205,7 +205,6 @@ export function Sidebar({ channels, agents, activitiesByAgent = {}, machines, se
               border: '1.5px solid #000',
               padding: '0 4px',
               background: '#fff',
-              color: '#000',
               letterSpacing: '0.5px',
             }}>
               {a.runtime.toUpperCase()}
