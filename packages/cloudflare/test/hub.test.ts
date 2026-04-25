@@ -128,6 +128,30 @@ describe('agent internal API', () => {
     });
     expect(delegation.status).toBe(201);
     expect(await delegation.json()).toMatchObject({ status: 'queued' });
+
+    const taskCreated = await SELF.fetch('https://hub.test/api/tasks', {
+      method: 'POST',
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ channelId: 'general', title: `internal task ${crypto.randomUUID()}`, creatorName: 'user', assigneeId: agent.id }),
+    });
+    expect(taskCreated.status).toBe(201);
+    const task = (await taskCreated.json()) as { id: string; title: string };
+
+    const tasks = await SELF.fetch(`https://hub.test/internal/agent/${agent.id}/tasks`, { headers: internalHeaders });
+    expect(tasks.status).toBe(200);
+    expect((await tasks.json()) as Array<{ id: string }>).toContainEqual(expect.objectContaining({ id: task.id }));
+
+    const taskRead = await SELF.fetch(`https://hub.test/internal/agent/${agent.id}/tasks/${task.id}`, { headers: internalHeaders });
+    expect(taskRead.status).toBe(200);
+    expect(await taskRead.json()).toMatchObject({ title: task.title });
+
+    const taskUpdated = await SELF.fetch(`https://hub.test/internal/agent/${agent.id}/tasks/${task.id}/update`, {
+      method: 'POST',
+      headers: internalHeaders,
+      body: JSON.stringify({ status: 'in_progress' }),
+    });
+    expect(taskUpdated.status).toBe(200);
+    expect(await taskUpdated.json()).toMatchObject({ status: 'in_progress' });
     daemon.close();
   });
 });

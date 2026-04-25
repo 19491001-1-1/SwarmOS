@@ -7,6 +7,7 @@ import { CreateAgentDelegationRequestSchema, CreateAgentRequestSchema, CreateDir
 import { resolveStartMachineId, toRuntimeConfig } from '@mini-slock/hub-core';
 import { delegateAgent } from '../delegation.js';
 import { toAgentRuntimeConfig } from '../runtimeConfig.js';
+import { buildOpenTaskSummary } from '../taskDelivery.js';
 
 export async function agentRoutes(app: FastifyInstance) {
   app.get('/api/agents', async () => {
@@ -164,6 +165,7 @@ export async function agentRoutes(app: FastifyInstance) {
       agentId: agent.id,
       config: await toAgentRuntimeConfig(agent),
       launchId,
+      wakeMessage: openTaskSummaryDelivery(agent.id, await buildOpenTaskSummary(agent)),
     });
 
     if (!sent) return reply.status(503).send({ error: 'Machine not connected' });
@@ -184,6 +186,18 @@ export async function agentRoutes(app: FastifyInstance) {
     eventBus.emit({ type: 'agent:update', agent: updated });
     return updated;
   });
+}
+
+function openTaskSummaryDelivery(agentId: string, summary?: string) {
+  if (!summary) return undefined;
+  return {
+    id: `tasks:${agentId}:${Date.now()}`,
+    channelId: `tasks:${agentId}`,
+    channelName: 'Assigned tasks',
+    senderName: 'task-board',
+    content: summary,
+    createdAt: new Date().toISOString(),
+  };
 }
 
 function isUnsafeWorkspacePath(value: string): boolean {

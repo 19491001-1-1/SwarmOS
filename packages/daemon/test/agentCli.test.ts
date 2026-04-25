@@ -104,6 +104,39 @@ describe('agent-facing xoxiang CLI', () => {
       expect.objectContaining({ method: 'POST', body: JSON.stringify({ to: 'target', content: 'work', startIfInactive: true }) })
     );
   });
+
+  it('lists assigned tasks with optional filters', async () => {
+    const fetchImpl = okFetch([{ id: 'task-1', title: 'work' }]);
+    const result = await run(['task', 'list', '--status', 'in_progress', '--channel', 'general'], fetchImpl);
+
+    expect(result.code).toBe(0);
+    expect(fetchImpl).toHaveBeenCalledWith(
+      'http://hub.test/internal/agent/agent-1/tasks?channel=general&status=in_progress',
+      expect.objectContaining({ method: 'GET' })
+    );
+  });
+
+  it('reads a task', async () => {
+    const fetchImpl = okFetch({ id: 'task-1', title: 'work' });
+    const result = await run(['task', 'read', 'task-1'], fetchImpl);
+
+    expect(result.code).toBe(0);
+    expect(fetchImpl).toHaveBeenCalledWith(
+      'http://hub.test/internal/agent/agent-1/tasks/task-1',
+      expect.objectContaining({ method: 'GET' })
+    );
+  });
+
+  it('updates task status', async () => {
+    const fetchImpl = okFetch({ id: 'task-1', status: 'done' });
+    const result = await run(['task', 'update', 'task-1', '--status', 'done'], fetchImpl);
+
+    expect(result.code).toBe(0);
+    expect(fetchImpl).toHaveBeenCalledWith(
+      'http://hub.test/internal/agent/agent-1/tasks/task-1/update',
+      expect.objectContaining({ method: 'POST', body: JSON.stringify({ status: 'done' }) })
+    );
+  });
 });
 
 function okFetch(body: unknown): typeof fetch {

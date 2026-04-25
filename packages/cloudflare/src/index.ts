@@ -27,6 +27,8 @@ import {
   InternalDmSendRequestSchema,
   InternalMessageReadRequestSchema,
   InternalMessageSendRequestSchema,
+  InternalTaskListRequestSchema,
+  InternalTaskUpdateRequestSchema,
   CreateMessageRequestSchema,
   MessageToTaskRequestSchema,
   PatchAgentRequestSchema,
@@ -343,12 +345,16 @@ export class XoxiangHub extends DurableObject<Env> {
         assigneeId: assignee?.id ?? data.assigneeId,
       });
       this.broadcast({ type: 'task:update', task });
+      this.notifyTaskAssignee(task);
       return;
     }
 
     if (data.type === 'agent:update_task') {
       const task = this.updateTask(data.taskId, { status: data.status });
-      if (task) this.broadcast({ type: 'task:update', task });
+      if (task) {
+        this.broadcast({ type: 'task:update', task });
+        this.notifyTaskAssignee(task);
+      }
     }
   }
 
@@ -549,6 +555,7 @@ export class XoxiangHub extends DurableObject<Env> {
       assigneeId: parsed.data.assigneeId,
     });
     this.broadcast({ type: 'task:update', task });
+    this.notifyTaskAssignee(task);
     return json(task, 201);
   }
 
@@ -558,6 +565,7 @@ export class XoxiangHub extends DurableObject<Env> {
     const task = this.updateTask(taskId, parsed.data);
     if (!task) return json({ error: 'Task not found' }, 404);
     this.broadcast({ type: 'task:update', task });
+    this.notifyTaskAssignee(task);
     return json(task);
   }
 
@@ -583,6 +591,7 @@ export class XoxiangHub extends DurableObject<Env> {
       assigneeId: parsed.data.assigneeId,
     });
     this.broadcast({ type: 'task:update', task });
+    this.notifyTaskAssignee(task);
     return json(task, 201);
   }
 
@@ -644,6 +653,39 @@ export class XoxiangHub extends DurableObject<Env> {
 
     if (request.method === 'POST' && path === '/delegate') {
       return this.createInternalDelegation(agent, request);
+    }
+
+    if (request.method === 'GET' && path === '/tasks') {
+      const parsed = InternalTaskListRequestSchema.safeParse(Object.fromEntries(url.searchParams.entries()));
+      if (!parsed.success) return json({ error: 'Invalid query', issues: parsed.error.issues }, 400);
+      const channel = parsed.data.channel ? this.findChannel(parsed.data.channel) : undefined;
+      if (parsed.data.channel && !channel) return json({ error: 'Channel not found' }, 404);
+      return json(this.listTasks({
+        channelId: channel?.id,
+        status: parsed.data.status,
+        assigneeId: parsed.data.all ? undefined : agent.id,
+      }));
+    }
+
+    const taskMatch = path.match(/^\/tasks\/([^/]+)$/);
+    if (request.method === 'GET' && taskMatch) {
+      const task = this.getTask(decodeURIComponent(taskMatch[1]));
+      if (!task) return json({ error: 'Task not found' }, 404);
+      if (task.assigneeId && task.assigneeId !== agent.id) return json({ error: 'Task is assigned to another agent' }, 403);
+      return json(task);
+    }
+
+    const taskUpdateMatch = path.match(/^\/tasks\/([^/]+)\/update$/);
+    if (request.method === 'POST' && taskUpdateMatch) {
+      const existing = this.getTask(decodeURIComponent(taskUpdateMatch[1]));
+      if (!existing) return json({ error: 'Task not found' }, 404);
+      if (existing.assigneeId && existing.assigneeId !== agent.id) return json({ error: 'Task is assigned to another agent' }, 403);
+      const parsed = InternalTaskUpdateRequestSchema.safeParse(await request.json());
+      if (!parsed.success) return json({ error: 'Invalid request body', issues: parsed.error.issues }, 400);
+      const task = this.updateTask(existing.id, parsed.data);
+      if (!task) return json({ error: 'Task not found' }, 404);
+      this.broadcast({ type: 'task:update', task });
+      return json(task);
     }
 
     return json({ error: 'Not found' }, 404);
@@ -795,6 +837,7 @@ export class XoxiangHub extends DurableObject<Env> {
       agentId,
       config: this.toAgentRuntimeConfig(agent),
       launchId: crypto.randomUUID(),
+      wakeMessage: this.openTaskSummaryDelivery(agent),
     });
     if (!sent) return json({ error: 'Machine not connected' }, 503);
 
@@ -860,12 +903,16 @@ export class XoxiangHub extends DurableObject<Env> {
     return this.listChannels().find((channel) => channel.name === value);
   }
 
-  private listTasks(filter: { channelId?: string; status?: TaskStatus } = {}): Task[] {
+  private listTasks(filter: { channelId?: string; status?: TaskStatus; assigneeId?: string } = {}): Task[] {
     return this.ctx.storage.sql
       .exec<Row>('SELECT * FROM tasks ORDER BY created_at')
       .toArray()
       .map(toTask)
-      .filter((task) => (!filter.channelId || task.channelId === filter.channelId) && (!filter.status || task.status === filter.status));
+      .filter((task) =>
+        (!filter.channelId || task.channelId === filter.channelId) &&
+        (!filter.status || task.status === filter.status) &&
+        (!filter.assigneeId || task.assigneeId === filter.assigneeId)
+      );
   }
 
   private getTask(id: string): Task | undefined {
@@ -1191,6 +1238,57 @@ export class XoxiangHub extends DurableObject<Env> {
     return this.updateAgentDelegation(queued, 'started');
   }
 
+  private notifyTaskAssignee(task: Task): void {
+    if (!task.assigneeId || task.status === 'done') return;
+    const target = this.findAgentByNameOrId(task.assigneeId);
+    if (!target) return;
+    const message = toTaskDelivery(task);
+
+    if (['starting', 'running', 'working', 'idle'].includes(target.status) && target.machineId) {
+      this.sendToDaemon(target.machineId, {
+        type: 'agent:deliver',
+        agentId: target.id,
+        seq: Date.now(),
+        channelId: message.channelId,
+        config: this.toAgentRuntimeConfig(target),
+        message,
+      });
+      return;
+    }
+
+    if (!target.autoStart) return;
+    const machineId = this.resolveStartMachineId(target);
+    if (!machineId) return;
+    const sent = this.sendToDaemon(machineId, {
+      type: 'agent:start',
+      agentId: target.id,
+      config: this.toAgentRuntimeConfig(target),
+      launchId: crypto.randomUUID(),
+      wakeMessage: message,
+    });
+    if (!sent) return;
+    const updated = this.updateAgent(target.id, { machineId, status: 'starting' });
+    if (updated) this.broadcast({ type: 'agent:update', agent: updated });
+  }
+
+  private openTaskSummaryDelivery(agent: Agent) {
+    const tasks = this.listTasks({ assigneeId: agent.id }).filter((task) => task.status !== 'done').slice(0, 20);
+    if (tasks.length === 0) return undefined;
+    return {
+      id: `tasks:${agent.id}:${Date.now()}`,
+      channelId: `tasks:${agent.id}`,
+      channelName: 'Assigned tasks',
+      senderName: 'task-board',
+      content: [
+        'Open tasks assigned to you:',
+        ...tasks.map((task) => `- ${task.id} [${task.status}] #${task.channelId}: ${task.title}`),
+        '',
+        'Use `xoxiang task list`, `xoxiang task read <taskId>`, and `xoxiang task update <taskId> --status in_progress|in_review|done` to manage them.',
+      ].join('\n'),
+      createdAt: new Date().toISOString(),
+    };
+  }
+
   private deliverDirectMessage(target: Agent, dm: DirectMessage): void {
     const machineId = this.resolveStartMachineId(target);
     if (!machineId || target.status === 'inactive') return;
@@ -1471,6 +1569,24 @@ function toDirectMessageDelivery(dm: DirectMessage) {
     senderName: dm.fromAgentId,
     content: dm.content,
     createdAt: dm.createdAt,
+  };
+}
+
+function toTaskDelivery(task: Task) {
+  return {
+    id: `task:${task.id}:${task.updatedAt}`,
+    channelId: `task:${task.id}`,
+    channelName: `Task ${task.id}`,
+    senderName: 'task-board',
+    content: [
+      `Task assigned or updated: ${task.title}`,
+      `Task ID: ${task.id}`,
+      `Status: ${task.status}`,
+      `Channel: ${task.channelId}`,
+      '',
+      'Use `xoxiang task read <taskId>` for details and `xoxiang task update <taskId> --status in_progress|in_review|done` when you make progress.',
+    ].join('\n'),
+    createdAt: task.updatedAt,
   };
 }
 
