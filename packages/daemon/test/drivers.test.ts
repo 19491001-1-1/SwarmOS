@@ -174,6 +174,8 @@ describe('Gemini driver', () => {
     expect(cmd.args).toContain('false');
     expect(cmd.args).toContain('--approval-mode');
     expect(cmd.args).toContain('yolo');
+    expect(cmd.args).not.toContain('-y');
+    expect(cmd.args).not.toContain('--yolo');
   });
 
   it('declares conservative MCP inbox capabilities', () => {

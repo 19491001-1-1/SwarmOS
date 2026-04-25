@@ -44,12 +44,11 @@ export const geminiDriver: RuntimeDriver = {
       .filter(Boolean)
       .join('\n\n');
 
-    // gemini -p "<prompt>" --output-format text -y
+    // gemini -p "<prompt>" --output-format text --approval-mode yolo
     // system prompt via GEMINI_SYSTEM_PROMPT env var (gemini CLI reads it)
     const args = [
       '-p', ctx.formattedMessage || ctx.userMessage,
       '--output-format', 'text',
-      '-y',
       '--sandbox', 'false',
       '--approval-mode', 'yolo',
     ];
