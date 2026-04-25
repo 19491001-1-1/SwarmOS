@@ -99,8 +99,7 @@ export class AgentProcessManager {
     }
 
     // Append to transcript for context
-    const line = `[${delivery.createdAt}] ${delivery.senderName}: ${delivery.content}\n`;
-    await appendFile(entry.transcriptFile, line);
+    await this.appendTranscript(entry, delivery.senderName, delivery.content, delivery.createdAt);
 
     this.onActivity(agentId, 'working', 'Message received');
     this.onStatus(agentId, 'working');
@@ -157,6 +156,7 @@ export class AgentProcessManager {
         const fallback = fullStdout.trim();
         if (fallback) {
           console.log(`[daemon] agent ${agentId} fallback reply (no bridge marker found)`);
+          this.appendTranscriptLater(entry!, this.agentTranscriptName(entry!), fallback);
           this.onMessage(entry!.agentId, entry!.channelId, fallback);
           this.onActivity(agentId, 'output', fallback.slice(0, 100));
         }
@@ -178,23 +178,40 @@ export class AgentProcessManager {
     const parsed = entry.driver.parseOutput?.(line);
     if (parsed?.type === 'message') {
       console.log(`[daemon] agent ${entry.agentId} reply: ${parsed.content}`);
+      this.appendTranscriptLater(entry, this.agentTranscriptName(entry), parsed.content);
       this.onMessage(entry.agentId, entry.channelId, parsed.content);
       this.onActivity(entry.agentId, 'sending', `channel:${entry.channelId}`);
       return true;
     }
     if (parsed?.type === 'dm') {
       console.log(`[daemon] agent ${entry.agentId} dm to ${parsed.toAgentId}`);
+      this.appendTranscriptLater(entry, `${this.agentTranscriptName(entry)} -> dm:${parsed.toAgentId}`, parsed.content);
       this.onDm(entry.agentId, parsed.toAgentId, parsed.content);
       this.onActivity(entry.agentId, 'sending', `dm:${parsed.toAgentId}`);
       return true;
     }
     if (parsed?.type === 'delegate') {
       console.log(`[daemon] agent ${entry.agentId} delegate to ${parsed.toAgentId}`);
+      this.appendTranscriptLater(entry, `${this.agentTranscriptName(entry)} -> delegate:${parsed.toAgentId}`, parsed.content);
       this.onDelegate(entry.agentId, parsed.toAgentId, parsed.content, parsed.startIfInactive);
       this.onActivity(entry.agentId, 'sending', `delegating to ${parsed.toAgentId}`);
       return true;
     }
     return false;
+  }
+
+  private async appendTranscript(entry: AgentEntry, speaker: string, content: string, createdAt = new Date().toISOString()): Promise<void> {
+    await appendFile(entry.transcriptFile, `[${createdAt}] ${speaker}: ${content}\n`);
+  }
+
+  private appendTranscriptLater(entry: AgentEntry, speaker: string, content: string): void {
+    this.appendTranscript(entry, speaker, content).catch((err) => {
+      console.error(`[daemon] failed to append transcript for ${entry.agentId}:`, err instanceof Error ? err.message : err);
+    });
+  }
+
+  private agentTranscriptName(entry: AgentEntry): string {
+    return entry.config.displayName ?? entry.config.name ?? entry.agentId;
   }
 
   stopAgent(agentId: string): void {

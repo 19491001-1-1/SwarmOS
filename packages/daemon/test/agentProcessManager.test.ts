@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { AgentProcessManager } from '../src/agentProcessManager.js';
 import { BRIDGE_MARKER } from '../src/bridge/simpleToolBridge.js';
 import { EventEmitter } from 'events';
+import { appendFile } from 'fs/promises';
 
 // Mock child_process.spawn
 vi.mock('child_process', () => ({
@@ -138,6 +139,14 @@ describe('AgentProcessManager', () => {
     expect(messages).toHaveLength(1);
     expect(messages[0].content).toBe('Echo: Hello');
     expect(messages[0].agentId).toBe('agent-1');
+    expect(vi.mocked(appendFile)).toHaveBeenCalledWith(
+      expect.stringContaining('transcript.txt'),
+      expect.stringContaining('user: Hello')
+    );
+    expect(vi.mocked(appendFile)).toHaveBeenCalledWith(
+      expect.stringContaining('transcript.txt'),
+      expect.stringContaining('bot: Echo: Hello')
+    );
     expect(activities.some((a) => a.type === 'sending' && a.detail === 'channel:general')).toBe(true);
     expect(activities.some((a) => a.type === 'idle')).toBe(true);
   });
@@ -159,6 +168,10 @@ describe('AgentProcessManager', () => {
     await new Promise((r) => setTimeout(r, 50));
 
     expect(messages[0].content).toBe('Plain fallback answer');
+    expect(vi.mocked(appendFile)).toHaveBeenCalledWith(
+      expect.stringContaining('transcript.txt'),
+      expect.stringContaining('bot: Plain fallback answer')
+    );
     expect(activities.some((a) => a.type === 'output' && a.detail === 'Plain fallback answer')).toBe(true);
   });
 
@@ -179,6 +192,10 @@ describe('AgentProcessManager', () => {
     await new Promise((r) => setTimeout(r, 50));
 
     expect(dms).toEqual([{ fromAgentId: 'agent-1', toAgentId: 'agent-2', content: 'secret' }]);
+    expect(vi.mocked(appendFile)).toHaveBeenCalledWith(
+      expect.stringContaining('transcript.txt'),
+      expect.stringContaining('bot -> dm:agent-2: secret')
+    );
     expect(activities.some((a) => a.type === 'sending' && a.detail === 'dm:agent-2')).toBe(true);
   });
 
@@ -199,6 +216,10 @@ describe('AgentProcessManager', () => {
     await new Promise((r) => setTimeout(r, 50));
 
     expect(delegations).toEqual([{ fromAgentId: 'agent-1', toAgentId: 'agent-2', content: 'please work', startIfInactive: true }]);
+    expect(vi.mocked(appendFile)).toHaveBeenCalledWith(
+      expect.stringContaining('transcript.txt'),
+      expect.stringContaining('bot -> delegate:agent-2: please work')
+    );
     expect(activities.some((a) => a.type === 'sending' && a.detail === 'delegating to agent-2')).toBe(true);
   });
 
