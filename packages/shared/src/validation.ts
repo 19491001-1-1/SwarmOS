@@ -12,6 +12,7 @@ export const GoalAlignmentRiskLevelSchema = z.enum(['low', 'medium', 'high']);
 export const WorkItemKindSchema = z.enum(['mention', 'dm', 'assigned_task', 'claimable_task', 'reminder', 'review_request', 'blocked_escalation']);
 export const WorkItemPrioritySchema = z.enum(['low', 'normal', 'high', 'urgent']);
 export const TaskProgressEventTypeSchema = z.enum(['claimed', 'started', 'heartbeat', 'blocked', 'handoff', 'completed', 'escalated']);
+export const ReviewStatusSchema = z.enum(['requested', 'changes_requested', 'approved', 'cancelled']);
 export const ReminderStatusSchema = z.enum(['pending', 'triggered', 'cancelled']);
 
 export const MentionSchema = z.object({
@@ -106,6 +107,23 @@ export const TaskContextSchema = z.object({
     type: TaskProgressEventTypeSchema,
     detail: z.string(),
     createdAt: z.string(),
+  })).optional(),
+  reviewerAgentId: z.string().optional(),
+  evidence: z.array(z.string()).optional(),
+  acceptanceChecklist: z.array(z.string()).optional(),
+  reviewIds: z.array(z.string()).optional(),
+  reviewNotes: z.array(z.string()).optional(),
+  reviews: z.array(z.object({
+    id: z.string(),
+    taskId: z.string(),
+    requesterAgentId: z.string().optional(),
+    reviewerAgentId: z.string().optional(),
+    status: ReviewStatusSchema,
+    evidence: z.array(z.string()),
+    checklist: z.array(z.object({ label: z.string(), checked: z.boolean() })),
+    comment: z.string().optional(),
+    createdAt: z.string(),
+    updatedAt: z.string(),
   })).optional(),
 }).partial();
 
@@ -520,6 +538,30 @@ export const InternalTaskEscalateRequestSchema = z.object({
   reason: z.string().min(1),
 });
 
+export const CreateTaskReviewRequestSchema = z.object({
+  requesterAgentId: z.string().optional(),
+  reviewerAgentId: z.string().optional(),
+  evidence: z.array(z.string().min(1)).default([]),
+  checklist: z.array(z.union([z.string().min(1), z.object({ label: z.string().min(1), checked: z.boolean().default(false) })])).default([]),
+  comment: z.string().optional(),
+  allowSelfReview: z.boolean().optional(),
+  selfReviewReason: z.string().optional(),
+});
+
+export const ReviewDecisionRequestSchema = z.object({
+  reviewerAgentId: z.string().optional(),
+  comment: z.string().min(1),
+});
+
+export const InternalReviewListRequestSchema = z.object({
+  all: z.preprocess((value) => {
+    if (value === undefined) return false;
+    if (value === true || value === 'true' || value === '1') return true;
+    if (value === false || value === 'false' || value === '0') return false;
+    return value;
+  }, z.boolean()).default(false),
+});
+
 export const InternalGoalListRequestSchema = z.object({
   channel: z.string().min(1).optional(),
   status: GoalBriefStatusSchema.optional(),
@@ -567,6 +609,9 @@ export type InternalInboxRequest = z.infer<typeof InternalInboxRequestSchema>;
 export type InternalTaskProgressRequest = z.infer<typeof InternalTaskProgressRequestSchema>;
 export type InternalTaskBlockRequest = z.infer<typeof InternalTaskBlockRequestSchema>;
 export type InternalTaskEscalateRequest = z.infer<typeof InternalTaskEscalateRequestSchema>;
+export type CreateTaskReviewRequest = z.infer<typeof CreateTaskReviewRequestSchema>;
+export type ReviewDecisionRequest = z.infer<typeof ReviewDecisionRequestSchema>;
+export type InternalReviewListRequest = z.infer<typeof InternalReviewListRequestSchema>;
 export type InternalGoalListRequest = z.infer<typeof InternalGoalListRequestSchema>;
 export type InternalGoalCreateRequest = z.infer<typeof InternalGoalCreateRequestSchema>;
 export type InternalGoalCreateTasksRequest = z.infer<typeof InternalGoalCreateTasksRequestSchema>;

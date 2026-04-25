@@ -4,6 +4,7 @@ import {
   createVersionInfo,
   ConfirmGoalAlignmentRequestSchema,
   CreateReminderRequestSchema,
+  CreateTaskReviewRequestSchema,
   InternalGoalCreateRequestSchema,
   InternalGoalCreateTasksRequestSchema,
   InternalGoalListRequestSchema,
@@ -21,13 +22,16 @@ import {
   InternalTaskListRequestSchema,
   InternalTaskProgressRequestSchema,
   InternalTaskUpdateRequestSchema,
+  InternalReviewListRequestSchema,
   PatchReminderRequestSchema,
+  ReviewDecisionRequestSchema,
   type GoalAlignment,
   type AgentInboxItem,
   type Agent,
   type DirectMessage,
   type Task,
   type TaskProgressEventType,
+  type TaskReview,
 } from '@mini-slock/shared';
 import { buildClarifyingQuestions, inferGoalRiskLevel, recommendAgentsForGoal, toRuntimeConfig } from '@mini-slock/hub-core';
 import { getStore } from '../db.js';
@@ -425,6 +429,53 @@ export async function internalAgentRoutes(app: FastifyInstance) {
     return reply.status(201).send({ alignment: updated ?? alignment, goal, tasks });
   });
 
+  app.get<{ Params: { agentId: string }; Querystring: { all?: string } }>('/internal/agent/:agentId/reviews', async (req, reply) => {
+    const store = getStore();
+    const agent = await store.getAgent(req.params.agentId);
+    if (!agent) return reply.status(404).send({ error: 'Agent not found' });
+    const parsed = InternalReviewListRequestSchema.safeParse(req.query);
+    if (!parsed.success) return reply.status(400).send({ error: 'Invalid query', issues: parsed.error.issues });
+    const reviews = (await store.listTasks()).flatMap((task) => (task.context?.reviews ?? []).map((review) => ({ ...review, task })));
+    return reviews.filter((review) => parsed.data.all || review.reviewerAgentId === agent.id);
+  });
+
+  app.post<{ Params: { agentId: string; taskId: string } }>('/internal/agent/:agentId/tasks/:taskId/reviews', async (req, reply) => {
+    const store = getStore();
+    const agent = await store.getAgent(req.params.agentId);
+    if (!agent) return reply.status(404).send({ error: 'Agent not found' });
+    const task = await store.getTask(req.params.taskId);
+    if (!task) return reply.status(404).send({ error: 'Task not found' });
+    const parsed = CreateTaskReviewRequestSchema.safeParse({ ...((req.body ?? {}) as object), requesterAgentId: agent.id });
+    if (!parsed.success) return reply.status(400).send({ error: 'Invalid request body', issues: parsed.error.issues });
+    if (isHighRiskReviewTask(task) && parsed.data.reviewerAgentId === agent.id && !parsed.data.allowSelfReview) {
+      return reply.status(400).send({ error: 'High risk task requires a different reviewer' });
+    }
+    const review = createTaskReview(task.id, parsed.data);
+    const updated = await store.updateTask(task.id, {
+      status: 'in_review',
+      context: {
+        ...task.context,
+        reviewerAgentId: parsed.data.reviewerAgentId,
+        evidence: review.evidence,
+        acceptanceChecklist: review.checklist.map((item) => item.label),
+        reviewIds: [...(task.context?.reviewIds ?? []), review.id],
+        reviewNotes: [...(task.context?.reviewNotes ?? []), parsed.data.selfReviewReason ? `self-review allowed: ${parsed.data.selfReviewReason}` : parsed.data.comment ?? 'review requested'],
+        reviews: [...(task.context?.reviews ?? []), review],
+      },
+    });
+    if (!updated) return reply.status(404).send({ error: 'Task not found' });
+    eventBus.emit({ type: 'task:update', task: updated });
+    return reply.status(201).send(review);
+  });
+
+  app.post<{ Params: { agentId: string; reviewId: string } }>('/internal/agent/:agentId/reviews/:reviewId/approve', async (req, reply) => {
+    return internalReviewDecision(req.params.agentId, req.params.reviewId, req.body, 'approved', reply);
+  });
+
+  app.post<{ Params: { agentId: string; reviewId: string } }>('/internal/agent/:agentId/reviews/:reviewId/request-changes', async (req, reply) => {
+    return internalReviewDecision(req.params.agentId, req.params.reviewId, req.body, 'changes_requested', reply);
+  });
+
   app.get<{ Params: { agentId: string } }>('/internal/agent/:agentId/reminders', async (req, reply) => {
     const store = getStore();
     const agent = await store.getAgent(req.params.agentId);
@@ -635,6 +686,60 @@ function buildPlanSummary(objective: string, recommendation: ReturnType<typeof r
   return `Draft plan for "${objective}". Owners: ${owners}. Reviewers: ${reviewers}. Risk: ${riskLevel}.`;
 }
 
+async function internalReviewDecision(agentId: string, reviewId: string, body: unknown, status: 'approved' | 'changes_requested', reply: any) {
+  const store = getStore();
+  const agent = await store.getAgent(agentId);
+  if (!agent) return reply.status(404).send({ error: 'Agent not found' });
+  const parsed = ReviewDecisionRequestSchema.safeParse({ ...((body ?? {}) as object), reviewerAgentId: agent.id });
+  if (!parsed.success) return reply.status(400).send({ error: 'Invalid request body', issues: parsed.error.issues });
+  const task = (await store.listTasks()).find((candidate) => candidate.context?.reviews?.some((review) => review.id === reviewId));
+  if (!task) return reply.status(404).send({ error: 'Review not found' });
+  const review = task.context?.reviews?.find((candidate) => candidate.id === reviewId);
+  if (review?.reviewerAgentId && review.reviewerAgentId !== agent.id) return reply.status(403).send({ error: 'Review is assigned to another agent' });
+  const now = new Date().toISOString();
+  const reviews = (task.context?.reviews ?? []).map((candidate) => candidate.id === reviewId
+    ? {
+      ...candidate,
+      reviewerAgentId: parsed.data.reviewerAgentId ?? candidate.reviewerAgentId,
+      status,
+      comment: parsed.data.comment,
+      checklist: candidate.checklist.map((item) => ({ ...item, checked: status === 'approved' ? true : item.checked })),
+      updatedAt: now,
+    }
+    : candidate);
+  const updated = await store.updateTask(task.id, {
+    status: status === 'approved' ? 'done' : 'in_progress',
+    context: {
+      ...task.context,
+      reviewNotes: [...(task.context?.reviewNotes ?? []), `${status}: ${parsed.data.comment}`],
+      reviews,
+    },
+  });
+  if (!updated) return reply.status(404).send({ error: 'Task not found' });
+  eventBus.emit({ type: 'task:update', task: updated });
+  return reply.status(200).send(reviews.find((candidate) => candidate.id === reviewId));
+}
+
+function createTaskReview(taskId: string, data: { requesterAgentId?: string; reviewerAgentId?: string; evidence: string[]; checklist: Array<string | { label: string; checked: boolean }>; comment?: string }): TaskReview {
+  const now = new Date().toISOString();
+  return {
+    id: nanoid(),
+    taskId,
+    requesterAgentId: data.requesterAgentId,
+    reviewerAgentId: data.reviewerAgentId,
+    status: 'requested',
+    evidence: data.evidence,
+    checklist: data.checklist.map((item) => typeof item === 'string' ? { label: item, checked: false } : item),
+    comment: data.comment,
+    createdAt: now,
+    updatedAt: now,
+  };
+}
+
+function isHighRiskReviewTask(task: { context?: { risks?: string[] } }): boolean {
+  return (task.context?.risks ?? []).some((risk) => /high|production|payment|legal|privacy|credential|高风险|上线|支付|隐私/.test(risk.toLowerCase()));
+}
+
 async function buildInbox(agent: Agent, limit: number): Promise<AgentInboxItem[]> {
   const store = getStore();
   const tasks = await store.listTasks();
@@ -643,6 +748,22 @@ async function buildInbox(agent: Agent, limit: number): Promise<AgentInboxItem[]
   const items: AgentInboxItem[] = [];
   for (const task of tasks) {
     if (task.status === 'done') continue;
+    for (const review of task.context?.reviews ?? []) {
+      if (review.status === 'requested' && review.reviewerAgentId === agent.id) {
+        items.push({
+          id: `review_request:${review.id}`,
+          kind: 'review_request',
+          agentId: agent.id,
+          channelId: task.channelId,
+          messageId: task.messageId,
+          taskId: task.id,
+          goalId: task.context?.goalId,
+          priority: task.context?.risks?.some((risk) => /high|production|payment|legal|privacy|credential|高风险|上线|支付|隐私/.test(risk.toLowerCase())) ? 'high' : 'normal',
+          summary: `Review requested: ${task.title}`,
+          createdAt: review.createdAt,
+        });
+      }
+    }
     if (task.assigneeId === agent.id) {
       items.push({
         id: `assigned_task:${task.id}`,

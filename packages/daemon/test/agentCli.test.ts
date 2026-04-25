@@ -220,6 +220,36 @@ describe('agent-facing xoxiang CLI', () => {
     expect(escalateFetch).toHaveBeenCalledWith('http://hub.test/internal/agent/agent-1/tasks/task-1/escalate', expect.objectContaining({ method: 'POST', body: JSON.stringify({ reason: 'blocked' }) }));
   });
 
+  it('supports review list, request, approve, and request-changes commands', async () => {
+    const listFetch = okFetch([{ id: 'review-1' }]);
+    expect((await run(['review', 'list'], listFetch)).code).toBe(0);
+    expect(listFetch).toHaveBeenCalledWith('http://hub.test/internal/agent/agent-1/reviews', expect.objectContaining({ method: 'GET' }));
+
+    const allFetch = okFetch([{ id: 'review-1' }]);
+    expect((await run(['review', 'list', '--all'], allFetch)).code).toBe(0);
+    expect(allFetch).toHaveBeenCalledWith('http://hub.test/internal/agent/agent-1/reviews?all=true', expect.objectContaining({ method: 'GET' }));
+
+    const requestFetch = okFetch({ id: 'review-1' });
+    expect((await run(['review', 'request', 'task-1', '--reviewer', 'qa', '--evidence', 'pnpm verify passed|web screenshot ok', '--check', 'tests pass|UI shows review'], requestFetch)).code).toBe(0);
+    expect(requestFetch).toHaveBeenCalledWith('http://hub.test/internal/agent/agent-1/tasks/task-1/reviews', expect.objectContaining({
+      method: 'POST',
+      body: JSON.stringify({
+        reviewerAgentId: 'qa',
+        evidence: ['pnpm verify passed', 'web screenshot ok'],
+        checklist: ['tests pass', 'UI shows review'],
+        allowSelfReview: false,
+      }),
+    }));
+
+    const approveFetch = okFetch({ id: 'review-1', status: 'approved' });
+    expect((await run(['review', 'approve', 'review-1', '--comment', 'verified'], approveFetch)).code).toBe(0);
+    expect(approveFetch).toHaveBeenCalledWith('http://hub.test/internal/agent/agent-1/reviews/review-1/approve', expect.objectContaining({ method: 'POST', body: JSON.stringify({ comment: 'verified' }) }));
+
+    const changesFetch = okFetch({ id: 'review-1', status: 'changes_requested' });
+    expect((await run(['review', 'request-changes', 'review-1', '--comment', 'add evidence'], changesFetch)).code).toBe(0);
+    expect(changesFetch).toHaveBeenCalledWith('http://hub.test/internal/agent/agent-1/reviews/review-1/request-changes', expect.objectContaining({ method: 'POST', body: JSON.stringify({ comment: 'add evidence' }) }));
+  });
+
   it('lists goals with optional filters', async () => {
     const fetchImpl = okFetch([{ id: 'goal-1', objective: 'ship v1.1' }]);
     const result = await run(['goal', 'list', '--channel', 'general', '--status', 'draft'], fetchImpl);
