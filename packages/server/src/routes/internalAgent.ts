@@ -6,6 +6,8 @@ import {
   InternalDmSendRequestSchema,
   InternalMessageReadRequestSchema,
   InternalMessageSendRequestSchema,
+  InternalTaskListRequestSchema,
+  InternalTaskUpdateRequestSchema,
   type Agent,
   type DirectMessage,
 } from '@mini-slock/shared';
@@ -130,6 +132,47 @@ export async function internalAgentRoutes(app: FastifyInstance) {
       startIfInactive: parsed.data.startIfInactive,
     });
     return reply.status(delegation.status === 'failed' ? 202 : 201).send(delegation);
+  });
+
+  app.get<{ Params: { agentId: string }; Querystring: { channel?: string; status?: string; all?: string } }>('/internal/agent/:agentId/tasks', async (req, reply) => {
+    const store = getStore();
+    const agent = await store.getAgent(req.params.agentId);
+    if (!agent) return reply.status(404).send({ error: 'Agent not found' });
+    const parsed = InternalTaskListRequestSchema.safeParse(req.query);
+    if (!parsed.success) return reply.status(400).send({ error: 'Invalid query', issues: parsed.error.issues });
+    const channel = parsed.data.channel ? await findChannel(parsed.data.channel) : undefined;
+    if (parsed.data.channel && !channel) return reply.status(404).send({ error: 'Channel not found' });
+    const tasks = await store.listTasks({
+      channelId: channel?.id,
+      status: parsed.data.status,
+      assigneeId: parsed.data.all ? undefined : agent.id,
+    });
+    return tasks;
+  });
+
+  app.get<{ Params: { agentId: string; taskId: string } }>('/internal/agent/:agentId/tasks/:taskId', async (req, reply) => {
+    const store = getStore();
+    const agent = await store.getAgent(req.params.agentId);
+    if (!agent) return reply.status(404).send({ error: 'Agent not found' });
+    const task = await store.getTask(req.params.taskId);
+    if (!task) return reply.status(404).send({ error: 'Task not found' });
+    if (task.assigneeId && task.assigneeId !== agent.id) return reply.status(403).send({ error: 'Task is assigned to another agent' });
+    return task;
+  });
+
+  app.post<{ Params: { agentId: string; taskId: string } }>('/internal/agent/:agentId/tasks/:taskId/update', async (req, reply) => {
+    const store = getStore();
+    const agent = await store.getAgent(req.params.agentId);
+    if (!agent) return reply.status(404).send({ error: 'Agent not found' });
+    const existing = await store.getTask(req.params.taskId);
+    if (!existing) return reply.status(404).send({ error: 'Task not found' });
+    if (existing.assigneeId && existing.assigneeId !== agent.id) return reply.status(403).send({ error: 'Task is assigned to another agent' });
+    const parsed = InternalTaskUpdateRequestSchema.safeParse(req.body);
+    if (!parsed.success) return reply.status(400).send({ error: 'Invalid request body', issues: parsed.error.issues });
+    const task = await store.updateTask(req.params.taskId, parsed.data);
+    if (!task) return reply.status(404).send({ error: 'Task not found' });
+    eventBus.emit({ type: 'task:update', task });
+    return task;
   });
 }
 

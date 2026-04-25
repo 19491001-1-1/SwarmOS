@@ -242,6 +242,26 @@ export const InternalAgentDelegateRequestSchema = z.object({
   startIfInactive: z.boolean().optional(),
 });
 
+export const InternalTaskListRequestSchema = z.object({
+  channel: z.string().min(1).optional(),
+  status: TaskStatusSchema.optional(),
+  all: z.preprocess((value) => {
+    if (value === undefined) return false;
+    if (value === true || value === 'true' || value === '1') return true;
+    if (value === false || value === 'false' || value === '0') return false;
+    return value;
+  }, z.boolean()).default(false),
+});
+
+export const InternalTaskUpdateRequestSchema = z
+  .object({
+    status: TaskStatusSchema.optional(),
+    assigneeId: z.string().optional(),
+  })
+  .refine((val) => val.status !== undefined || val.assigneeId !== undefined, {
+    message: 'At least one field must be provided',
+  });
+
 export type CreateAgentRequest = z.infer<typeof CreateAgentRequestSchema>;
 export type PatchAgentRequest = z.infer<typeof PatchAgentRequestSchema>;
 export type CreateMessageRequest = z.infer<typeof CreateMessageRequestSchema>;
@@ -254,6 +274,8 @@ export type InternalMessageSendRequest = z.infer<typeof InternalMessageSendReque
 export type InternalMessageReadRequest = z.infer<typeof InternalMessageReadRequestSchema>;
 export type InternalDmSendRequest = z.infer<typeof InternalDmSendRequestSchema>;
 export type InternalAgentDelegateRequest = z.infer<typeof InternalAgentDelegateRequestSchema>;
+export type InternalTaskListRequest = z.infer<typeof InternalTaskListRequestSchema>;
+export type InternalTaskUpdateRequest = z.infer<typeof InternalTaskUpdateRequestSchema>;
 
 export const ServerToDaemonSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('ping') }),
