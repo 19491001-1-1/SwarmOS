@@ -36,6 +36,10 @@ export function ChannelView({
   const lastMessageCount = useRef(messages.length);
   const wasNearBottom = useRef(true);
   const [showJumpToLatest, setShowJumpToLatest] = useState(false);
+  const [threadsOpen, setThreadsOpen] = useState(false);
+  const threadRoots = messages
+    .filter((message) => (message.replyCount ?? 0) > 0)
+    .sort((a, b) => new Date(b.latestReplyAt ?? b.createdAt).getTime() - new Date(a.latestReplyAt ?? a.createdAt).getTime());
 
   useLayoutEffect(() => {
     const scrollEl = scrollRef.current;
@@ -122,6 +126,42 @@ export function ChannelView({
         </div>
         <span style={{ fontWeight: 700, fontSize: 15 }}>{channelName}</span>
         <span style={{ fontSize: 12, color: '#888', marginLeft: 4 }}>— chat channel</span>
+        <div style={{ position: 'relative', marginLeft: 'auto' }}>
+          <button
+            type="button"
+            onClick={() => setThreadsOpen((open) => !open)}
+            style={threadListButtonStyle}
+          >
+            {t('thread.list')} {threadRoots.length ? `(${threadRoots.length})` : ''}
+          </button>
+          {threadsOpen ? (
+            <div style={threadListMenuStyle}>
+              {threadRoots.length === 0 ? (
+                <div style={{ padding: 12, color: '#888', fontSize: 12 }}>{t('thread.empty')}</div>
+              ) : threadRoots.map((message) => (
+                <button
+                  key={message.id}
+                  type="button"
+                  onClick={() => {
+                    setThreadsOpen(false);
+                    onOpenThread?.(message);
+                  }}
+                  style={threadListItemStyle}
+                >
+                  <span style={{ fontWeight: 700, fontSize: 11 }}>
+                    {message.senderName} · {t('thread.replies', { count: message.replyCount ?? 0 })}
+                  </span>
+                  <span style={{ color: '#777', fontSize: 10 }}>
+                    {formatTime(message.latestReplyAt ?? message.createdAt)}
+                  </span>
+                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {summarizeMessage(message.content)}
+                  </span>
+                </button>
+              ))}
+            </div>
+          ) : null}
+        </div>
       </div>
 
       {/* Messages */}
@@ -260,6 +300,46 @@ const jumpButtonStyle: React.CSSProperties = {
   boxShadow: '0 2px 8px rgba(0,0,0,0.12)',
 };
 
+const threadListButtonStyle: React.CSSProperties = {
+  border: '1px solid #c8c8b8',
+  background: '#fff',
+  minHeight: 26,
+  padding: '0 9px',
+  fontSize: 12,
+  fontWeight: 700,
+  fontFamily: "'Courier New', monospace",
+  cursor: 'pointer',
+  borderRadius: 4,
+};
+
+const threadListMenuStyle: React.CSSProperties = {
+  position: 'absolute',
+  top: 32,
+  right: 0,
+  width: 320,
+  maxHeight: 'min(420px, calc(100vh - 90px))',
+  overflowY: 'auto',
+  border: '1px solid #c8c8b8',
+  background: '#fff',
+  boxShadow: '0 8px 24px rgba(0,0,0,0.14)',
+  zIndex: 4,
+  borderRadius: 6,
+};
+
+const threadListItemStyle: React.CSSProperties = {
+  width: '100%',
+  border: 0,
+  borderBottom: '1px solid #efefe5',
+  background: '#fff',
+  padding: '9px 10px',
+  display: 'grid',
+  gap: 3,
+  textAlign: 'left',
+  fontFamily: "'Courier New', monospace",
+  fontSize: 12,
+  cursor: 'pointer',
+};
+
 function isNearBottom(element: HTMLElement): boolean {
   return element.scrollHeight - element.scrollTop - element.clientHeight < 80;
 }
@@ -267,4 +347,8 @@ function isNearBottom(element: HTMLElement): boolean {
 function formatTime(iso: string): string {
   const d = new Date(iso);
   return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+
+function summarizeMessage(content: string): string {
+  return content.replace(/\\n/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 120) || '[empty message]';
 }
