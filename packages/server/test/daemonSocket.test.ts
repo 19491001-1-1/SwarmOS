@@ -257,6 +257,97 @@ describe('daemon WebSocket', () => {
     daemon.close();
   });
 
+  it('delivers delegation to a running target agent', async () => {
+    const daemon = await connectDaemon('dev-machine-key');
+    const browser = await connectBrowser();
+    await sendAndWait(daemon, {
+      type: 'ready',
+      machineId: 'machine-1',
+      hostname: 'h',
+      os: 'linux',
+      daemonVersion: '0.1.0',
+      runtimes: ['claude'],
+      runtimeVersions: { claude: '1.0' },
+      runningAgents: [],
+      capabilities: [],
+    });
+
+    const store = getStore();
+    await store.createAgent({ id: 'agent-1', name: 'sender', runtime: 'claude', status: 'running', machineId: 'machine-1', createdAt: new Date().toISOString() });
+    await store.createAgent({ id: 'agent-2', name: 'receiver', runtime: 'claude', status: 'running', machineId: 'machine-1', createdAt: new Date().toISOString() });
+
+    const delegationEvent = waitForBrowserEvent(browser, 'agent:delegation');
+    const deliverPromise = waitForDaemonMessage(daemon, 'agent:deliver');
+    await sendAndWait(daemon, {
+      type: 'agent:delegate',
+      fromAgentId: 'agent-1',
+      toAgentId: 'receiver',
+      content: 'please handle this',
+    });
+
+    const deliver = await deliverPromise;
+    expect(deliver.agentId).toBe('agent-2');
+    expect(deliver.message.content).toBe('please handle this');
+    const event = await delegationEvent;
+    expect(['queued', 'delivered']).toContain(event.delegation.status);
+    const delegations = await store.listAgentDelegations('agent-1');
+    expect(delegations[0]).toMatchObject({ fromAgentId: 'agent-1', toAgentId: 'agent-2', content: 'please handle this', status: 'delivered' });
+    expect(await store.listDirectMessages('agent-2', 'agent-1')).toHaveLength(1);
+    browser.close();
+    daemon.close();
+  });
+
+  it('starts an inactive delegation target with a wake message', async () => {
+    const daemon = await connectDaemon('dev-machine-key');
+    await sendAndWait(daemon, {
+      type: 'ready',
+      machineId: 'machine-1',
+      hostname: 'h',
+      os: 'linux',
+      daemonVersion: '0.1.0',
+      runtimes: ['claude'],
+      runtimeVersions: { claude: '1.0' },
+      runningAgents: [],
+      capabilities: [],
+    });
+
+    const store = getStore();
+    await store.createAgent({ id: 'agent-1', name: 'sender', runtime: 'claude', status: 'running', machineId: 'machine-1', createdAt: new Date().toISOString() });
+    await store.createAgent({ id: 'agent-2', name: 'receiver', runtime: 'claude', status: 'inactive', createdAt: new Date().toISOString() });
+
+    const startPromise = waitForDaemonMessage(daemon, 'agent:start');
+    await sendAndWait(daemon, {
+      type: 'agent:delegate',
+      fromAgentId: 'agent-1',
+      toAgentId: 'receiver',
+      content: 'wake up and work',
+    });
+
+    const start = await startPromise;
+    expect(start.agentId).toBe('agent-2');
+    expect(start.wakeMessage.content).toBe('wake up and work');
+    expect((await store.getAgent('agent-2'))?.status).toBe('starting');
+    expect((await store.listAgentDelegations('agent-1'))[0].status).toBe('started');
+    daemon.close();
+  });
+
+  it('records failed delegation when no compatible machine is available', async () => {
+    const store = getStore();
+    await store.createAgent({ id: 'agent-1', name: 'sender', runtime: 'claude', status: 'running', createdAt: new Date().toISOString() });
+    await store.createAgent({ id: 'agent-2', name: 'receiver', runtime: 'claude', status: 'inactive', createdAt: new Date().toISOString() });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/agents/agent-1/delegate/receiver',
+      payload: { content: 'work without machine' },
+    });
+    expect(res.statusCode).toBe(202);
+    const delegation = res.json();
+    expect(delegation.status).toBe('failed');
+    expect(delegation.error).toContain('No connected machine');
+    expect(await store.listDirectMessages('agent-2', 'agent-1')).toHaveLength(1);
+  });
+
   it('reuses machine id after daemon reconnect and can start a bound agent', async () => {
     const first = await connectDaemon('dev-machine-key');
     await sendAndWait(first, {

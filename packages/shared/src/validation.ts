@@ -64,6 +64,13 @@ export const DaemonToServerSchema = z.discriminatedUnion('type', [
     content: z.string().min(1),
   }),
   z.object({
+    type: z.literal('agent:delegate'),
+    fromAgentId: z.string().min(1),
+    toAgentId: z.string().min(1),
+    content: z.string().min(1),
+    startIfInactive: z.boolean().optional(),
+  }),
+  z.object({
     type: z.literal('agent:message'),
     agentId: z.string(),
     channelId: z.string(),
@@ -128,10 +135,16 @@ export const CreateDirectMessageRequestSchema = z.object({
   fromAgentId: z.string().optional(),
 });
 
+export const CreateAgentDelegationRequestSchema = z.object({
+  content: z.string().min(1),
+  startIfInactive: z.boolean().optional(),
+});
+
 export type CreateAgentRequest = z.infer<typeof CreateAgentRequestSchema>;
 export type PatchAgentRequest = z.infer<typeof PatchAgentRequestSchema>;
 export type CreateMessageRequest = z.infer<typeof CreateMessageRequestSchema>;
 export type CreateDirectMessageRequest = z.infer<typeof CreateDirectMessageRequestSchema>;
+export type CreateAgentDelegationRequest = z.infer<typeof CreateAgentDelegationRequestSchema>;
 
 export const ServerToDaemonSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('ping') }),

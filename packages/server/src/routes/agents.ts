@@ -3,8 +3,9 @@ import { nanoid } from 'nanoid';
 import { getStore } from '../db.js';
 import { daemonRegistry } from '../daemonRegistry.js';
 import { eventBus } from '../events.js';
-import { CreateAgentRequestSchema, CreateDirectMessageRequestSchema, PatchAgentRequestSchema, type Agent, type DirectMessage } from '@mini-slock/shared';
+import { CreateAgentDelegationRequestSchema, CreateAgentRequestSchema, CreateDirectMessageRequestSchema, PatchAgentRequestSchema, type Agent, type DirectMessage } from '@mini-slock/shared';
 import { resolveStartMachineId, toRuntimeConfig } from '@mini-slock/hub-core';
+import { delegateAgent } from '../delegation.js';
 
 export async function agentRoutes(app: FastifyInstance) {
   app.get('/api/agents', async () => {
@@ -95,6 +96,30 @@ export async function agentRoutes(app: FastifyInstance) {
     eventBus.emit({ type: 'dm:new', dm });
     deliverDirectMessage(target, dm);
     return reply.status(201).send(dm);
+  });
+
+  app.get<{ Params: { id: string } }>('/api/agents/:id/delegations', async (req, reply) => {
+    const store = getStore();
+    const agent = await store.getAgent(req.params.id);
+    if (!agent) return reply.status(404).send({ error: 'Agent not found' });
+    return store.listAgentDelegations(agent.id);
+  });
+
+  app.post<{ Params: { id: string; otherId: string } }>('/api/agents/:id/delegate/:otherId', async (req, reply) => {
+    const store = getStore();
+    const from = await store.getAgent(req.params.id);
+    if (!from) return reply.status(404).send({ error: 'Agent not found' });
+    const parsed = CreateAgentDelegationRequestSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: 'Invalid request body', issues: parsed.error.issues });
+    }
+    const delegation = await delegateAgent({
+      fromAgentId: from.id,
+      toAgentId: req.params.otherId,
+      content: parsed.data.content,
+      startIfInactive: parsed.data.startIfInactive,
+    });
+    return reply.status(delegation.status === 'failed' ? 202 : 201).send(delegation);
   });
 
   app.post<{ Params: { id: string } }>('/api/agents/:id/start', async (req, reply) => {
