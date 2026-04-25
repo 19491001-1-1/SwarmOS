@@ -20,11 +20,19 @@ const MAX_WORKSPACE_FILE_BYTES = 100 * 1024;
 function buildAgentCliWrapper(): string {
   const moduleDir = dirname(fileURLToPath(import.meta.url));
   const packageDir = dirname(moduleDir);
-  const isSourceRun = moduleDir.endsWith(`${sep}src`);
-  const command = isSourceRun
-    ? `exec pnpm --dir ${shQuote(packageDir)} exec tsx src/agentCli.ts "$@"`
-    : `exec node ${shQuote(join(moduleDir, 'agentCli.js'))} "$@"`;
-  return `#!/usr/bin/env sh\n${command}\n`;
+  const distCli = moduleDir.endsWith(`${sep}src`)
+    ? join(packageDir, 'dist', 'agentCli.js')
+    : join(moduleDir, 'agentCli.js');
+  return [
+    '#!/usr/bin/env sh',
+    `CLI=${shQuote(distCli)}`,
+    'if [ ! -f "$CLI" ]; then',
+    '  echo "xoxiang CLI is not built. Run: pnpm --filter @mini-slock/daemon build" >&2',
+    '  exit 127',
+    'fi',
+    'exec node "$CLI" "$@"',
+    '',
+  ].join('\n');
 }
 
 function shQuote(value: string): string {

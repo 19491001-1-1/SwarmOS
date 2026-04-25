@@ -95,7 +95,12 @@ describe('AgentProcessManager', () => {
     );
     expect(vi.mocked(writeFile)).toHaveBeenCalledWith(
       expect.stringContaining('/tmp/test-workspaces/agent-1/.xoxiang/xoxiang'),
-      expect.stringContaining('agentCli.ts'),
+      expect.stringContaining('dist/agentCli.js'),
+      { mode: 0o755 }
+    );
+    expect(vi.mocked(writeFile)).toHaveBeenCalledWith(
+      expect.stringContaining('/tmp/test-workspaces/agent-1/.xoxiang/xoxiang'),
+      expect.not.stringContaining('tsx'),
       { mode: 0o755 }
     );
   });
