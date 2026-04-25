@@ -20,6 +20,8 @@ export const geminiDriver: RuntimeDriver = {
       '-p', ctx.userMessage,
       '--output-format', 'text',
       '-y',
+      '--sandbox', 'false',
+      '--approval-mode', 'yolo',
     ];
     if (ctx.config.model) {
       args.push('-m', ctx.config.model);

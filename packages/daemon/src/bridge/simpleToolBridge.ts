@@ -75,8 +75,10 @@ export function buildBridgeInstruction(): string {
     '- `xoxiang message send --channel general --content "..."`',
     '- `xoxiang message check`',
     '- `xoxiang message read --channel general --limit 20`',
+    '- `xoxiang agent list` to view the agent directory with names, roles, runtimes, and statuses',
     '- `xoxiang dm send --to agentName --content "..."`',
     '- `xoxiang agent delegate --to agentName --content "..." --start-if-inactive`',
+    'When you are unsure how to do a task, need help, or need a specialist role, check `xoxiang agent list` first, then DM or delegate to the best matching agent.',
     'Never print or reveal the agent token file content.',
     `If the CLI is unavailable, send a chat reply by outputting exactly one line:\n${BRIDGE_MARKER} {"content":"your message here"}`,
   ].join('\n');

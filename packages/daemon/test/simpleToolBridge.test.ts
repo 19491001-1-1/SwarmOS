@@ -6,6 +6,7 @@ import {
   BRIDGE_MARKER,
   DM_BRIDGE_MARKER,
   DELEGATE_BRIDGE_MARKER,
+  buildBridgeInstruction,
   buildDmInstruction,
   buildDelegateInstruction,
 } from '../src/bridge/simpleToolBridge.js';
@@ -38,6 +39,12 @@ describe('parseBridgeLine', () => {
     const line = `some prefix ${BRIDGE_MARKER} {"content":"reply"}`;
     const result = parseBridgeLine(line);
     expect(result?.content).toBe('reply');
+  });
+
+  it('instructs agents to use the agent directory before asking for help', () => {
+    const instruction = buildBridgeInstruction();
+    expect(instruction).toContain('xoxiang agent list');
+    expect(instruction).toContain('need a specialist role');
   });
 });
 

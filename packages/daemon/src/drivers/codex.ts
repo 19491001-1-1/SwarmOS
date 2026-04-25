@@ -25,6 +25,8 @@ export const codexDriver: RuntimeDriver = {
       'exec',
       prompt,
       '--skip-git-repo-check',
+      '--sandbox', 'danger-full-access',
+      '--dangerously-bypass-approvals-and-sandbox',
     ];
     if (ctx.config.model) {
       args.push('-c', `model=${JSON.stringify(ctx.config.model)}`);
