@@ -16,15 +16,15 @@
 
 ### 1.1 Phase Two Product Direction
 
-v1.x 阶段的产品目标是从“Agent 协作工作台”升级为“Agent-native company”：系统不只承载聊天和任务，而是承载一个由 agent 组成的公司组织。老板通过目标、约束和优先级进行编排；agent 通过组织角色、项目、任务、知识、工具和质量流程完成线上工作闭环。
+v1.x 阶段的产品目标是从“Agent 协作工作台”升级为围绕目标运转的 Agent 协作系统。系统不复制复杂的人类组织架构，而是让一组 Agent 基于轻量角色、职责能力、目标上下文和知识记忆持续协作。
 
-第二阶段的详细路线图见 [v1.x — Phase Two Roadmap: Agent-Native Company](./v1-phase-two-roadmap.md)。所有 v1.x 设计应遵循以下方向：
+第二阶段的详细路线图见 [v1.x — Phase Two Roadmap: Role, Goal & Memory](./v1-phase-two-roadmap.md)。所有 v1.x 设计应遵循以下方向：
 
-- 目标优先于对话：Goal/Project/Task/Decision/Artifact 是核心对象。
+- 目标从聊天中自然产生：用户仍在当前聊天里表达目标，系统负责澄清、拆解、分工和验收。
 - 信息传递默认结构化：handoff 必须携带背景、事实、决策、验收标准、风险、证据和下一步。
-- Agent 是组织成员：角色、能力、汇报关系、权限和质量责任是一等概念。
-- 自主性来自产品机制：inbox、claim、handoff、escalation、review、SLA 和 audit 要进入系统模型。
-- 创造力要有容器：方案、批判、研究和创新提案应先进入 proposal，再转项目执行。
+- Agent 有轻量角色画像：职责、能力、工作风格、交接偏好和边界是一等概念；部门、汇报线和组织图不是 v1.0 重点。
+- 自主性来自产品机制：inbox、claim、handoff、escalation、review 和 evidence 要进入系统模型。
+- 知识层是核心能力：项目档案、决策、经验和外部知识库 adapter 应逐步支撑 Agent 复用上下文。
 
 ---
 
