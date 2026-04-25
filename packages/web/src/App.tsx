@@ -3,15 +3,18 @@ import { Sidebar } from './components/Sidebar.js';
 import { ChannelView } from './components/ChannelView.js';
 import { Composer } from './components/Composer.js';
 import { AgentPanel } from './components/AgentPanel.js';
-import type { Channel, Message, Agent, Machine } from './api.js';
-import { API_BASE, getChannels, getMessages, sendMessage, getAgents, getMachines } from './api.js';
+import { AgentDetailPanel } from './components/AgentDetailPanel.js';
+import type { Channel, Message, Agent, Machine, AgentActivity } from './api.js';
+import { API_BASE, getChannels, getMessages, sendMessage, getAgents, getMachines, getAgentActivities } from './api.js';
 
 export function App() {
   const [channels, setChannels] = useState<Channel[]>([]);
   const [messages, setMessages] = useState<Message[]>([]);
   const [agents, setAgents] = useState<Agent[]>([]);
   const [machines, setMachines] = useState<Machine[]>([]);
+  const [activitiesByAgent, setActivitiesByAgent] = useState<Record<string, AgentActivity[]>>({});
   const [selectedChannel, setSelectedChannel] = useState('general');
+  const [selectedAgentId, setSelectedAgentId] = useState<string | undefined>();
   const wsRef = useRef<WebSocket | null>(null);
 
   const loadChannels = useCallback(async () => {
@@ -44,6 +47,13 @@ export function App() {
     loadMessages(selectedChannel);
   }, [selectedChannel]);
 
+  useEffect(() => {
+    if (!selectedAgentId) return;
+    getAgentActivities(selectedAgentId).then((data) => {
+      setActivitiesByAgent((prev) => ({ ...prev, [selectedAgentId]: data }));
+    });
+  }, [selectedAgentId]);
+
   // WebSocket for real-time updates
   useEffect(() => {
     const wsBase = API_BASE
@@ -61,6 +71,12 @@ export function App() {
         }
       } else if (msg.type === 'agent:update') {
         setAgents((prev) => prev.map((a) => (a.id === msg.agent.id ? msg.agent : a)));
+      } else if (msg.type === 'agent:activity') {
+        setActivitiesByAgent((prev) => {
+          const current = prev[msg.agentId] ?? [];
+          if (current.some((activity) => activity.id === msg.activity.id)) return prev;
+          return { ...prev, [msg.agentId]: [msg.activity, ...current].slice(0, 200) };
+        });
       } else if (msg.type === 'machine:update') {
         setMachines((prev) => {
           const exists = prev.find((m) => m.id === msg.machine.id);
@@ -78,6 +94,7 @@ export function App() {
   };
 
   const selectedChannelObj = channels.find((c) => c.id === selectedChannel);
+  const selectedAgent = selectedAgentId ? agents.find((a) => a.id === selectedAgentId) : undefined;
 
   return (
     <div style={{ display: 'flex', height: '100vh', fontFamily: "'Courier New', monospace", background: '#fafaf5' }}>
@@ -86,7 +103,9 @@ export function App() {
         agents={agents}
         machines={machines}
         selectedChannel={selectedChannel}
-        onSelectChannel={(id) => { setSelectedChannel(id); }}
+        selectedAgentId={selectedAgentId}
+        onSelectChannel={(id) => { setSelectedChannel(id); setSelectedAgentId(undefined); }}
+        onSelectAgent={(id) => { setSelectedAgentId(id); }}
       />
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, minHeight: 0 }}>
         <ChannelView
@@ -95,7 +114,15 @@ export function App() {
         />
         <Composer agents={agents} channelName={selectedChannelObj?.name ?? selectedChannel} onSend={handleSend} />
       </div>
-      <AgentPanel agents={agents} machines={machines} onAgentsChange={loadAgents} />
+      {selectedAgent ? (
+        <AgentDetailPanel
+          agent={selectedAgent}
+          activities={activitiesByAgent[selectedAgent.id] ?? []}
+          onClose={() => setSelectedAgentId(undefined)}
+        />
+      ) : (
+        <AgentPanel agents={agents} machines={machines} onAgentsChange={loadAgents} />
+      )}
     </div>
   );
 }

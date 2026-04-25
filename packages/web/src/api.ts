@@ -2,7 +2,8 @@ export const API_BASE = (import.meta.env.VITE_API_BASE ?? '').replace(/\/$/, '')
 
 export type Channel = { id: string; name: string; createdAt: string };
 export type Message = { id: string; channelId: string; senderName: string; content: string; agentId?: string; createdAt: string };
-export type Agent = { id: string; name: string; displayName?: string; runtime: string; model?: string; status: string; machineId?: string; createdAt: string };
+export type Agent = { id: string; name: string; displayName?: string; description?: string; runtime: string; model?: string; systemPrompt?: string; status: string; machineId?: string; createdAt: string };
+export type AgentActivity = { id: string; agentId: string; type: 'thinking' | 'working' | 'output' | 'idle' | 'sending' | 'error'; detail?: string; createdAt: string };
 export type Machine = { id: string; hostname: string; os: string; runtimes: string[]; status: string; connectedAt: string };
 
 export async function getChannels(): Promise<Channel[]> {
@@ -26,6 +27,11 @@ export async function sendMessage(channelId: string, senderName: string, content
 
 export async function getAgents(): Promise<Agent[]> {
   const r = await fetch(`${API_BASE}/api/agents`);
+  return r.json();
+}
+
+export async function getAgentActivities(agentId: string): Promise<AgentActivity[]> {
+  const r = await fetch(`${API_BASE}/api/agents/${agentId}/activities`);
   return r.json();
 }
 

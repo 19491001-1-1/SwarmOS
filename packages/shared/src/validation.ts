@@ -4,6 +4,8 @@ export const RuntimeIdSchema = z.enum(['claude', 'codex', 'gemini']);
 
 export const AgentStatusSchema = z.enum(['inactive', 'starting', 'running', 'working', 'idle', 'error']);
 
+export const AgentActivityTypeSchema = z.enum(['thinking', 'working', 'output', 'idle', 'sending', 'error']);
+
 export const AgentRuntimeConfigSchema = z.object({
   runtime: RuntimeIdSchema,
   model: z.string().optional(),
@@ -45,7 +47,7 @@ export const DaemonToServerSchema = z.discriminatedUnion('type', [
   z.object({
     type: z.literal('agent:activity'),
     agentId: z.string(),
-    activity: z.string(),
+    activityType: AgentActivityTypeSchema,
     detail: z.string().optional(),
     launchId: z.string().optional(),
   }),

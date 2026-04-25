@@ -3,9 +3,9 @@ import { dirname, join } from 'node:path';
 import { homedir } from 'node:os';
 import { drizzle, type LibSQLDatabase } from 'drizzle-orm/libsql';
 import { createClient, type Client } from '@libsql/client';
-import { asc, eq, inArray } from 'drizzle-orm';
-import type { Channel, Message, Machine, Agent, RuntimeId, AgentStatus } from '@mini-slock/shared';
-import { agents, channels, machines, messages } from './schema.js';
+import { asc, desc, eq, inArray } from 'drizzle-orm';
+import type { Channel, Message, Machine, Agent, RuntimeId, AgentStatus, AgentActivity } from '@mini-slock/shared';
+import { activities, agents, channels, machines, messages } from './schema.js';
 
 type Database = LibSQLDatabase<typeof import('./schema.js')>;
 
@@ -32,7 +32,7 @@ async function ensureDbDirectory(path: string): Promise<void> {
 function createDatabase(): Database {
   const path = getDbPath();
   client = createClient({ url: getDbUrl(path) });
-  db = drizzle(client, { schema: { agents, channels, machines, messages } });
+  db = drizzle(client, { schema: { activities, agents, channels, machines, messages } });
   return db;
 }
 
@@ -63,6 +63,15 @@ export async function initDb(): Promise<void> {
         sender_name TEXT NOT NULL,
         content TEXT NOT NULL,
         agent_id TEXT,
+        created_at TEXT NOT NULL
+      )
+    `);
+    await database.run(`
+      CREATE TABLE IF NOT EXISTS activities (
+        id TEXT PRIMARY KEY,
+        agent_id TEXT NOT NULL,
+        type TEXT NOT NULL,
+        detail TEXT,
         created_at TEXT NOT NULL
       )
     `);
@@ -144,6 +153,16 @@ function toMessage(row: typeof messages.$inferSelect): Message {
   };
 }
 
+function toActivity(row: typeof activities.$inferSelect): AgentActivity {
+  return {
+    id: row.id,
+    agentId: row.agentId,
+    type: row.type as AgentActivity['type'],
+    detail: row.detail ?? undefined,
+    createdAt: row.createdAt,
+  };
+}
+
 function toMachine(row: typeof machines.$inferSelect): Machine {
   return {
     id: row.id,
@@ -194,6 +213,41 @@ export class SqliteStore {
 
   async addMessage(msg: Omit<Message, 'createdAt'>): Promise<Message> {
     return this.createMessage(msg);
+  }
+
+  async createAgentActivity(activity: Omit<AgentActivity, 'createdAt'>): Promise<AgentActivity> {
+    await initDb();
+    const created: AgentActivity = { ...activity, createdAt: new Date().toISOString() };
+    await getDb().insert(activities).values({
+      ...created,
+      detail: created.detail ?? null,
+    });
+    await this.truncateAgentActivities(created.agentId, 500);
+    return created;
+  }
+
+  async listAgentActivities(agentId: string, limit = 200): Promise<AgentActivity[]> {
+    await initDb();
+    const rows = await getDb()
+      .select()
+      .from(activities)
+      .where(eq(activities.agentId, agentId))
+      .orderBy(desc(activities.createdAt))
+      .limit(limit);
+    return rows.map(toActivity);
+  }
+
+  private async truncateAgentActivities(agentId: string, keep: number): Promise<void> {
+    const stale = await getDb()
+      .select({ id: activities.id })
+      .from(activities)
+      .where(eq(activities.agentId, agentId))
+      .orderBy(desc(activities.createdAt))
+      .limit(100000)
+      .offset(keep);
+    if (stale.length > 0) {
+      await getDb().delete(activities).where(inArray(activities.id, stale.map((row) => row.id)));
+    }
   }
 
   async getMessage(id: string): Promise<Message | undefined> {
@@ -313,6 +367,7 @@ export async function resetStore(): Promise<void> {
   await initDb();
   const database = getDb();
   await database.delete(messages);
+  await database.delete(activities);
   await database.delete(agents);
   await database.delete(machines);
   await database.delete(channels);

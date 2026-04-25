@@ -1,6 +1,7 @@
 import { DurableObject } from 'cloudflare:workers';
 import type {
   Agent,
+  AgentActivity,
   BrowserEvent,
   Channel,
   DaemonToServer,
@@ -67,6 +68,12 @@ export class XoxiangHub extends DurableObject<Env> {
         return json(this.listAgents());
       }
 
+      const activitiesMatch = url.pathname.match(/^\/api\/agents\/([^/]+)\/activities$/);
+      if (activitiesMatch && request.method === 'GET') {
+        if (!this.getAgent(activitiesMatch[1])) return json({ error: 'Agent not found' }, 404);
+        return json(this.listAgentActivities(activitiesMatch[1], 200));
+      }
+
       if (request.method === 'POST' && url.pathname === '/api/agents') {
         return this.createAgent(await request.json());
       }
@@ -108,7 +115,7 @@ export class XoxiangHub extends DurableObject<Env> {
     const attachment = ws.deserializeAttachment() as SocketAttachment | undefined;
     if (!attachment || attachment.kind !== 'daemon') return;
 
-    if (data.type === 'pong' || data.type === 'agent:activity' || data.type === 'agent:deliver:ack') return;
+    if (data.type === 'pong' || data.type === 'agent:deliver:ack') return;
 
     if (data.type === 'ready') {
       const machineId = data.machineId || attachment.machineId;
@@ -152,6 +159,17 @@ export class XoxiangHub extends DurableObject<Env> {
         content: data.content,
       });
       this.broadcast({ type: 'message:new', message: created });
+      return;
+    }
+
+    if (data.type === 'agent:activity') {
+      const activity = this.createAgentActivity({
+        id: crypto.randomUUID(),
+        agentId: data.agentId,
+        type: data.activityType,
+        detail: data.detail,
+      });
+      this.broadcast({ type: 'agent:activity', agentId: data.agentId, activity });
     }
   }
 
@@ -198,6 +216,15 @@ export class XoxiangHub extends DurableObject<Env> {
         sender_name TEXT NOT NULL,
         content TEXT NOT NULL,
         agent_id TEXT,
+        created_at TEXT NOT NULL
+      )
+    `);
+    this.ctx.storage.sql.exec(`
+      CREATE TABLE IF NOT EXISTS activities (
+        id TEXT PRIMARY KEY,
+        agent_id TEXT NOT NULL,
+        type TEXT NOT NULL,
+        detail TEXT,
         created_at TEXT NOT NULL
       )
     `);
@@ -374,6 +401,44 @@ export class XoxiangHub extends DurableObject<Env> {
     return created;
   }
 
+  private createAgentActivity(activity: Omit<AgentActivity, 'createdAt'>): AgentActivity {
+    const created: AgentActivity = { ...activity, createdAt: new Date().toISOString() };
+    this.ctx.storage.sql.exec(
+      `INSERT INTO activities (id, agent_id, type, detail, created_at)
+       VALUES (?, ?, ?, ?, ?)`,
+      created.id,
+      created.agentId,
+      created.type,
+      created.detail ?? null,
+      created.createdAt
+    );
+    this.truncateAgentActivities(created.agentId, 500);
+    return created;
+  }
+
+  private listAgentActivities(agentId: string, limit: number): AgentActivity[] {
+    return this.ctx.storage.sql
+      .exec<Row>('SELECT * FROM activities WHERE agent_id = ? ORDER BY created_at DESC LIMIT ?', agentId, limit)
+      .toArray()
+      .map(toAgentActivity);
+  }
+
+  private truncateAgentActivities(agentId: string, keep: number): void {
+    this.ctx.storage.sql.exec(
+      `DELETE FROM activities
+       WHERE agent_id = ?
+         AND id NOT IN (
+           SELECT id FROM activities
+           WHERE agent_id = ?
+           ORDER BY created_at DESC
+           LIMIT ?
+         )`,
+      agentId,
+      agentId,
+      keep
+    );
+  }
+
   private listAgents(): Agent[] {
     return this.ctx.storage.sql.exec<Row>('SELECT * FROM agents ORDER BY created_at').toArray().map(toAgent);
   }
@@ -503,6 +568,16 @@ function toMessage(row: Row): Message {
     senderName: String(row.sender_name),
     content: String(row.content),
     agentId: row.agent_id ? String(row.agent_id) : undefined,
+    createdAt: String(row.created_at),
+  };
+}
+
+function toAgentActivity(row: Row): AgentActivity {
+  return {
+    id: String(row.id),
+    agentId: String(row.agent_id),
+    type: String(row.type) as AgentActivity['type'],
+    detail: row.detail ? String(row.detail) : undefined,
     createdAt: String(row.created_at),
   };
 }

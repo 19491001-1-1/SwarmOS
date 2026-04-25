@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { buildApp } from '../src/app.js';
-import { resetStore } from '../src/db.js';
+import { resetStore, getStore } from '../src/db.js';
 
 beforeEach(async () => {
   await resetStore();
@@ -84,6 +84,53 @@ describe('GET /api/agents', () => {
     const res = await app.inject({ method: 'GET', url: '/api/agents' });
     expect(res.statusCode).toBe(200);
     expect(res.json()).toHaveLength(1);
+    await app.close();
+  });
+});
+
+describe('GET /api/agents/:id/activities', () => {
+  it('returns recent activities for an agent newest first', async () => {
+    const app = await buildApp();
+    const store = getStore();
+    const agent = await store.createAgent({
+      id: 'agent-1',
+      name: 'bot',
+      runtime: 'claude',
+      status: 'inactive',
+      createdAt: new Date().toISOString(),
+    });
+    await store.createAgentActivity({ id: 'activity-1', agentId: agent.id, type: 'working', detail: 'Message received' });
+    await new Promise((resolve) => setTimeout(resolve, 2));
+    await store.createAgentActivity({ id: 'activity-2', agentId: agent.id, type: 'idle' });
+
+    const res = await app.inject({ method: 'GET', url: '/api/agents/agent-1/activities' });
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body).toHaveLength(2);
+    expect(body[0].id).toBe('activity-2');
+    expect(body[1].detail).toBe('Message received');
+    await app.close();
+  });
+
+  it('keeps at most 500 activities per agent and API returns recent 200', async () => {
+    const app = await buildApp();
+    const store = getStore();
+    await store.createAgent({
+      id: 'agent-1',
+      name: 'bot',
+      runtime: 'claude',
+      status: 'inactive',
+      createdAt: new Date().toISOString(),
+    });
+
+    for (let i = 0; i < 501; i += 1) {
+      await store.createAgentActivity({ id: `activity-${i}`, agentId: 'agent-1', type: 'output', detail: `line ${i}` });
+    }
+
+    expect(await store.listAgentActivities('agent-1', 1000)).toHaveLength(500);
+    const res = await app.inject({ method: 'GET', url: '/api/agents/agent-1/activities' });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toHaveLength(200);
     await app.close();
   });
 });

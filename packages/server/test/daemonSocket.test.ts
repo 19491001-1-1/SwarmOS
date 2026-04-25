@@ -41,6 +41,23 @@ function waitForDaemonMessage(ws: WebSocket, type: string): Promise<any> {
   });
 }
 
+function connectBrowser(): Promise<WebSocket> {
+  return new Promise((resolve, reject) => {
+    const ws = new WebSocket(`ws://127.0.0.1:${port}/ws`);
+    ws.on('open', () => resolve(ws));
+    ws.on('error', reject);
+  });
+}
+
+function waitForBrowserEvent(ws: WebSocket, type: string): Promise<any> {
+  return new Promise((resolve) => {
+    ws.on('message', (raw) => {
+      const msg = JSON.parse(raw.toString());
+      if (msg.type === type) resolve(msg);
+    });
+  });
+}
+
 describe('daemon WebSocket', () => {
   it('accepts connection with valid key', async () => {
     const ws = await connectDaemon('dev-machine-key');
@@ -142,6 +159,50 @@ describe('daemon WebSocket', () => {
 
     expect((await store.getAgent('agent-1'))?.status).toBe('running');
     ws.close();
+  });
+
+  it('stores and broadcasts agent activity from daemon', async () => {
+    const daemon = await connectDaemon('dev-machine-key');
+    const browser = await connectBrowser();
+    await sendAndWait(daemon, {
+      type: 'ready',
+      machineId: 'machine-1',
+      hostname: 'h',
+      os: 'linux',
+      daemonVersion: '0.1.0',
+      runtimes: [],
+      runtimeVersions: {},
+      runningAgents: [],
+      capabilities: [],
+    });
+
+    const store = getStore();
+    await store.createAgent({
+      id: 'agent-1',
+      name: 'bot',
+      runtime: 'claude',
+      status: 'running',
+      machineId: 'machine-1',
+      createdAt: new Date().toISOString(),
+    });
+
+    const eventPromise = waitForBrowserEvent(browser, 'agent:activity');
+    await sendAndWait(daemon, {
+      type: 'agent:activity',
+      agentId: 'agent-1',
+      activityType: 'sending',
+      detail: 'channel:general',
+    });
+
+    const event = await eventPromise;
+    expect(event.agentId).toBe('agent-1');
+    expect(event.activity.type).toBe('sending');
+    expect(event.activity.detail).toBe('channel:general');
+    const activities = await store.listAgentActivities('agent-1');
+    expect(activities).toHaveLength(1);
+    expect(activities[0].type).toBe('sending');
+    browser.close();
+    daemon.close();
   });
 
   it('reuses machine id after daemon reconnect and can start a bound agent', async () => {
