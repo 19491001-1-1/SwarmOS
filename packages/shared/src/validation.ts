@@ -5,6 +5,7 @@ export const RuntimeIdSchema = z.enum(['claude', 'codex', 'gemini']);
 export const AgentStatusSchema = z.enum(['inactive', 'starting', 'running', 'working', 'idle', 'error']);
 
 export const AgentActivityTypeSchema = z.enum(['thinking', 'working', 'output', 'idle', 'sending', 'error']);
+export const TaskStatusSchema = z.enum(['todo', 'in_progress', 'in_review', 'done']);
 
 export const AgentRuntimeConfigSchema = z.object({
   runtime: RuntimeIdSchema,
@@ -53,6 +54,18 @@ export const WorkspaceErrorSchema = z.object({
   status: z.number().optional(),
 });
 
+export const TaskSchema = z.object({
+  id: z.string(),
+  channelId: z.string(),
+  messageId: z.string().optional(),
+  title: z.string(),
+  status: TaskStatusSchema,
+  creatorName: z.string(),
+  assigneeId: z.string().optional(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+
 export const DaemonToServerSchema = z.discriminatedUnion('type', [
   z.object({
     type: z.literal('ready'),
@@ -97,6 +110,19 @@ export const DaemonToServerSchema = z.discriminatedUnion('type', [
     toAgentId: z.string().min(1),
     content: z.string().min(1),
     startIfInactive: z.boolean().optional(),
+  }),
+  z.object({
+    type: z.literal('agent:create_task'),
+    agentId: z.string(),
+    title: z.string().min(1),
+    channelId: z.string().optional(),
+    assigneeId: z.string().optional(),
+  }),
+  z.object({
+    type: z.literal('agent:update_task'),
+    agentId: z.string(),
+    taskId: z.string(),
+    status: TaskStatusSchema,
   }),
   z.object({
     type: z.literal('agent:message'),
@@ -173,6 +199,28 @@ export const CreateAgentDelegationRequestSchema = z.object({
   startIfInactive: z.boolean().optional(),
 });
 
+export const CreateTaskRequestSchema = z.object({
+  channelId: z.string().min(1).default('general'),
+  messageId: z.string().optional(),
+  title: z.string().min(1).max(200),
+  creatorName: z.string().min(1).default('user'),
+  assigneeId: z.string().optional(),
+});
+
+export const PatchTaskRequestSchema = z
+  .object({
+    status: TaskStatusSchema.optional(),
+    assigneeId: z.string().optional(),
+  })
+  .refine((val) => val.status !== undefined || val.assigneeId !== undefined, {
+    message: 'At least one field must be provided',
+  });
+
+export const MessageToTaskRequestSchema = z.object({
+  assigneeId: z.string().optional(),
+  creatorName: z.string().min(1).default('user'),
+});
+
 export const InternalMessageSendRequestSchema = z.object({
   channel: z.string().min(1).default('general'),
   content: z.string().min(1),
@@ -199,6 +247,9 @@ export type PatchAgentRequest = z.infer<typeof PatchAgentRequestSchema>;
 export type CreateMessageRequest = z.infer<typeof CreateMessageRequestSchema>;
 export type CreateDirectMessageRequest = z.infer<typeof CreateDirectMessageRequestSchema>;
 export type CreateAgentDelegationRequest = z.infer<typeof CreateAgentDelegationRequestSchema>;
+export type CreateTaskRequest = z.infer<typeof CreateTaskRequestSchema>;
+export type PatchTaskRequest = z.infer<typeof PatchTaskRequestSchema>;
+export type MessageToTaskRequest = z.infer<typeof MessageToTaskRequestSchema>;
 export type InternalMessageSendRequest = z.infer<typeof InternalMessageSendRequestSchema>;
 export type InternalMessageReadRequest = z.infer<typeof InternalMessageReadRequestSchema>;
 export type InternalDmSendRequest = z.infer<typeof InternalDmSendRequestSchema>;

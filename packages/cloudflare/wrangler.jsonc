@@ -9,7 +9,7 @@
     "head_sampling_rate": 1
   },
   "vars": {
-    "XOXIANG_VERSION": "0.1.0"
+    "XOXIANG_VERSION": "0.6.0"
   },
   "durable_objects": {
     "bindings": [

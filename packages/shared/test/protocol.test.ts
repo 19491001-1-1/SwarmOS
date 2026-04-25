@@ -8,10 +8,14 @@ import {
   CreateMessageRequestSchema,
   CreateDirectMessageRequestSchema,
   CreateAgentDelegationRequestSchema,
+  CreateTaskRequestSchema,
   InternalAgentDelegateRequestSchema,
   InternalDmSendRequestSchema,
   InternalMessageReadRequestSchema,
   InternalMessageSendRequestSchema,
+  MessageToTaskRequestSchema,
+  PatchTaskRequestSchema,
+  TaskSchema,
 } from '../src/validation.js';
 import { APP_VERSION, createVersionInfo } from '../src/version.js';
 
@@ -116,6 +120,22 @@ describe('DaemonToServer protocol', () => {
   it('rejects invalid agent:delegate payloads', () => {
     expect(DaemonToServerSchema.safeParse({ type: 'agent:delegate', fromAgentId: 'a', toAgentId: '', content: 'x' }).success).toBe(false);
     expect(DaemonToServerSchema.safeParse({ type: 'agent:delegate', fromAgentId: 'a', toAgentId: 'b', content: '' }).success).toBe(false);
+  });
+
+  it('parses agent task events', () => {
+    expect(DaemonToServerSchema.safeParse({
+      type: 'agent:create_task',
+      agentId: 'agent-1',
+      title: 'write tests',
+      channelId: 'general',
+      assigneeId: 'agent-2',
+    }).success).toBe(true);
+    expect(DaemonToServerSchema.safeParse({
+      type: 'agent:update_task',
+      agentId: 'agent-1',
+      taskId: 'task-1',
+      status: 'in_review',
+    }).success).toBe(true);
   });
 });
 
@@ -265,6 +285,28 @@ describe('CreateAgentDelegationRequestSchema', () => {
 
   it('rejects empty content', () => {
     expect(CreateAgentDelegationRequestSchema.safeParse({ content: '' }).success).toBe(false);
+  });
+});
+
+describe('Task schemas', () => {
+  it('accepts task objects and request bodies', () => {
+    expect(TaskSchema.safeParse({
+      id: 'task-1',
+      channelId: 'general',
+      title: 'ship board',
+      status: 'todo',
+      creatorName: 'user',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    }).success).toBe(true);
+    expect(CreateTaskRequestSchema.safeParse({ title: 'ship board' }).success).toBe(true);
+    expect(PatchTaskRequestSchema.safeParse({ status: 'done' }).success).toBe(true);
+    expect(MessageToTaskRequestSchema.safeParse({ creatorName: 'user' }).success).toBe(true);
+  });
+
+  it('rejects invalid task status and empty patches', () => {
+    expect(PatchTaskRequestSchema.safeParse({ status: 'blocked' }).success).toBe(false);
+    expect(PatchTaskRequestSchema.safeParse({}).success).toBe(false);
   });
 });
 

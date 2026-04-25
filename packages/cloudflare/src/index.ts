@@ -12,6 +12,8 @@ import type {
   Message,
   RuntimeId,
   ServerToDaemon,
+  Task,
+  TaskStatus,
   WorkspaceEntry,
   WorkspaceError,
 } from '@mini-slock/shared';
@@ -20,12 +22,16 @@ import {
   CreateAgentDelegationRequestSchema,
   CreateAgentRequestSchema,
   CreateDirectMessageRequestSchema,
+  CreateTaskRequestSchema,
   InternalAgentDelegateRequestSchema,
   InternalDmSendRequestSchema,
   InternalMessageReadRequestSchema,
   InternalMessageSendRequestSchema,
   CreateMessageRequestSchema,
+  MessageToTaskRequestSchema,
   PatchAgentRequestSchema,
+  PatchTaskRequestSchema,
+  TaskStatusSchema,
 } from '@mini-slock/shared';
 import { findDuplicateMachineIds, resolveStartMachineId, toAgentDelivery, toRuntimeConfig } from '@mini-slock/hub-core';
 
@@ -39,7 +45,7 @@ const JSON_HEADERS = {
   'Content-Type': 'application/json',
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'content-type,authorization',
-  'Access-Control-Allow-Methods': 'GET,POST,PATCH,OPTIONS',
+  'Access-Control-Allow-Methods': 'GET,POST,PATCH,DELETE,OPTIONS',
 };
 
 export default {
@@ -105,6 +111,34 @@ export class XoxiangHub extends DurableObject<Env> {
 
       if (messagesMatch && request.method === 'POST') {
         return this.createUserMessage(messagesMatch[1], await request.json());
+      }
+
+      if (request.method === 'GET' && url.pathname === '/api/tasks') {
+        const statusValue = url.searchParams.get('status') ?? undefined;
+        const status = statusValue === undefined ? undefined : TaskStatusSchema.safeParse(statusValue);
+        if (status && !status.success) return json({ error: 'Invalid status' }, 400);
+        return json(this.listTasks({
+          channelId: url.searchParams.get('channelId') ?? undefined,
+          status: status?.success ? status.data : undefined,
+        }));
+      }
+
+      if (request.method === 'POST' && url.pathname === '/api/tasks') {
+        return this.createUserTask(await request.json());
+      }
+
+      const taskMatch = url.pathname.match(/^\/api\/tasks\/([^/]+)$/);
+      if (taskMatch && request.method === 'PATCH') {
+        return this.patchTask(decodeURIComponent(taskMatch[1]), await request.json());
+      }
+
+      if (taskMatch && request.method === 'DELETE') {
+        return this.deleteTask(decodeURIComponent(taskMatch[1]));
+      }
+
+      const messageTaskMatch = url.pathname.match(/^\/api\/messages\/([^/]+)\/to-task$/);
+      if (messageTaskMatch && request.method === 'POST') {
+        return this.createTaskFromMessage(decodeURIComponent(messageTaskMatch[1]), await request.json().catch(() => ({})));
       }
 
       if (request.method === 'GET' && url.pathname === '/api/agents') {
@@ -291,6 +325,30 @@ export class XoxiangHub extends DurableObject<Env> {
         content: data.content,
         startIfInactive: data.startIfInactive,
       });
+      return;
+    }
+
+    if (data.type === 'agent:create_task') {
+      const channelId = data.channelId ?? 'general';
+      const channel = this.getChannel(channelId);
+      if (!channel) return;
+      const agent = this.getAgent(data.agentId);
+      const assignee = data.assigneeId ? this.findAgentByNameOrId(data.assigneeId) : undefined;
+      const task = this.createTask({
+        id: crypto.randomUUID(),
+        channelId,
+        title: data.title,
+        status: 'todo',
+        creatorName: agent?.displayName ?? agent?.name ?? data.agentId,
+        assigneeId: assignee?.id ?? data.assigneeId,
+      });
+      this.broadcast({ type: 'task:update', task });
+      return;
+    }
+
+    if (data.type === 'agent:update_task') {
+      const task = this.updateTask(data.taskId, { status: data.status });
+      if (task) this.broadcast({ type: 'task:update', task });
     }
   }
 
@@ -340,6 +398,19 @@ export class XoxiangHub extends DurableObject<Env> {
         content TEXT NOT NULL,
         agent_id TEXT,
         created_at TEXT NOT NULL
+      )
+    `);
+    this.ctx.storage.sql.exec(`
+      CREATE TABLE IF NOT EXISTS tasks (
+        id TEXT PRIMARY KEY,
+        channel_id TEXT NOT NULL,
+        message_id TEXT,
+        title TEXT NOT NULL,
+        status TEXT NOT NULL,
+        creator_name TEXT NOT NULL,
+        assignee_id TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
       )
     `);
     this.ctx.storage.sql.exec(`
@@ -461,6 +532,58 @@ export class XoxiangHub extends DurableObject<Env> {
     }
 
     return json(message, 201);
+  }
+
+  private createUserTask(body: unknown): Response {
+    const parsed = CreateTaskRequestSchema.safeParse(body);
+    if (!parsed.success) return json({ error: 'Invalid request body', issues: parsed.error.issues }, 400);
+    if (!this.getChannel(parsed.data.channelId)) return json({ error: 'Channel not found' }, 404);
+
+    const task = this.createTask({
+      id: crypto.randomUUID(),
+      channelId: parsed.data.channelId,
+      messageId: parsed.data.messageId,
+      title: parsed.data.title,
+      status: 'todo',
+      creatorName: parsed.data.creatorName,
+      assigneeId: parsed.data.assigneeId,
+    });
+    this.broadcast({ type: 'task:update', task });
+    return json(task, 201);
+  }
+
+  private patchTask(taskId: string, body: unknown): Response {
+    const parsed = PatchTaskRequestSchema.safeParse(body);
+    if (!parsed.success) return json({ error: 'Invalid request body', issues: parsed.error.issues }, 400);
+    const task = this.updateTask(taskId, parsed.data);
+    if (!task) return json({ error: 'Task not found' }, 404);
+    this.broadcast({ type: 'task:update', task });
+    return json(task);
+  }
+
+  private deleteTask(taskId: string): Response {
+    if (!this.getTask(taskId)) return json({ error: 'Task not found' }, 404);
+    this.ctx.storage.sql.exec('DELETE FROM tasks WHERE id = ?', taskId);
+    return new Response(null, { status: 204, headers: JSON_HEADERS });
+  }
+
+  private createTaskFromMessage(messageId: string, body: unknown): Response {
+    const message = this.getMessage(messageId);
+    if (!message) return json({ error: 'Message not found' }, 404);
+    const parsed = MessageToTaskRequestSchema.safeParse(body);
+    if (!parsed.success) return json({ error: 'Invalid request body', issues: parsed.error.issues }, 400);
+
+    const task = this.createTask({
+      id: crypto.randomUUID(),
+      channelId: message.channelId,
+      messageId: message.id,
+      title: message.content.slice(0, 200),
+      status: 'todo',
+      creatorName: parsed.data.creatorName,
+      assigneeId: parsed.data.assigneeId,
+    });
+    this.broadcast({ type: 'task:update', task });
+    return json(task, 201);
   }
 
   private async handleInternalAgentRequest(request: Request, url: URL): Promise<Response> {
@@ -711,6 +834,11 @@ export class XoxiangHub extends DurableObject<Env> {
     return row ? toChannel(row) : undefined;
   }
 
+  private getMessage(id: string): Message | undefined {
+    const row = this.ctx.storage.sql.exec<Row>('SELECT * FROM messages WHERE id = ? LIMIT 1', id).toArray()[0];
+    return row ? toMessage(row) : undefined;
+  }
+
   private listMessages(channelId: string): Message[] {
     return this.ctx.storage.sql
       .exec<Row>('SELECT * FROM messages WHERE channel_id = ? ORDER BY created_at', channelId)
@@ -732,6 +860,19 @@ export class XoxiangHub extends DurableObject<Env> {
     return this.listChannels().find((channel) => channel.name === value);
   }
 
+  private listTasks(filter: { channelId?: string; status?: TaskStatus } = {}): Task[] {
+    return this.ctx.storage.sql
+      .exec<Row>('SELECT * FROM tasks ORDER BY created_at')
+      .toArray()
+      .map(toTask)
+      .filter((task) => (!filter.channelId || task.channelId === filter.channelId) && (!filter.status || task.status === filter.status));
+  }
+
+  private getTask(id: string): Task | undefined {
+    const row = this.ctx.storage.sql.exec<Row>('SELECT * FROM tasks WHERE id = ? LIMIT 1', id).toArray()[0];
+    return row ? toTask(row) : undefined;
+  }
+
   private createMessage(message: Omit<Message, 'createdAt'>): Message {
     const created: Message = { ...message, createdAt: new Date().toISOString() };
     this.ctx.storage.sql.exec(
@@ -745,6 +886,39 @@ export class XoxiangHub extends DurableObject<Env> {
       created.createdAt
     );
     return created;
+  }
+
+  private createTask(task: Omit<Task, 'createdAt' | 'updatedAt'>): Task {
+    const now = new Date().toISOString();
+    const created: Task = { ...task, title: task.title.slice(0, 200), createdAt: now, updatedAt: now };
+    this.ctx.storage.sql.exec(
+      `INSERT INTO tasks (id, channel_id, message_id, title, status, creator_name, assignee_id, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      created.id,
+      created.channelId,
+      created.messageId ?? null,
+      created.title,
+      created.status,
+      created.creatorName,
+      created.assigneeId ?? null,
+      created.createdAt,
+      created.updatedAt
+    );
+    return created;
+  }
+
+  private updateTask(id: string, patch: Partial<Pick<Task, 'status' | 'assigneeId'>>): Task | undefined {
+    const existing = this.getTask(id);
+    if (!existing) return undefined;
+    const updated: Task = { ...existing, ...patch, updatedAt: new Date().toISOString() };
+    this.ctx.storage.sql.exec(
+      'UPDATE tasks SET status = ?, assignee_id = ?, updated_at = ? WHERE id = ?',
+      updated.status,
+      updated.assigneeId ?? null,
+      updated.updatedAt,
+      id,
+    );
+    return updated;
   }
 
   private createAgentActivity(activity: Omit<AgentActivity, 'createdAt'>): AgentActivity {
@@ -1272,6 +1446,20 @@ function toAgentDelegation(row: Row): AgentDelegation {
     status: String(row.status) as AgentDelegation['status'],
     error: row.error ? String(row.error) : undefined,
     createdAt: String(row.created_at),
+  };
+}
+
+function toTask(row: Row): Task {
+  return {
+    id: String(row.id),
+    channelId: String(row.channel_id),
+    messageId: row.message_id ? String(row.message_id) : undefined,
+    title: String(row.title),
+    status: String(row.status) as TaskStatus,
+    creatorName: String(row.creator_name),
+    assigneeId: row.assignee_id ? String(row.assignee_id) : undefined,
+    createdAt: String(row.created_at),
+    updatedAt: String(row.updated_at),
   };
 }
 

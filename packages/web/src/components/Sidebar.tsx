@@ -4,10 +4,13 @@ type Props = {
   channels: Channel[];
   agents: Agent[];
   machines: Machine[];
+  selectedView: 'channel' | 'tasks';
   selectedChannel: string;
   selectedAgentId?: string;
   webVersion: VersionInfo;
   hubVersion?: VersionInfo;
+  taskCount: number;
+  onSelectTasks: () => void;
   onSelectChannel: (id: string) => void;
   onSelectAgent: (id: string) => void;
 };
@@ -28,7 +31,7 @@ const S = {
     fontWeight: 700,
     fontSize: 16,
     borderBottom: '2px solid #000',
-    letterSpacing: '-0.3px',
+    letterSpacing: 0,
     background: '#FFD700',
     display: 'flex',
     alignItems: 'center',
@@ -46,7 +49,7 @@ const S = {
   },
 };
 
-export function Sidebar({ channels, agents, machines, selectedChannel, selectedAgentId, webVersion, hubVersion, onSelectChannel, onSelectAgent }: Props) {
+export function Sidebar({ channels, agents, machines, selectedView, selectedChannel, selectedAgentId, webVersion, hubVersion, taskCount, onSelectTasks, onSelectChannel, onSelectAgent }: Props) {
   return (
     <div style={S.sidebar}>
       <div style={S.workspaceName}>
@@ -57,12 +60,34 @@ export function Sidebar({ channels, agents, machines, selectedChannel, selectedA
       </div>
 
       <div style={{ padding: '4px 0' }}>
+        <button onClick={onSelectTasks} style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 7,
+          width: 'calc(100% - 8px)',
+          margin: '6px 4px 8px',
+          padding: '7px 10px',
+          fontSize: 13,
+          fontFamily: "'Courier New', monospace",
+          fontWeight: 700,
+          border: 'none',
+          borderLeft: selectedView === 'tasks' ? '3px solid #000' : '3px solid transparent',
+          borderRight: selectedView === 'tasks' ? '3px solid #000' : '3px solid transparent',
+          background: selectedView === 'tasks' ? '#000' : '#fff',
+          color: selectedView === 'tasks' ? '#FFD700' : '#000',
+          cursor: 'pointer',
+          textAlign: 'left',
+        }}>
+          <span style={{ flex: 1 }}>TASKS</span>
+          <span style={{ fontSize: 10 }}>{taskCount}</span>
+        </button>
+
         <SectionHeader label="CHANNELS" count={channels.length} />
         {channels.map((ch) => (
           <ChannelItem
             key={ch.id}
             name={ch.name}
-            active={selectedChannel === ch.id}
+            active={selectedView === 'channel' && selectedChannel === ch.id}
             onClick={() => onSelectChannel(ch.id)}
           />
         ))}
