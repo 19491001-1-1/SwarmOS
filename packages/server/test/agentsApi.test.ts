@@ -23,7 +23,10 @@ describe('GET /api/version', () => {
     const app = await buildApp();
     const res = await app.inject({ method: 'GET', url: '/api/version' });
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toMatchObject({ component: 'server', version: '0.1.0' });
+    const body = res.json();
+    expect(body.component).toBe('server');
+    expect(body.version).toBe(process.env.XOXIANG_VERSION || '0.1.0');
+    expect(body.version).toBeTruthy();
     await app.close();
   });
 });
