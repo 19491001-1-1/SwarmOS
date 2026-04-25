@@ -73,7 +73,15 @@ function parseCommand(argv: string[]): ParsedCommand {
   }
   if (group === 'message' && action === 'send') {
     const opts = parseFlags(rest);
-    return { method: 'POST', path: '/messages/send', body: { channel: opts.channel ?? 'general', content: required(opts.content, '--content') } };
+    return {
+      method: 'POST',
+      path: '/messages/send',
+      body: {
+        channel: opts.channel ?? 'general',
+        content: required(opts.content, '--content'),
+        threadRootId: opts['thread-root-id'] ?? opts.thread,
+      },
+    };
   }
   if (group === 'dm' && action === 'send') {
     const opts = parseFlags(rest);

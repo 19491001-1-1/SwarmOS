@@ -174,6 +174,7 @@ export function buildBridgeInstruction(): string {
     'If you use a tool or CLI command, base your answer on the real returned result; do not invent tool results.',
     'Injected `xoxiang` CLI commands:',
     '- `xoxiang message send --channel general --content "..."`',
+    '- `xoxiang message send --channel general --thread-root-id <rootMessageId> --content "..."` to reply inside a thread',
     '- `xoxiang message check`',
     '- `xoxiang message read --channel general --limit 20`',
     '- `xoxiang agent list` to view the agent directory with names, roles, runtimes, and statuses',

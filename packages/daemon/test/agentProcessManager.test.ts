@@ -66,7 +66,7 @@ function createManualProc() {
 }
 
 describe('AgentProcessManager', () => {
-  let messages: Array<{ agentId: string; channelId: string; content: string }> = [];
+  let messages: Array<{ agentId: string; channelId: string; content: string; inReplyToMessageId?: string }> = [];
   let statuses: Array<{ agentId: string; status: string }> = [];
   let activities: Array<{ agentId: string; type: string; detail?: string }> = [];
   let dms: Array<{ fromAgentId: string; toAgentId: string; content: string }> = [];
@@ -85,7 +85,7 @@ describe('AgentProcessManager', () => {
     cancelledReminders = [];
     manager = new AgentProcessManager(
       '/tmp/test-workspaces',
-      (agentId, channelId, content) => messages.push({ agentId, channelId, content }),
+      (agentId, channelId, content, inReplyToMessageId) => messages.push({ agentId, channelId, content, inReplyToMessageId }),
       (agentId, status) => statuses.push({ agentId, status }),
       (agentId, type, detail) => activities.push({ agentId, type, detail }),
       (fromAgentId, toAgentId, content) => dms.push({ fromAgentId, toAgentId, content }),
@@ -349,6 +349,31 @@ describe('AgentProcessManager', () => {
     );
     expect(activities.some((a) => a.type === 'sending' && a.detail === 'channel:general')).toBe(true);
     expect(activities.some((a) => a.type === 'idle')).toBe(true);
+  });
+
+  it('keeps stdout replies tied to delivered thread context', async () => {
+    const fakeProc = createFakeProc([`${BRIDGE_MARKER} {"content":"Thread echo"}`]);
+    mockSpawn.mockReturnValue(fakeProc);
+
+    await manager.startAgent('agent-1', { runtime: 'claude', name: 'bot' }, 'general');
+    await manager.deliverMessage('agent-1', {
+      id: 'msg-1',
+      channelId: 'general',
+      channelName: 'general',
+      senderName: 'user',
+      content: 'Hello in thread',
+      threadRootId: 'root-1',
+      createdAt: new Date().toISOString(),
+    });
+
+    await new Promise((r) => setTimeout(r, 50));
+
+    expect(messages[0]).toMatchObject({
+      agentId: 'agent-1',
+      channelId: 'general',
+      content: 'Thread echo',
+      inReplyToMessageId: 'root-1',
+    });
   });
 
   it('fallback stdout is reported as output activity', async () => {

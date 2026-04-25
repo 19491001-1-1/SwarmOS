@@ -171,6 +171,7 @@ describe('ServerToDaemon protocol', () => {
         channelName: 'general',
         senderName: 'user',
         content: 'Hello',
+        threadRootId: 'root-1',
         createdAt: new Date().toISOString(),
       },
     };
@@ -196,7 +197,7 @@ describe('ServerToDaemon protocol', () => {
 
 describe('Internal agent API schemas', () => {
   it('accepts agent-facing CLI request bodies', () => {
-    expect(InternalMessageSendRequestSchema.safeParse({ channel: 'general', content: 'hello' }).success).toBe(true);
+    expect(InternalMessageSendRequestSchema.safeParse({ channel: 'general', content: 'hello', threadRootId: 'root-1' }).success).toBe(true);
     expect(InternalMessageReadRequestSchema.safeParse({ channel: 'general', limit: '10' }).success).toBe(true);
     expect(InternalDmSendRequestSchema.safeParse({ to: 'agent-2', content: 'secret' }).success).toBe(true);
     expect(InternalAgentResolveRequestSchema.safeParse({ query: '产品经理' }).success).toBe(true);

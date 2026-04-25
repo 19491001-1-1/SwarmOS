@@ -28,7 +28,7 @@ export class DaemonClient {
     const workspaceBase = options.workspaceBase ?? process.env.XOXIANG_AGENTS_DIR ?? join(os.homedir(), '.xoxiang', 'agents');
     this.processManager = new AgentProcessManager(
       workspaceBase,
-      (agentId, channelId, content) => this.sendMessage({ type: 'agent:message', agentId, channelId, content }),
+      (agentId, channelId, content, inReplyToMessageId) => this.sendMessage({ type: 'agent:message', agentId, channelId, content, inReplyToMessageId }),
       (agentId, status) => this.sendMessage({ type: 'agent:status', agentId, status: status as any }),
       (agentId, activityType, detail) => this.sendActivity(agentId, activityType, detail),
       (fromAgentId, toAgentId, content) => this.sendMessage({ type: 'agent:dm', fromAgentId, toAgentId, content }),

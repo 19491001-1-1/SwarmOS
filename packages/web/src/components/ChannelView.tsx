@@ -249,19 +249,11 @@ export function ChannelView({
                 {msg.replyCount ? (
                   <button
                     onClick={() => onOpenThread?.(msg)}
-                    style={{
-                      marginTop: 4,
-                      border: 'none',
-                      background: 'transparent',
-                      color: '#6b4f00',
-                      fontSize: 11,
-                      fontWeight: 700,
-                      fontFamily: "'Courier New', monospace",
-                      cursor: 'pointer',
-                      padding: 0,
-                    }}
+                    style={threadReplyButtonStyle}
                   >
-                    {t('thread.replies', { count: msg.replyCount })}{msg.latestReplyAt ? ` · ${formatTime(msg.latestReplyAt)}` : ''}
+                    <span aria-hidden="true">▱</span>
+                    {t('thread.replies', { count: msg.replyCount })}
+                    {msg.latestReplyAt ? <span style={{ color: '#555' }}>{formatTime(msg.latestReplyAt)}</span> : null}
                   </button>
                 ) : null}
               </div>
@@ -271,7 +263,7 @@ export function ChannelView({
         <div ref={bottomRef} />
         {showJumpByChannel[channelId] ? (
           <button type="button" onClick={jumpToLatest} style={jumpButtonStyle}>
-            Jump to latest
+            ↓ Back to bottom
           </button>
         ) : null}
       </div>
@@ -295,16 +287,33 @@ const jumpButtonStyle: React.CSSProperties = {
   position: 'sticky',
   bottom: 10,
   alignSelf: 'center',
-  border: '1px solid #b8a44a',
-  background: '#fff8c7',
+  border: '2px solid #000',
+  background: '#fff',
   color: '#111',
   fontFamily: "'Courier New', monospace",
+  fontSize: 13,
+  fontWeight: 700,
+  padding: '8px 13px',
+  borderRadius: 0,
+  cursor: 'pointer',
+  boxShadow: '4px 4px 0 #000',
+  zIndex: 2,
+};
+
+const threadReplyButtonStyle: React.CSSProperties = {
+  marginTop: 7,
+  border: '2px solid #000',
+  background: '#dff8ff',
+  color: '#111',
   fontSize: 12,
   fontWeight: 700,
-  padding: '6px 10px',
-  borderRadius: 999,
+  fontFamily: "'Courier New', monospace",
   cursor: 'pointer',
-  boxShadow: '0 2px 8px rgba(0,0,0,0.12)',
+  padding: '5px 9px',
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: 6,
+  boxShadow: '2px 2px 0 #000',
 };
 
 const threadListButtonStyle: React.CSSProperties = {

@@ -142,6 +142,108 @@ describe('daemon WebSocket', () => {
     ws.close();
   });
 
+  it('keeps daemon agent replies inside the delivered thread', async () => {
+    const daemon = await connectDaemon('dev-machine-key');
+    await sendAndWait(daemon, {
+      type: 'ready',
+      machineId: 'machine-1',
+      hostname: 'h',
+      os: 'linux',
+      daemonVersion: '0.1.0',
+      runtimes: ['claude'],
+      runtimeVersions: { claude: '1.0' },
+      runningAgents: [],
+      capabilities: [],
+    });
+
+    const store = getStore();
+    await store.createAgent({
+      id: 'agent-1',
+      name: 'bot',
+      displayName: 'Bot',
+      runtime: 'claude',
+      status: 'running',
+      machineId: 'machine-1',
+      createdAt: new Date().toISOString(),
+    });
+
+    const root = await store.createMessage({
+      id: 'root-1',
+      channelId: 'general',
+      senderName: 'user',
+      content: 'Root',
+    });
+
+    await sendAndWait(daemon, {
+      type: 'agent:message',
+      agentId: 'agent-1',
+      channelId: 'general',
+      content: 'Agent thread reply',
+      inReplyToMessageId: root.id,
+    });
+
+    const listed = await store.listMessages('general');
+    expect(listed).toHaveLength(1);
+    expect(listed[0]).toMatchObject({ id: root.id, replyCount: 1 });
+    const thread = await store.getThread(root.id);
+    expect(thread?.replies).toHaveLength(1);
+    expect(thread?.replies[0]).toMatchObject({
+      agentId: 'agent-1',
+      senderName: 'Bot',
+      content: 'Agent thread reply',
+      threadRootId: root.id,
+    });
+    daemon.close();
+  });
+
+  it('delivers thread mentions to agents with thread context', async () => {
+    const daemon = await connectDaemon('dev-machine-key');
+    await sendAndWait(daemon, {
+      type: 'ready',
+      machineId: 'machine-1',
+      hostname: 'h',
+      os: 'linux',
+      daemonVersion: '0.1.0',
+      runtimes: ['claude'],
+      runtimeVersions: { claude: '1.0' },
+      runningAgents: [],
+      capabilities: [],
+    });
+
+    const store = getStore();
+    await store.createAgent({
+      id: 'agent-1',
+      name: 'bot',
+      displayName: 'Bot',
+      runtime: 'claude',
+      status: 'running',
+      machineId: 'machine-1',
+      createdAt: new Date().toISOString(),
+    });
+    const root = await store.createMessage({
+      id: 'root-mention',
+      channelId: 'general',
+      senderName: 'user',
+      content: 'Root',
+    });
+
+    const deliverPromise = waitForDaemonMessage(daemon, 'agent:deliver');
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/channels/general/messages',
+      payload: { senderName: 'user', content: '@Bot please answer in thread', threadRootId: root.id },
+    });
+    expect(res.statusCode).toBe(201);
+    const delivered = await deliverPromise;
+    expect(delivered.agentId).toBe('agent-1');
+    expect(delivered.message).toMatchObject({
+      channelId: 'general',
+      threadRootId: root.id,
+      content: '@Bot please answer in thread',
+    });
+    daemon.close();
+  });
+
   it('creates and updates tasks from daemon task events', async () => {
     const daemon = await connectDaemon('dev-machine-key');
     const browser = await connectBrowser();

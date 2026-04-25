@@ -52,6 +52,17 @@ describe('agent-facing xoxiang CLI', () => {
     );
   });
 
+  it('sends channel messages inside a thread', async () => {
+    const fetchImpl = okFetch({ id: 'msg-1' });
+    const result = await run(['message', 'send', '--channel', 'general', '--thread-root-id', 'root-1', '--content', 'hello'], fetchImpl);
+
+    expect(result.code).toBe(0);
+    expect(fetchImpl).toHaveBeenCalledWith(
+      'http://hub.test/internal/agent/agent-1/messages/send',
+      expect.objectContaining({ method: 'POST', body: JSON.stringify({ channel: 'general', content: 'hello', threadRootId: 'root-1' }) })
+    );
+  });
+
   it('sends DMs', async () => {
     const fetchImpl = okFetch({ id: 'dm-1' });
     const result = await run(['dm', 'send', '--to', 'target', '--content', 'secret'], fetchImpl);

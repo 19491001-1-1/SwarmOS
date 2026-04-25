@@ -7,6 +7,7 @@ export function toAgentDelivery(message: Message, channel: Channel): AgentDelive
     channelName: channel.name,
     senderName: message.senderName,
     content: message.content,
+    threadRootId: message.threadRootId,
     createdAt: message.createdAt,
   };
 }
