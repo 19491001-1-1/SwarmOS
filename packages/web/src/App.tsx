@@ -22,6 +22,8 @@ export function App() {
   const [selectedChannel, setSelectedChannel] = useState('general');
   const [selectedAgentId, setSelectedAgentId] = useState<string | undefined>();
   const [thread, setThread] = useState<MessageThread | undefined>();
+  const [targetMessageId, setTargetMessageId] = useState<string | undefined>();
+  const [threadTargetMessageId, setThreadTargetMessageId] = useState<string | undefined>();
   const [searchOpen, setSearchOpen] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
   const selectedChannelRef = useRef(selectedChannel);
@@ -72,7 +74,6 @@ export function App() {
 
   useEffect(() => {
     selectedChannelRef.current = selectedChannel;
-    setThread(undefined);
     loadMessages(selectedChannel);
   }, [selectedChannel]);
 
@@ -216,6 +217,13 @@ export function App() {
 
   const handleOpenThread = async (message: Message) => {
     setThread(await getMessageThread(message.threadRootId ?? message.id));
+    setThreadTargetMessageId(undefined);
+  };
+
+  const handleOpenAgent = (agentId: string) => {
+    setSelectedView('channel');
+    setSelectedAgentId(agentId);
+    setThread(undefined);
   };
 
   const handleThreadSend = async (content: string, agentId?: string) => {
@@ -270,6 +278,21 @@ export function App() {
   const selectedChannelObj = channels.find((c) => c.id === selectedChannel);
   const selectedAgent = selectedAgentId ? agents.find((a) => a.id === selectedAgentId) : undefined;
 
+  const handleSearchSelect = async (result: SearchMessageResult) => {
+    setSelectedView('channel');
+    setSelectedChannel(result.channelId);
+    setSearchOpen(false);
+    setSelectedAgentId(undefined);
+    if (result.threadRootId) {
+      setThread(await getMessageThread(result.threadRootId));
+      setThreadTargetMessageId(result.id);
+      setTargetMessageId(undefined);
+      return;
+    }
+    setThread(undefined);
+    setTargetMessageId(result.id);
+  };
+
   return (
     <div style={{ display: 'flex', height: '100vh', fontFamily: "'Courier New', monospace", background: '#fafaf5' }}>
       <Sidebar
@@ -284,7 +307,14 @@ export function App() {
         taskCount={tasks.filter((task) => task.status !== 'done').length}
         onSelectTasks={() => { setSelectedView('tasks'); setSelectedAgentId(undefined); }}
         onOpenSearch={() => setSearchOpen(true)}
-        onSelectChannel={(id) => { setSelectedView('channel'); setSelectedChannel(id); setSelectedAgentId(undefined); }}
+        onSelectChannel={(id) => {
+          setSelectedView('channel');
+          setSelectedChannel(id);
+          setSelectedAgentId(undefined);
+          setThread(undefined);
+          setTargetMessageId(undefined);
+          setThreadTargetMessageId(undefined);
+        }}
         onCreateChannel={handleCreateChannel}
         onDeleteChannel={handleDeleteChannel}
         onSelectAgent={(id) => { setSelectedAgentId(id); }}
@@ -301,12 +331,16 @@ export function App() {
         ) : (
           <>
             <ChannelView
+              channelId={selectedChannel}
               channelName={selectedChannelObj?.name ?? selectedChannel}
               messages={messages}
               agents={agents}
               activitiesByAgent={activitiesByAgent}
+              targetMessageId={targetMessageId}
               onCreateTask={handleMessageToTask}
               onOpenThread={handleOpenThread}
+              onOpenAgent={handleOpenAgent}
+              onTargetMessageSettled={() => setTargetMessageId(undefined)}
             />
             <Composer agents={agents} channelName={selectedChannelObj?.name ?? selectedChannel} onSend={handleSend} />
           </>
@@ -318,8 +352,11 @@ export function App() {
           replies={thread.replies}
           agents={agents}
           activitiesByAgent={activitiesByAgent}
+          targetMessageId={threadTargetMessageId}
           onClose={() => setThread(undefined)}
           onSend={handleThreadSend}
+          onOpenAgent={handleOpenAgent}
+          onTargetMessageSettled={() => setThreadTargetMessageId(undefined)}
         />
       ) : selectedAgent ? (
         <AgentDetailPanel
@@ -336,18 +373,14 @@ export function App() {
       {searchOpen ? (
         <SearchOverlay
           onClose={() => setSearchOpen(false)}
-          onSelect={(result) => {
-            setSelectedView('channel');
-            setSelectedChannel(result.channelId);
-            setSearchOpen(false);
-          }}
+          onSelect={handleSearchSelect}
         />
       ) : null}
     </div>
   );
 }
 
-function SearchOverlay({ onClose, onSelect }: { onClose: () => void; onSelect: (result: SearchMessageResult) => void }) {
+function SearchOverlay({ onClose, onSelect }: { onClose: () => void; onSelect: (result: SearchMessageResult) => void | Promise<void> }) {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<SearchMessageResult[]>([]);
 

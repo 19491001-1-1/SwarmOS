@@ -52,6 +52,51 @@ body {
   opacity: 1 !important;
 }
 
+.message-row-target {
+  animation: message-target-pulse 1.8s ease-out;
+}
+
+.presence-avatar {
+  appearance: none;
+  border: 0;
+  padding: 0;
+  background: transparent;
+}
+
+.presence-avatar-active::before {
+  content: '';
+  position: absolute;
+  inset: -5px;
+  border: 2px solid rgba(124, 58, 237, 0.55);
+  border-radius: 8px;
+  animation: avatar-breathing-ring 1.8s ease-in-out infinite;
+  pointer-events: none;
+}
+
+@keyframes avatar-breathing-ring {
+  0% {
+    opacity: 0.35;
+    transform: scale(0.94);
+  }
+  50% {
+    opacity: 0.9;
+    transform: scale(1.08);
+  }
+  100% {
+    opacity: 0.35;
+    transform: scale(0.94);
+  }
+}
+
+@keyframes message-target-pulse {
+  0% {
+    background: rgba(255, 215, 0, 0.55);
+  }
+  100% {
+    background: transparent;
+  }
+}
+
 .message-row p {
   margin: 0 0 8px;
 }

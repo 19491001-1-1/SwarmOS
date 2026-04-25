@@ -5,13 +5,14 @@ import type { Mention } from '../api.js';
 type Props = {
   content: string;
   mentions?: Mention[];
+  onOpenAgent?: (agentId: string) => void;
 };
 
 export function normalizeMessageContent(content: string): string {
   return content.replace(/\\n/g, '\n');
 }
 
-export function MessageContent({ content, mentions = [] }: Props) {
+export function MessageContent({ content, mentions = [], onOpenAgent }: Props) {
   const normalized = applyMentionLinks(normalizeMessageContent(content), mentions);
   return (
     <div style={contentStyle}>
@@ -21,8 +22,19 @@ export function MessageContent({ content, mentions = [] }: Props) {
         components={{
           a: ({ href, children }) => {
             if (href?.startsWith('mention:')) {
-              const [, type] = href.split(':');
-              return <span style={mentionStyle(type === 'agent')}>{children}</span>;
+              const [, type, id] = href.split(':');
+              if (type === 'agent' && id) {
+                return (
+                  <button
+                    type="button"
+                    onClick={() => onOpenAgent?.(id)}
+                    style={mentionStyle(true)}
+                  >
+                    {children}
+                  </button>
+                );
+              }
+              return <span style={mentionStyle(false)}>{children}</span>;
             }
             return <a href={href} target="_blank" rel="noreferrer" style={{ color: '#0b63ce', overflowWrap: 'anywhere' }}>{children}</a>;
           },
@@ -114,5 +126,8 @@ function mentionStyle(agent: boolean): React.CSSProperties {
     borderRadius: 4,
     fontWeight: 700,
     lineHeight: 1.5,
+    fontFamily: 'inherit',
+    fontSize: 'inherit',
+    cursor: agent ? 'pointer' : 'default',
   };
 }
