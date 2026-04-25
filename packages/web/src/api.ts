@@ -9,6 +9,7 @@ export type Agent = { id: string; name: string; displayName?: string; descriptio
 export type AgentActivity = { id: string; agentId: string; type: 'thinking' | 'working' | 'output' | 'idle' | 'sending' | 'error'; detail?: string; createdAt: string };
 export type DirectMessage = { id: string; fromAgentId: string; toAgentId: string; content: string; createdAt: string };
 export type DirectMessageThread = { otherAgentId: string; lastMessage: DirectMessage };
+export type AgentDelegation = { id: string; fromAgentId: string; toAgentId: string; content: string; status: 'queued' | 'delivered' | 'started' | 'failed'; error?: string; createdAt: string };
 export type Machine = { id: string; hostname: string; os: string; runtimes: string[]; status: string; connectedAt: string };
 export type VersionInfo = { component: string; version: string; commit?: string; build?: string };
 

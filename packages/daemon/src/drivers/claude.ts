@@ -1,5 +1,5 @@
 import type { RuntimeDriver, AgentSpawnContext, RuntimeCommand, AgentOutputEvent } from './types.js';
-import { parseBridgeLine, buildBridgeInstruction, buildDmInstruction, parseDmLine } from '../bridge/simpleToolBridge.js';
+import { parseBridgeLine, buildBridgeInstruction, buildDmInstruction, parseDmLine, buildDelegateInstruction, parseDelegateLine } from '../bridge/simpleToolBridge.js';
 
 export const claudeDriver: RuntimeDriver = {
   id: 'claude',
@@ -9,6 +9,7 @@ export const claudeDriver: RuntimeDriver = {
       ctx.config.systemPrompt ?? '',
       buildBridgeInstruction(),
       buildDmInstruction(),
+      buildDelegateInstruction(),
     ]
       .filter(Boolean)
       .join('\n\n');
@@ -32,6 +33,8 @@ export const claudeDriver: RuntimeDriver = {
     if (bridge) return { type: 'message', content: bridge.content };
     const dm = parseDmLine(line);
     if (dm) return { type: 'dm', toAgentId: dm.to, content: dm.content };
+    const delegation = parseDelegateLine(line);
+    if (delegation) return { type: 'delegate', toAgentId: delegation.to, content: delegation.content, startIfInactive: delegation.startIfInactive };
     return null;
   },
 };
