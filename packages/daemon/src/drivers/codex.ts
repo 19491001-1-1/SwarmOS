@@ -3,6 +3,13 @@ import { parseBridgeLine, buildBridgeInstruction, buildDmInstruction, parseDmLin
 
 export const codexDriver: RuntimeDriver = {
   id: 'codex',
+  capabilities: {
+    transport: 'oneshot',
+    supportsStdinDelivery: false,
+    busyDeliveryMode: 'inbox',
+    supportsSessionResume: false,
+    supportsMcpBridge: false,
+  },
 
   buildCommand(ctx: AgentSpawnContext): RuntimeCommand {
     const systemPrompt = [
@@ -18,7 +25,7 @@ export const codexDriver: RuntimeDriver = {
     const prompt = [
       systemPrompt,
       'Current user message:',
-      ctx.userMessage,
+      ctx.formattedMessage || ctx.userMessage,
     ].join('\n\n');
 
     // codex exec does not expose a stable system prompt flag, so put bridge rules in the prompt.

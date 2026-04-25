@@ -35,6 +35,7 @@ export class DaemonClient {
       (fromAgentId, toAgentId, content, startIfInactive) => this.sendMessage({ type: 'agent:delegate', fromAgentId, toAgentId, content, startIfInactive }),
       (agentId, title, channelId, assigneeId) => this.sendMessage({ type: 'agent:create_task', agentId, title, channelId, assigneeId }),
       (agentId, taskId, status) => this.sendMessage({ type: 'agent:update_task', agentId, taskId, status }),
+      (agentId, sessionId) => this.sendMessage({ type: 'agent:session', agentId, sessionId }),
       options.serverUrl
     );
   }
@@ -111,11 +112,8 @@ export class DaemonClient {
 
     if (msg.type === 'agent:start') {
       const channelId = msg.wakeMessage?.channelId ?? 'general';
-      this.processManager.startAgent(msg.agentId, msg.config, channelId).then(() => {
+      this.processManager.startAgent(msg.agentId, msg.config, channelId, msg.wakeMessage).then(() => {
         this.sendMessage({ type: 'agent:status', agentId: msg.agentId, status: 'running', launchId: msg.launchId });
-        if (msg.wakeMessage) {
-          this.processManager.deliverMessage(msg.agentId, msg.wakeMessage);
-        }
       });
       return;
     }
@@ -127,16 +125,7 @@ export class DaemonClient {
 
     if (msg.type === 'agent:deliver') {
       const doDeliver = async () => {
-        // Auto-recover agent if daemon restarted and lost the entry
-        if (!this.processManager.isRunning(msg.agentId) && msg.config) {
-          console.log(`[daemon] auto-recovering agent ${msg.agentId} (${msg.config.runtime})`);
-          await this.processManager.startAgent(
-            msg.agentId,
-            msg.config,
-            msg.channelId ?? msg.message.channelId
-          );
-        }
-        await this.processManager.deliverMessage(msg.agentId, msg.message);
+        await this.processManager.deliverMessage(msg.agentId, msg.message, msg.config, msg.channelId);
         this.sendMessage({ type: 'agent:deliver:ack', agentId: msg.agentId, seq: msg.seq });
       };
       doDeliver().catch((err) => {

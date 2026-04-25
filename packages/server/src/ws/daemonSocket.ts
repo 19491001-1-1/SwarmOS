@@ -168,6 +168,10 @@ export async function daemonSocketHandler(app: FastifyInstance) {
           return;
         }
 
+        if (msg.type === 'agent:session') {
+          return;
+        }
+
         if (msg.type === 'agent:deliver:ack') {
           return;
         }
