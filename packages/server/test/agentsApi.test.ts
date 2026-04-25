@@ -297,6 +297,28 @@ describe('agent internal API', () => {
     await app.close();
   });
 
+  it('resolves agent ids from display names and role descriptions', async () => {
+    const { app, store, headers } = await createInternalAgent();
+    await store.createAgent({
+      id: 'agent-111',
+      name: 'pm-111',
+      displayName: '产品经理',
+      description: 'Product manager for task triage',
+      runtime: 'claude',
+      status: 'inactive',
+      createdAt: new Date().toISOString(),
+    });
+
+    const displayName = await app.inject({ method: 'GET', url: '/internal/agent/agent-1/agents/resolve?query=%E4%BA%A7%E5%93%81%E7%BB%8F%E7%90%86', headers });
+    expect(displayName.statusCode).toBe(200);
+    expect(displayName.json()).toMatchObject({ match: { id: 'agent-111' }, confidence: 'exact_display_name' });
+
+    const roleHint = await app.inject({ method: 'GET', url: '/internal/agent/agent-1/agents/resolve?query=task%20triage', headers });
+    expect(roleHint.statusCode).toBe(200);
+    expect(roleHint.json()).toMatchObject({ match: { id: 'agent-111' }, confidence: 'description_hint' });
+    await app.close();
+  });
+
   it('sends and reads channel messages', async () => {
     const { app, headers } = await createInternalAgent();
     const sent = await app.inject({

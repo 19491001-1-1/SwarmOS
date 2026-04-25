@@ -49,12 +49,15 @@ describe('parseBridgeLine', () => {
   it('instructs agents to use the agent directory before asking for help', () => {
     const instruction = buildBridgeInstruction();
     expect(instruction).toContain('xoxiang agent list');
+    expect(instruction).toContain('xoxiang agent resolve');
     expect(instruction).toContain('need a specialist role');
+    expect(instruction).toContain('human-described role');
   });
 
   it('instructs agents to use all tasks for unassigned or global task questions', () => {
     const instruction = buildBridgeInstruction();
     expect(instruction).toContain('xoxiang task list --all');
+    expect(instruction).toContain('xoxiang task handoff');
     expect(instruction).toContain('unassigned tasks');
     expect(instruction).toContain('do not infer global task state from plain `xoxiang task list`');
   });

@@ -49,6 +49,12 @@ function parseCommand(argv: string[]): ParsedCommand {
   if (group === 'auth' && action === 'whoami') return { method: 'GET', path: '/auth/whoami' };
   if (group === 'server' && action === 'info') return { method: 'GET', path: '/server/info' };
   if (group === 'agent' && (action === 'list' || action === 'directory')) return { method: 'GET', path: '/server/info', select: 'agents' };
+  if (group === 'agent' && action === 'resolve') {
+    const query = required(rest[0], 'query');
+    if (rest.length > 1) throw new Error(`unexpected argument: ${rest[1]}`);
+    const params = new URLSearchParams({ query });
+    return { method: 'GET', path: `/agents/resolve?${params.toString()}` };
+  }
   if (group === 'message' && action === 'check') return { method: 'GET', path: '/messages/check' };
   if (group === 'message' && action === 'read') {
     const opts = parseFlags(rest);

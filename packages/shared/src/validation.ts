@@ -259,6 +259,10 @@ export const InternalAgentDelegateRequestSchema = z.object({
   startIfInactive: z.boolean().optional(),
 });
 
+export const InternalAgentResolveRequestSchema = z.object({
+  query: z.string().min(1),
+});
+
 export const InternalTaskListRequestSchema = z.object({
   channel: z.string().min(1).optional(),
   status: TaskStatusSchema.optional(),
@@ -300,6 +304,7 @@ export type InternalMessageSendRequest = z.infer<typeof InternalMessageSendReque
 export type InternalMessageReadRequest = z.infer<typeof InternalMessageReadRequestSchema>;
 export type InternalDmSendRequest = z.infer<typeof InternalDmSendRequestSchema>;
 export type InternalAgentDelegateRequest = z.infer<typeof InternalAgentDelegateRequestSchema>;
+export type InternalAgentResolveRequest = z.infer<typeof InternalAgentResolveRequestSchema>;
 export type InternalTaskListRequest = z.infer<typeof InternalTaskListRequestSchema>;
 export type InternalTaskUpdateRequest = z.infer<typeof InternalTaskUpdateRequestSchema>;
 export type InternalTaskHandoffRequest = z.infer<typeof InternalTaskHandoffRequestSchema>;

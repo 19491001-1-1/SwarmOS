@@ -94,6 +94,23 @@ describe('agent-facing xoxiang CLI', () => {
     );
   });
 
+  it('resolves an agent reference', async () => {
+    const fetchImpl = okFetch({
+      query: '产品经理',
+      match: { id: 'agent-111', name: 'pm-111', displayName: '产品经理' },
+      confidence: 'exact_display_name',
+      candidates: [{ id: 'agent-111', name: 'pm-111', displayName: '产品经理' }],
+    });
+    const result = await run(['agent', 'resolve', '产品经理'], fetchImpl);
+
+    expect(result.code).toBe(0);
+    expect(fetchImpl).toHaveBeenCalledWith(
+      'http://hub.test/internal/agent/agent-1/agents/resolve?query=%E4%BA%A7%E5%93%81%E7%BB%8F%E7%90%86',
+      expect.objectContaining({ method: 'GET' })
+    );
+    expect(JSON.parse(result.stdout).match.id).toBe('agent-111');
+  });
+
   it('delegates with wake flag', async () => {
     const fetchImpl = okFetch({ id: 'delegation-1' });
     const result = await run(['agent', 'delegate', '--to', 'target', '--content', 'work', '--start-if-inactive'], fetchImpl);

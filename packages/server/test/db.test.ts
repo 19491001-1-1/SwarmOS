@@ -82,12 +82,15 @@ describe('agents', () => {
     await store.createAgent({
       id: 'agent-1',
       name: 'Lydia',
+      displayName: '产品经理',
       runtime: 'gemini',
       status: 'inactive',
       createdAt: new Date().toISOString(),
     });
 
     expect((await store.findAgentByNameOrId('lydia'))?.id).toBe('agent-1');
+    expect((await store.findAgentByNameOrId('产品经理'))?.id).toBe('agent-1');
+    expect((await store.resolveAgent('产品经理')).confidence).toBe('exact_display_name');
   });
 });
 
