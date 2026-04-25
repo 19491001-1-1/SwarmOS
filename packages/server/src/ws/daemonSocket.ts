@@ -130,6 +130,11 @@ export async function daemonSocketHandler(app: FastifyInstance) {
         if (msg.type === 'agent:deliver:ack') {
           return;
         }
+
+        if (msg.type === 'workspace:result') {
+          daemonRegistry.resolveWorkspaceRead(msg.requestId, msg.result);
+          return;
+        }
       });
 
       connection.socket.on('close', async () => {

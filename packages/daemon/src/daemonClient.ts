@@ -95,7 +95,7 @@ export class DaemonClient {
       runtimes: runtimeIds,
       runtimeVersions,
       runningAgents: this.processManager.listRunningAgentIds(),
-      capabilities: ['agent:start', 'agent:stop', 'agent:deliver'],
+      capabilities: ['agent:start', 'agent:stop', 'agent:deliver', 'workspace:read'],
     });
   }
 
@@ -139,6 +139,19 @@ export class DaemonClient {
         console.error('[daemon] deliver error:', err.message);
         this.sendMessage({ type: 'agent:status', agentId: msg.agentId, status: 'error' });
       });
+      return;
+    }
+
+    if (msg.type === 'workspace:read') {
+      this.processManager.readWorkspace(msg.agentId, msg.relPath)
+        .then((result) => this.sendMessage({ type: 'workspace:result', requestId: msg.requestId, result }))
+        .catch((err) => {
+          this.sendMessage({
+            type: 'workspace:result',
+            requestId: msg.requestId,
+            result: { type: 'error', error: err instanceof Error ? err.message : 'Failed to read workspace', status: 500 },
+          });
+        });
       return;
     }
   }

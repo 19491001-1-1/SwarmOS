@@ -24,6 +24,30 @@ export async function agentRoutes(app: FastifyInstance) {
     return store.listAgentActivities(agent.id, 200);
   });
 
+  app.get<{ Params: { id: string }; Querystring: { path?: string } }>('/api/agents/:id/workspace', async (req, reply) => {
+    const store = getStore();
+    const agent = await store.getAgent(req.params.id);
+    if (!agent) return reply.status(404).send({ error: 'Agent not found' });
+
+    const relPath = req.query.path ?? '';
+    if (isUnsafeWorkspacePath(relPath)) {
+      return reply.status(403).send({ error: 'Path traversal is not allowed' });
+    }
+
+    const machineId = resolveStartMachineId({
+      agent,
+      machines: await store.listMachines(),
+      connectedMachineIds: new Set(daemonRegistry.listConnectedMachineIds()),
+    });
+    if (!machineId) return reply.status(503).send({ error: 'No connected machine available for agent workspace' });
+
+    const result = await daemonRegistry.readWorkspace(machineId, agent.id, nanoid(), relPath);
+    if (result.type === 'error') {
+      return reply.status(result.status ?? 500).send({ error: result.error });
+    }
+    return result;
+  });
+
   app.post('/api/agents', async (req, reply) => {
     const parsed = CreateAgentRequestSchema.safeParse(req.body);
     if (!parsed.success) {
@@ -134,6 +158,10 @@ export async function agentRoutes(app: FastifyInstance) {
     eventBus.emit({ type: 'agent:update', agent: updated });
     return updated;
   });
+}
+
+function isUnsafeWorkspacePath(value: string): boolean {
+  return value.startsWith('/') || value.split(/[\\/]+/).some((part) => part === '..');
 }
 
 function deliverDirectMessage(target: Agent, dm: DirectMessage): void {
