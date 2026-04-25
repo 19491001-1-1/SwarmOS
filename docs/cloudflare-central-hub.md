@@ -195,6 +195,21 @@ Configure in repo **Settings → Secrets and variables → Actions**:
 | `deploy-cloudflare-hub.yml` | push to `main` + manual | verify, upload `DAEMON_API_KEY`, deploy Worker |
 | `deploy-cloudflare-pages.yml` | push to `main` + manual | build web, deploy to Cloudflare Pages |
 
+### First-time Setup: Configure GitHub Secrets
+
+Go to repo **Settings → Secrets and variables → Actions → New repository secret**, or use `gh`:
+
+```bash
+gh secret set CLOUDFLARE_API_TOKEN   # Cloudflare API token with Workers + Pages Edit
+gh secret set CLOUDFLARE_ACCOUNT_ID  # Found in Cloudflare dashboard sidebar
+gh secret set DAEMON_API_KEY         # Generate: openssl rand -hex 32
+```
+
+Cloudflare API token recommended permissions:
+- Account: Workers Scripts Edit
+- Account: Cloudflare Pages Edit
+- Account: Durable Objects Edit
+
 ### Manual Trigger
 
 ```bash
@@ -207,7 +222,12 @@ gh workflow run deploy-cloudflare-pages.yml
 ```bash
 gh run list --limit 10
 gh run watch <run-id>
+gh run view <run-id> --log-failed
 ```
+
+Successful deploy signs:
+- **Hub**: workflow shows `✓ Deployed` with a `*.workers.dev` URL
+- **Pages**: workflow outputs a `*.pages.dev` URL that loads the web UI
 
 ### Local Deployment (still works)
 
