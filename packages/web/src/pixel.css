@@ -16,6 +16,77 @@ body {
   font-family: var(--font);
   background: var(--bg);
   color: var(--black);
+  margin: 0;
+  overflow: hidden;
+}
+
+.app-shell {
+  position: relative;
+}
+
+.sidebar-item {
+  transform: translateX(0);
+  transition:
+    background-color 140ms ease,
+    color 140ms ease,
+    transform 140ms ease,
+    box-shadow 140ms ease,
+    outline-color 140ms ease;
+}
+
+.sidebar-item:hover,
+.sidebar-item:focus-visible {
+  background: #fff8bf !important;
+  color: #000 !important;
+  box-shadow: 2px 2px 0 #000;
+  outline: 2px solid #000;
+  outline-offset: -2px;
+  transform: translateX(2px);
+}
+
+.sidebar-item-active,
+.sidebar-item-active:hover,
+.sidebar-item-active:focus-visible {
+  background: var(--pink) !important;
+  color: #fff !important;
+  box-shadow: 3px 3px 0 #000;
+  outline: 2px solid #000;
+  outline-offset: -2px;
+  transform: translateX(0);
+}
+
+.sidebar-workspace:hover,
+.sidebar-workspace:focus-visible {
+  background: var(--yellow) !important;
+}
+
+.right-rail-trigger {
+  position: fixed;
+  right: 14px;
+  top: 58px;
+  z-index: 5;
+  border: 2px solid #000;
+  background: #fff;
+  color: #000;
+  font-family: var(--font);
+  font-weight: 700;
+  padding: 7px 10px;
+  cursor: pointer;
+  box-shadow: 3px 3px 0 #000;
+  transition: transform 120ms ease, box-shadow 120ms ease, background-color 120ms ease;
+}
+
+.right-rail-trigger:hover,
+.right-rail-trigger:focus-visible {
+  background: var(--yellow);
+  transform: translate(-1px, -1px);
+  outline: 2px solid #000;
+  outline-offset: 2px;
+}
+
+.right-rail-trigger:active {
+  box-shadow: 0 0 0 #000;
+  transform: translate(2px, 2px);
 }
 
 /* Pixel button */

@@ -6,6 +6,7 @@ type Props = {
   agents: Agent[];
   machines: Machine[];
   onAgentsChange: () => void;
+  onClose?: () => void;
 };
 
 const FONT = "'Courier New', monospace";
@@ -22,7 +23,7 @@ const inputStyle: React.CSSProperties = {
   outline: 'none',
 };
 
-export function AgentPanel({ agents, machines, onAgentsChange }: Props) {
+export function AgentPanel({ agents, machines, onAgentsChange, onClose }: Props) {
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({
     name: '',
@@ -84,14 +85,21 @@ export function AgentPanel({ agents, machines, onAgentsChange }: Props) {
         flexShrink: 0,
       }}>
         <span style={{ fontWeight: 700, fontSize: 13, letterSpacing: '0.5px' }}>▶ AGENTS</span>
-        <PxButton
-          onClick={() => setShowForm(!showForm)}
-          bg={showForm ? '#FFD700' : '#000'}
-          color={showForm ? '#000' : '#FFD700'}
-          small
-        >
-          {showForm ? '✕ CANCEL' : '+ NEW'}
-        </PxButton>
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+          <PxButton
+            onClick={() => setShowForm(!showForm)}
+            bg={showForm ? '#FFD700' : '#000'}
+            color={showForm ? '#000' : '#FFD700'}
+            small
+          >
+            {showForm ? '✕ CANCEL' : '+ NEW'}
+          </PxButton>
+          {onClose ? (
+            <PxButton onClick={onClose} bg="#fff" color="#000" small>
+              X
+            </PxButton>
+          ) : null}
+        </div>
       </div>
 
       <div style={{ flex: 1, overflowY: 'auto', padding: '10px' }}>

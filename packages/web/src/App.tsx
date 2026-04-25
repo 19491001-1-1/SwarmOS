@@ -21,6 +21,7 @@ export function App() {
   const [selectedView, setSelectedView] = useState<'channel' | 'tasks'>('channel');
   const [selectedChannel, setSelectedChannel] = useState('general');
   const [selectedAgentId, setSelectedAgentId] = useState<string | undefined>();
+  const [rightPanel, setRightPanel] = useState<'agents' | undefined>();
   const [thread, setThread] = useState<MessageThread | undefined>();
   const [targetMessageId, setTargetMessageId] = useState<string | undefined>();
   const [threadTargetMessageId, setThreadTargetMessageId] = useState<string | undefined>();
@@ -109,6 +110,18 @@ export function App() {
       setRemindersByAgent((prev) => ({ ...prev, [selectedAgentId]: data }));
     });
   }, [selectedAgentId]);
+
+  useEffect(() => {
+    if (!thread && !selectedAgentId && !rightPanel) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      if (thread) setThread(undefined);
+      else if (selectedAgentId) setSelectedAgentId(undefined);
+      else setRightPanel(undefined);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [rightPanel, selectedAgentId, thread]);
 
   // WebSocket for real-time updates. Keep one connection alive and use refs for
   // channel-specific state so channel switching does not churn the socket.
@@ -230,12 +243,15 @@ export function App() {
   const handleOpenThread = async (message: Message) => {
     setThread(await getMessageThread(message.threadRootId ?? message.id));
     setThreadTargetMessageId(undefined);
+    setRightPanel(undefined);
+    setSelectedAgentId(undefined);
   };
 
   const handleOpenAgent = (agentId: string) => {
     setSelectedView('channel');
     setSelectedAgentId(agentId);
     setThread(undefined);
+    setRightPanel(undefined);
   };
 
   const handleThreadSend = async (content: string, agentId?: string) => {
@@ -307,7 +323,7 @@ export function App() {
   };
 
   return (
-    <div style={{ display: 'flex', height: '100vh', fontFamily: "'Courier New', monospace", background: '#fafaf5' }}>
+    <div className="app-shell" style={{ display: 'flex', height: '100vh', fontFamily: "'Courier New', monospace", background: '#fafaf5' }}>
       <Sidebar
         channels={channels}
         agents={agents}
@@ -331,6 +347,7 @@ export function App() {
         onCreateChannel={handleCreateChannel}
         onDeleteChannel={handleDeleteChannel}
         onSelectAgent={(id) => { setSelectedAgentId(id); }}
+        onOpenAgents={() => { setRightPanel((current) => current === 'agents' ? undefined : 'agents'); setSelectedAgentId(undefined); setThread(undefined); }}
       />
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, minHeight: 0 }}>
         {selectedView === 'tasks' ? (
@@ -380,8 +397,17 @@ export function App() {
           onAgentUpdated={(updated) => setAgents((prev) => prev.map((agent) => (agent.id === updated.id ? updated : agent)))}
           onClose={() => setSelectedAgentId(undefined)}
         />
+      ) : rightPanel === 'agents' ? (
+        <AgentPanel agents={agents} machines={machines} onAgentsChange={loadAgents} onClose={() => setRightPanel(undefined)} />
       ) : (
-        <AgentPanel agents={agents} machines={machines} onAgentsChange={loadAgents} />
+        <button
+          className="right-rail-trigger"
+          onClick={() => setRightPanel('agents')}
+          title="Open agents"
+          aria-label="Open agents"
+        >
+          AGENTS
+        </button>
       )}
       {searchOpen ? (
         <SearchOverlay
