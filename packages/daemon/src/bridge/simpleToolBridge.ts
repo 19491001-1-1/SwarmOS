@@ -167,3 +167,15 @@ export function buildTaskInstruction(): string {
     'Use channel "general" unless the user specified another channel.',
   ].join('\n');
 }
+
+export function buildMemoryInstruction(): string {
+  return [
+    'Workspace and durable memory rules:',
+    '- Your current working directory is your persistent agent workspace.',
+    '- Read `MEMORY.md` when you need durable identity, long-term context, or restart recovery context.',
+    '- Keep durable working notes in `notes/`; use `notes/work-log.md` for important completed work and decisions.',
+    '- Store user preferences in `notes/user-preferences.md` and channel background in `notes/channels.md` when useful.',
+    '- Do not write secrets, auth tokens, API keys, or sensitive private data into MEMORY.md or notes.',
+    '- After meaningful work, update MEMORY.md or notes only when it preserves useful future context.',
+  ].join('\n');
+}

@@ -45,6 +45,7 @@ export const WorkspaceEntrySchema = z.discriminatedUnion('type', [
     path: z.string(),
     content: z.string(),
     truncated: z.boolean().optional(),
+    binary: z.boolean().optional(),
   }),
 ]);
 

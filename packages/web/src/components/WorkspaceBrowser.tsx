@@ -71,7 +71,7 @@ export function WorkspaceBrowser({ agentId }: Props) {
       <div style={{ border: '2px solid #000', background: '#fff' }}>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', borderBottom: '2px solid #000' }}>
           <div style={{ padding: 8, minWidth: 0, fontSize: 10, fontWeight: 700, overflowWrap: 'anywhere' }}>
-            ~/.mini-slock/workspaces/{agentId}/{currentPath}
+            ~/.xoxiang/agents/{agentId}/{currentPath}
           </div>
           <button onClick={() => load(currentPath)} disabled={loading} style={buttonStyle('#FFD700', '#000')}>
             {loading ? '...' : 'REFRESH'}
@@ -112,7 +112,8 @@ export function WorkspaceBrowser({ agentId }: Props) {
           </div>
           {entry?.type === 'file' ? (
             <>
-              {entry.truncated ? <div style={{ padding: 8, borderBottom: '2px solid #000', background: '#FFD700', fontSize: 10, fontWeight: 700 }}>TRUNCATED TO 100KB</div> : null}
+              {entry.binary ? <div style={{ padding: 8, borderBottom: '2px solid #000', background: '#FFD700', fontSize: 10, fontWeight: 700 }}>BINARY FILE PREVIEW DISABLED</div> : null}
+              {entry.truncated ? <div style={{ padding: 8, borderBottom: '2px solid #000', background: '#FFD700', fontSize: 10, fontWeight: 700 }}>TRUNCATED TO 1MB</div> : null}
               <pre style={{ margin: 0, padding: 10, overflow: 'auto', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', fontFamily: FONT, fontSize: 11, lineHeight: 1.45 }}>
                 {entry.content}
               </pre>

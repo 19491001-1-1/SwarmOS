@@ -14,6 +14,7 @@ import {
   buildDmInstruction,
   buildDelegateInstruction,
   buildTaskInstruction,
+  buildMemoryInstruction,
 } from '../src/bridge/simpleToolBridge.js';
 
 describe('parseBridgeLine', () => {
@@ -60,6 +61,16 @@ describe('parseBridgeLine', () => {
     expect(instruction).toContain('xoxiang task handoff');
     expect(instruction).toContain('unassigned tasks');
     expect(instruction).toContain('do not infer global task state from plain `xoxiang task list`');
+  });
+});
+
+describe('memory instruction', () => {
+  it('instructs agents to use durable workspace memory and notes', () => {
+    const instruction = buildMemoryInstruction();
+    expect(instruction).toContain('persistent agent workspace');
+    expect(instruction).toContain('MEMORY.md');
+    expect(instruction).toContain('notes/work-log.md');
+    expect(instruction).toContain('Do not write secrets');
   });
 });
 

@@ -1,5 +1,5 @@
 import type { RuntimeDriver, AgentSpawnContext, RuntimeCommand, AgentOutputEvent } from './types.js';
-import { parseBridgeLine, buildBridgeInstruction, buildDmInstruction, parseDmLine, buildDelegateInstruction, parseDelegateLine, buildTaskInstruction, parseCreateTaskLine, parseUpdateTaskLine } from '../bridge/simpleToolBridge.js';
+import { parseBridgeLine, buildBridgeInstruction, buildDmInstruction, parseDmLine, buildDelegateInstruction, parseDelegateLine, buildTaskInstruction, buildMemoryInstruction, parseCreateTaskLine, parseUpdateTaskLine } from '../bridge/simpleToolBridge.js';
 import { mkdir, writeFile } from 'fs/promises';
 import { join } from 'path';
 
@@ -38,6 +38,7 @@ export const geminiDriver: RuntimeDriver = {
       buildDmInstruction(),
       buildDelegateInstruction(),
       buildTaskInstruction(),
+      buildMemoryInstruction(),
     ]
       .filter(Boolean)
       .join('\n\n');

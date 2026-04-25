@@ -1,6 +1,5 @@
-import { mkdir, appendFile, chmod, readdir, readFile, stat, writeFile } from 'fs/promises';
-import { existsSync } from 'fs';
-import { delimiter, dirname, isAbsolute, join, normalize, sep } from 'path';
+import { appendFile, chmod, mkdir, writeFile } from 'fs/promises';
+import { delimiter, dirname, join, sep } from 'path';
 import { fileURLToPath } from 'url';
 import { spawn, type ChildProcess } from 'child_process';
 import type { AgentRuntimeConfig, AgentDelivery, AgentActivity, WorkspaceEntry, WorkspaceError, TaskStatus } from '@mini-slock/shared';
@@ -8,14 +7,13 @@ import type { AgentSpawnContext, RuntimeDriver } from './drivers/types.js';
 import { claudeDriver } from './drivers/claude.js';
 import { codexDriver } from './drivers/codex.js';
 import { geminiDriver } from './drivers/gemini.js';
+import { ensureAgentWorkspace, readAgentWorkspace } from './workspace/agentWorkspace.js';
 
 const DRIVERS: Record<string, RuntimeDriver> = {
   claude: claudeDriver,
   codex: codexDriver,
   gemini: geminiDriver,
 };
-
-const MAX_WORKSPACE_FILE_BYTES = 100 * 1024;
 
 function buildAgentCliWrapper(): string {
   const moduleDir = dirname(fileURLToPath(import.meta.url));
@@ -107,6 +105,7 @@ export class AgentProcessManager {
 
     const existing = this.agents.get(agentId);
     if (existing) {
+      await ensureAgentWorkspace(agentId, config, this.workspaceBase);
       existing.idleConfig = config;
       existing.channelId = channelId;
       existing.driver = driver;
@@ -118,12 +117,8 @@ export class AgentProcessManager {
       return;
     }
 
-    const workspaceDir = join(this.workspaceBase, agentId);
+    const { root: workspaceDir } = await ensureAgentWorkspace(agentId, config, this.workspaceBase);
     const transcriptFile = join(workspaceDir, 'transcript.txt');
-
-    if (!existsSync(workspaceDir)) {
-      await mkdir(workspaceDir, { recursive: true });
-    }
     await this.ensureAgentTools(config, workspaceDir);
 
     this.agents.set(agentId, {
@@ -446,6 +441,7 @@ export class AgentProcessManager {
   }
 
   private async ensureAgentTools(config: AgentRuntimeConfig, workspaceDir: string): Promise<void> {
+    await mkdir(workspaceDir, { recursive: true });
     const toolsDir = join(workspaceDir, '.xoxiang');
     await mkdir(toolsDir, { recursive: true });
     if (config.agentToken !== undefined) {
@@ -474,48 +470,6 @@ export class AgentProcessManager {
   }
 
   async readWorkspace(agentId: string, relPath: string): Promise<WorkspaceEntry | WorkspaceError> {
-    const safePath = normalize(relPath || '.');
-    if (isAbsolute(relPath) || safePath === '..' || safePath.startsWith(`..${sep}`) || safePath.includes(`${sep}..${sep}`)) {
-      return { type: 'error', error: 'Path traversal is not allowed', status: 403 };
-    }
-
-    const workspaceDir = this.agents.get(agentId)?.workspaceDir ?? join(this.workspaceBase, agentId);
-    const targetPath = join(workspaceDir, safePath);
-    const displayPath = safePath === '.' ? '' : safePath;
-
-    try {
-      const info = await stat(targetPath);
-      if (info.isDirectory()) {
-        const entries = await readdir(targetPath, { withFileTypes: true });
-        const children = await Promise.all(entries.map(async (entry) => {
-          const childPath = join(targetPath, entry.name);
-          const childInfo = await stat(childPath);
-          return {
-            name: entry.name,
-            type: entry.isDirectory() ? 'dir' as const : 'file' as const,
-            size: childInfo.size,
-            modifiedAt: childInfo.mtime.toISOString(),
-          };
-        }));
-        children.sort((a, b) => {
-          if (a.type !== b.type) return a.type === 'dir' ? -1 : 1;
-          return a.name.localeCompare(b.name);
-        });
-        return { type: 'dir', path: displayPath, children };
-      }
-
-      if (!info.isFile()) {
-        return { type: 'error', error: 'Workspace path is not a file or directory', status: 400 };
-      }
-
-      const buffer = await readFile(targetPath);
-      const truncated = buffer.byteLength > MAX_WORKSPACE_FILE_BYTES;
-      const content = buffer.subarray(0, MAX_WORKSPACE_FILE_BYTES).toString('utf8');
-      return { type: 'file', path: displayPath, content, truncated };
-    } catch (err) {
-      const code = (err as { code?: string }).code;
-      if (code === 'ENOENT') return { type: 'error', error: 'Workspace path not found', status: 404 };
-      return { type: 'error', error: err instanceof Error ? err.message : 'Failed to read workspace', status: 500 };
-    }
+    return readAgentWorkspace(agentId, relPath, this.workspaceBase);
   }
 }

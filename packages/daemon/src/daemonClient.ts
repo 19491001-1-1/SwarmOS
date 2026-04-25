@@ -25,7 +25,7 @@ export class DaemonClient {
 
   constructor(options: DaemonClientOptions) {
     this.options = options;
-    const workspaceBase = options.workspaceBase ?? join(os.homedir(), '.mini-slock', 'workspaces');
+    const workspaceBase = options.workspaceBase ?? process.env.XOXIANG_AGENTS_DIR ?? join(os.homedir(), '.xoxiang', 'agents');
     this.processManager = new AgentProcessManager(
       workspaceBase,
       (agentId, channelId, content) => this.sendMessage({ type: 'agent:message', agentId, channelId, content }),
