@@ -41,7 +41,7 @@ export async function runAgentCli(argv: string[], env: CliEnv = process.env, io:
 }
 
 type ParsedCommand =
-  | { method: 'GET'; path: string; select?: 'agents' }
+  | { method: 'GET'; path: string; select?: 'agents' | 'task-summary' }
   | { method: 'POST'; path: string; body: unknown };
 
 function parseCommand(argv: string[]): ParsedCommand {
@@ -85,8 +85,8 @@ function parseCommand(argv: string[]): ParsedCommand {
   }
   if (group === 'task' && action === 'read') {
     const taskId = required(rest[0], 'task id');
-    if (rest.length > 1) throw new Error(`unexpected argument: ${rest[1]}`);
-    return { method: 'GET', path: `/tasks/${encodeURIComponent(taskId)}` };
+    const opts = parseFlags(rest.slice(1));
+    return { method: 'GET', path: `/tasks/${encodeURIComponent(taskId)}`, select: opts.context === true ? undefined : 'task-summary' };
   }
   if (group === 'task' && action === 'update') {
     const taskId = required(rest[0], 'task id');
@@ -100,12 +100,30 @@ function parseCommand(argv: string[]): ParsedCommand {
       },
     };
   }
+  if (group === 'task' && action === 'handoff') {
+    const taskId = required(rest[0], 'task id');
+    const opts = parseFlags(rest.slice(1));
+    return {
+      method: 'POST',
+      path: `/tasks/${encodeURIComponent(taskId)}/handoff`,
+      body: {
+        to: required(opts.to, '--to'),
+        notes: required(opts.notes, '--notes'),
+        goal: typeof opts.goal === 'string' ? opts.goal : undefined,
+        nextStep: typeof opts['next-step'] === 'string' ? opts['next-step'] : undefined,
+      },
+    };
+  }
   throw new Error('unknown command');
 }
 
 function selectResult(command: ParsedCommand, result: unknown): unknown {
   if (command.method === 'GET' && command.select === 'agents') {
     return isRecord(result) && Array.isArray(result.agents) ? result.agents : [];
+  }
+  if (command.method === 'GET' && command.select === 'task-summary' && isRecord(result)) {
+    const { context: _context, ...summary } = result;
+    return summary;
   }
   return result;
 }
