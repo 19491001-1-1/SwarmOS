@@ -97,6 +97,22 @@ describe('POST /api/agents', () => {
     await app.close();
   });
 
+  it('creates an agent with organization profile', async () => {
+    const app = await buildApp();
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/agents',
+      payload: {
+        name: 'qa-agent',
+        runtime: 'claude',
+        organization: { department: 'delivery', roles: ['QA'], capabilities: ['quality gate'], availability: 'available' },
+      },
+    });
+    expect(res.statusCode).toBe(201);
+    expect(res.json().organization).toMatchObject({ department: 'delivery', roles: ['QA'], capabilities: ['quality gate'] });
+    await app.close();
+  });
+
   it('returns 400 without required fields', async () => {
     const app = await buildApp();
     const res = await app.inject({
@@ -156,6 +172,19 @@ describe('PATCH /api/agents/:id', () => {
     const fetched = await app.inject({ method: 'GET', url: `/api/agents/${agentId}` });
     expect(fetched.statusCode).toBe(200);
     expect(fetched.json().displayName).toBe('New');
+    await app.close();
+  });
+
+  it('updates organization profile', async () => {
+    const app = await buildApp();
+    const created = await app.inject({ method: 'POST', url: '/api/agents', payload: { name: 'a', runtime: 'claude' } });
+    const res = await app.inject({
+      method: 'PATCH',
+      url: `/api/agents/${created.json().id}`,
+      payload: { organization: { department: 'product', roles: ['PM'], capabilities: ['requirements'] } },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().organization.roles).toEqual(['PM']);
     await app.close();
   });
 });
@@ -304,6 +333,7 @@ describe('agent internal API', () => {
       name: 'pm-111',
       displayName: '产品经理',
       description: 'Product manager for task triage',
+      organization: { department: 'product', roles: ['PM'], capabilities: ['requirements'] },
       runtime: 'claude',
       status: 'inactive',
       createdAt: new Date().toISOString(),
@@ -316,6 +346,10 @@ describe('agent internal API', () => {
     const roleHint = await app.inject({ method: 'GET', url: '/internal/agent/agent-1/agents/resolve?query=task%20triage', headers });
     expect(roleHint.statusCode).toBe(200);
     expect(roleHint.json()).toMatchObject({ match: { id: 'agent-111' }, confidence: 'description_hint' });
+
+    const capabilityHint = await app.inject({ method: 'GET', url: '/internal/agent/agent-1/agents/resolve?query=requirements', headers });
+    expect(capabilityHint.statusCode).toBe(200);
+    expect(capabilityHint.json()).toMatchObject({ match: { id: 'agent-111' }, confidence: 'description_hint' });
     await app.close();
   });
 
