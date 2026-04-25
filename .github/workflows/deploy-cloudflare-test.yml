@@ -1,0 +1,112 @@
+name: Deploy Cloudflare Test
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  TEST_API_BASE: https://xoxiang-hub-test.xingke0.workers.dev
+  VITE_APP_VERSION: ${{ github.sha }}
+  VITE_COMMIT_SHA: ${{ github.sha }}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: test
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      TEST_DAEMON_API_KEY: ${{ secrets.TEST_DAEMON_API_KEY }}
+      TEST_WEB_AUTH_TOKEN: ${{ secrets.TEST_WEB_AUTH_TOKEN }}
+      XOXIANG_VERSION: test-${{ github.sha }}
+      XOXIANG_COMMIT_SHA: ${{ github.sha }}
+      XOXIANG_BUILD_ID: ${{ github.run_id }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Verify
+        run: pnpm verify
+
+      - name: Check required secrets
+        run: |
+          if [ -z "$CLOUDFLARE_API_TOKEN" ]; then
+            echo "::error::CLOUDFLARE_API_TOKEN secret is not set."
+            exit 1
+          fi
+          if [ -z "$CLOUDFLARE_ACCOUNT_ID" ]; then
+            echo "::error::CLOUDFLARE_ACCOUNT_ID secret is not set."
+            exit 1
+          fi
+          if [ -z "$TEST_DAEMON_API_KEY" ]; then
+            echo "::error::TEST_DAEMON_API_KEY secret is not set."
+            exit 1
+          fi
+          if [ -z "$TEST_WEB_AUTH_TOKEN" ]; then
+            echo "::error::TEST_WEB_AUTH_TOKEN secret is not set."
+            exit 1
+          fi
+
+      - name: Upload test Worker secrets
+        run: |
+          printf '%s' "$TEST_DAEMON_API_KEY" | pnpm --filter @mini-slock/cloudflare exec wrangler secret put DAEMON_API_KEY --config wrangler.test.jsonc
+          printf '%s' "$TEST_WEB_AUTH_TOKEN" | pnpm --filter @mini-slock/cloudflare exec wrangler secret put WEB_AUTH_TOKEN --config wrangler.test.jsonc
+
+      - name: Deploy test Worker
+        run: pnpm --filter @mini-slock/cloudflare run deploy:test
+
+      - name: Build test web UI
+        run: pnpm --filter @mini-slock/web build
+        env:
+          VITE_API_BASE: ${{ env.TEST_API_BASE }}
+          VITE_WEB_AUTH_TOKEN: ${{ secrets.TEST_WEB_AUTH_TOKEN }}
+          VITE_APP_VERSION: ${{ env.VITE_APP_VERSION }}
+          VITE_COMMIT_SHA: ${{ env.VITE_COMMIT_SHA }}
+
+      - name: Deploy test Pages
+        id: pages_deploy
+        run: |
+          set +e
+          pnpm --filter @mini-slock/cloudflare exec wrangler pages deploy "$GITHUB_WORKSPACE/packages/web/dist" \
+            --project-name xoxiang-web-test \
+            --branch main \
+            --commit-dirty=true 2>&1 | tee /tmp/wrangler-pages-test-deploy.log
+          status=${PIPESTATUS[0]}
+          set -e
+          if [ "$status" -ne 0 ] && grep -q 'Project not found' /tmp/wrangler-pages-test-deploy.log; then
+            pnpm --filter @mini-slock/cloudflare exec wrangler pages project create xoxiang-web-test --production-branch main
+            pnpm --filter @mini-slock/cloudflare exec wrangler pages deploy "$GITHUB_WORKSPACE/packages/web/dist" \
+              --project-name xoxiang-web-test \
+              --branch main \
+              --commit-dirty=true 2>&1 | tee /tmp/wrangler-pages-test-deploy.log
+            status=${PIPESTATUS[0]}
+          fi
+          if [ "$status" -ne 0 ]; then
+            echo "::error::wrangler pages deploy failed with exit code $status"
+            exit "$status"
+          fi
+          url=$(grep -oE 'https://[^ ]+\.pages\.dev[^ ]*' /tmp/wrangler-pages-test-deploy.log | tail -1)
+          if [ -n "$url" ]; then
+            echo "pages_url=$url" >> "$GITHUB_OUTPUT"
+            echo "::notice::Test Pages deployed: $url"
+          fi
+
+      - name: Report test URLs
+        run: |
+          echo "Test Worker: $TEST_API_BASE"
+          if [ -n "${{ steps.pages_deploy.outputs.pages_url }}" ]; then
+            echo "Test Pages: ${{ steps.pages_deploy.outputs.pages_url }}"
+          fi

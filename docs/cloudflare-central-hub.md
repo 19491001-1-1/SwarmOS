@@ -73,7 +73,25 @@ Cloudflare Workers do not run a long-lived Node server and cannot use local SQLi
 - `README.md`
   - Adds a short Cloudflare hub section.
 
-## Current Deployment
+## Environments
+
+Cloudflare deploys are split into test and production. Test is the default target for remote
+validation; production is promoted manually only after explicit user approval.
+
+| Environment | Worker | Worker URL | Pages project | Purpose |
+|-------------|--------|------------|---------------|---------|
+| Test | `xoxiang-hub-test` | `https://xoxiang-hub-test.xingke0.workers.dev` | `xoxiang-web-test` | Validate deployable changes before release |
+| Production | `xoxiang-hub` | `https://xoxiang-hub.xingke0.workers.dev` | `xoxiang-web` | Current live environment |
+
+Promotion rule:
+
+1. Merge verified work to `main`.
+2. Let the `Deploy Cloudflare Test` workflow deploy Worker and Pages.
+3. Validate the user-facing behavior on the test Pages URL.
+4. Ask the user for production approval.
+5. Manually trigger production workflows only after approval.
+
+## Current Production Deployment
 
 Current Worker URL:
 
@@ -90,7 +108,7 @@ xoxiang-hub
 Current deployment command:
 
 ```bash
-pnpm --filter @mini-slock/cloudflare run deploy
+pnpm --filter @mini-slock/cloudflare run deploy:prod
 ```
 
 Health check:
@@ -143,10 +161,16 @@ Authenticate once:
 pnpm --filter @mini-slock/cloudflare exec wrangler login
 ```
 
-Deploy:
+Deploy test Worker:
 
 ```bash
-pnpm --filter @mini-slock/cloudflare run deploy
+pnpm --filter @mini-slock/cloudflare run deploy:test
+```
+
+Deploy production Worker after approval:
+
+```bash
+pnpm --filter @mini-slock/cloudflare run deploy:prod
 ```
 
 Set or rotate the daemon API key as a Cloudflare secret:
@@ -155,10 +179,22 @@ Set or rotate the daemon API key as a Cloudflare secret:
 printf '%s' '<new-key>' | pnpm --filter @mini-slock/cloudflare exec wrangler secret put DAEMON_API_KEY
 ```
 
+For the test Worker, pass the test config:
+
+```bash
+printf '%s' '<test-key>' | pnpm --filter @mini-slock/cloudflare exec wrangler secret put DAEMON_API_KEY --config wrangler.test.jsonc
+```
+
 Set or rotate the browser auth token (required by `/api/*` and `/ws`):
 
 ```bash
 printf '%s' '<new-web-token>' | pnpm --filter @mini-slock/cloudflare exec wrangler secret put WEB_AUTH_TOKEN
+```
+
+For the test Worker:
+
+```bash
+printf '%s' '<test-web-token>' | pnpm --filter @mini-slock/cloudflare exec wrangler secret put WEB_AUTH_TOKEN --config wrangler.test.jsonc
 ```
 
 Generate a fresh token with `openssl rand -hex 32`. Browser clients must send this token as
@@ -176,6 +212,7 @@ Dry-run packaging validation:
 
 ```bash
 pnpm --filter @mini-slock/cloudflare exec wrangler deploy --dry-run
+pnpm --filter @mini-slock/cloudflare exec wrangler deploy --config wrangler.test.jsonc --dry-run
 ```
 
 Typecheck:
@@ -192,7 +229,8 @@ pnpm verify
 
 ## CI/CD
 
-GitHub Actions workflows are in `.github/workflows/`. Push to `main` triggers automatic CI and deployment.
+GitHub Actions workflows are in `.github/workflows/`. Push to `main` triggers CI and the test
+Cloudflare deployment. Production deployment is manual only.
 
 ### Required GitHub Secrets
 
@@ -202,15 +240,19 @@ Configure in repo **Settings → Secrets and variables → Actions**:
 |--------|---------|
 | `CLOUDFLARE_API_TOKEN` | Wrangler auth — needs Workers Scripts Edit + Cloudflare Pages Edit + Durable Objects Edit |
 | `CLOUDFLARE_ACCOUNT_ID` | Your Cloudflare account ID |
-| `DAEMON_API_KEY` | Uploaded to the deployed Worker as a Cloudflare secret |
+| `DAEMON_API_KEY` | Uploaded to the production Worker as a Cloudflare secret |
+| `WEB_AUTH_TOKEN` | Embedded into the production Pages build and uploaded to the production Worker |
+| `TEST_DAEMON_API_KEY` | Uploaded to the test Worker as `DAEMON_API_KEY` |
+| `TEST_WEB_AUTH_TOKEN` | Embedded into the test Pages build and uploaded to the test Worker as `WEB_AUTH_TOKEN` |
 
 ### Workflows
 
 | File | Trigger | What it does |
 |------|---------|-------------|
 | `ci.yml` | PRs + push to `main` | typecheck, test, Worker dry-run (no secrets needed) |
-| `deploy-cloudflare-hub.yml` | push to `main` + manual | verify, upload `DAEMON_API_KEY`, deploy Worker |
-| `deploy-cloudflare-pages.yml` | push to `main` + manual | build web, deploy to Cloudflare Pages |
+| `deploy-cloudflare-test.yml` | push to `main` + manual | verify, upload test secrets, deploy test Worker, build and deploy test Pages |
+| `deploy-cloudflare-hub.yml` | manual only | verify, upload production `DAEMON_API_KEY`, deploy production Worker |
+| `deploy-cloudflare-pages.yml` | manual only | build web, deploy to production Cloudflare Pages |
 
 The deploy workflows inject the current Git commit SHA as the runtime/build version:
 
@@ -226,7 +268,10 @@ Go to repo **Settings → Secrets and variables → Actions → New repository s
 ```bash
 gh secret set CLOUDFLARE_API_TOKEN   # Cloudflare API token with Workers + Pages Edit
 gh secret set CLOUDFLARE_ACCOUNT_ID  # Found in Cloudflare dashboard sidebar
-gh secret set DAEMON_API_KEY         # Generate: openssl rand -hex 32
+gh secret set DAEMON_API_KEY         # Production daemon key. Generate: openssl rand -hex 32
+gh secret set WEB_AUTH_TOKEN         # Production browser token. Generate: openssl rand -hex 32
+gh secret set TEST_DAEMON_API_KEY    # Test daemon key. Generate: openssl rand -hex 32
+gh secret set TEST_WEB_AUTH_TOKEN    # Test browser token. Generate: openssl rand -hex 32
 ```
 
 Cloudflare API token recommended permissions:
@@ -237,9 +282,18 @@ Cloudflare API token recommended permissions:
 ### Manual Trigger
 
 ```bash
+gh workflow run deploy-cloudflare-test.yml
 gh workflow run deploy-cloudflare-hub.yml
 gh workflow run deploy-cloudflare-pages.yml
 ```
+
+Run the production workflows only after the test environment has been validated and the user has
+approved production promotion.
+
+The test Pages workflow creates `xoxiang-web-test` automatically if it does not already exist. A
+fresh Cloudflare Pages project can take a short time before its `*.pages.dev` TLS certificate is
+ready; retry the Pages URL after the workflow succeeds if the first request reports a TLS handshake
+failure.
 
 ### Check Recent Runs
 
@@ -257,7 +311,10 @@ Successful deploy signs:
 
 ```bash
 # Deploy Worker
-pnpm --filter @mini-slock/cloudflare run deploy
+pnpm --filter @mini-slock/cloudflare run deploy:test
+
+# Deploy production Worker after approval
+pnpm --filter @mini-slock/cloudflare run deploy:prod
 
 # Deploy Pages
 pnpm deploy:web:pages
