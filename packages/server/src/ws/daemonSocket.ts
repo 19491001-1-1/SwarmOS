@@ -9,6 +9,7 @@ import { eventBus } from '../events.js';
 import { findDuplicateMachineIds, findExistingMachineId } from '@mini-slock/hub-core';
 
 const VALID_KEYS = new Set(['dev-machine-key']);
+const VOLATILE_AGENT_STATUSES = new Set(['starting', 'running', 'working', 'idle']);
 
 export async function daemonSocketHandler(app: FastifyInstance) {
   app.get(
@@ -56,6 +57,7 @@ export async function daemonSocketHandler(app: FastifyInstance) {
           });
           daemonRegistry.register(readyMachineId, connection.socket);
           eventBus.emit({ type: 'machine:update', machine });
+          await reconcileReadyAgents(readyMachineId, msg.runtimes, new Set(msg.runningAgents));
           return;
         }
 
@@ -107,6 +109,12 @@ export async function daemonSocketHandler(app: FastifyInstance) {
           await store.setMachineOffline(machineId);
           const machine = await store.getMachine(machineId);
           if (machine) eventBus.emit({ type: 'machine:update', machine });
+          for (const agent of await store.listAgents()) {
+            if (agent.machineId === machineId && VOLATILE_AGENT_STATUSES.has(agent.status)) {
+              const updated = await store.updateAgentStatus(agent.id, 'inactive');
+              if (updated) eventBus.emit({ type: 'agent:update', agent: updated });
+            }
+          }
         }
       });
 
@@ -130,4 +138,37 @@ async function mergeDuplicateMachines(targetMachineId: string, hostname: string,
     os,
   });
   await store.mergeMachines(targetMachineId, duplicateIds);
+}
+
+async function reconcileReadyAgents(machineId: string, runtimes: string[], runningAgents: Set<string>): Promise<void> {
+  const store = getStore();
+  const supportedRuntimes = new Set(runtimes);
+  for (const agent of await store.listAgents()) {
+    if (!agent.autoStart || !supportedRuntimes.has(agent.runtime)) continue;
+    if (agent.machineId && agent.machineId !== machineId) continue;
+
+    if (runningAgents.has(agent.id)) {
+      const updated = await store.updateAgent(agent.id, { machineId, status: 'running' });
+      if (updated) eventBus.emit({ type: 'agent:update', agent: updated });
+      continue;
+    }
+
+    const launchId = nanoid();
+    const sent = daemonRegistry.send(machineId, {
+      type: 'agent:start',
+      agentId: agent.id,
+      config: {
+        runtime: agent.runtime,
+        model: agent.model,
+        name: agent.name,
+        displayName: agent.displayName,
+        description: agent.description,
+        systemPrompt: agent.systemPrompt,
+      },
+      launchId,
+    });
+    if (!sent) continue;
+    const updated = await store.updateAgent(agent.id, { machineId, status: 'starting' });
+    if (updated) eventBus.emit({ type: 'agent:update', agent: updated });
+  }
 }

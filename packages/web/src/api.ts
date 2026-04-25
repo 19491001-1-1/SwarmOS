@@ -5,7 +5,7 @@ export const WEB_COMMIT_SHA = (import.meta.env.VITE_COMMIT_SHA ?? '').trim();
 
 export type Channel = { id: string; name: string; createdAt: string };
 export type Message = { id: string; channelId: string; senderName: string; content: string; agentId?: string; createdAt: string };
-export type Agent = { id: string; name: string; displayName?: string; description?: string; runtime: string; model?: string; systemPrompt?: string; status: string; machineId?: string; createdAt: string };
+export type Agent = { id: string; name: string; displayName?: string; description?: string; runtime: string; model?: string; systemPrompt?: string; status: string; machineId?: string; autoStart?: boolean; createdAt: string };
 export type AgentActivity = { id: string; agentId: string; type: 'thinking' | 'working' | 'output' | 'idle' | 'sending' | 'error'; detail?: string; createdAt: string };
 export type Machine = { id: string; hostname: string; os: string; runtimes: string[]; status: string; connectedAt: string };
 export type VersionInfo = { component: string; version: string; commit?: string; build?: string };
@@ -76,7 +76,7 @@ export async function createAgent(data: {
   return r.json();
 }
 
-export async function patchAgent(agentId: string, data: { machineId?: string; displayName?: string; model?: string; systemPrompt?: string }): Promise<Agent> {
+export async function patchAgent(agentId: string, data: { machineId?: string; displayName?: string; model?: string; systemPrompt?: string; autoStart?: boolean }): Promise<Agent> {
   const r = await fetch(`${API_BASE}/api/agents/${agentId}`, {
     method: 'PATCH',
     headers: authHeaders({ 'Content-Type': 'application/json' }),

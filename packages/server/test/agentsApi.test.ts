@@ -93,6 +93,7 @@ describe('POST /api/agents', () => {
     expect(agent.name).toBe('my-agent');
     expect(agent.runtime).toBe('claude');
     expect(agent.status).toBe('inactive');
+    expect(agent.autoStart).toBe(false);
     await app.close();
   });
 

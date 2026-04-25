@@ -142,7 +142,7 @@ describe('machines', () => {
 });
 
 describe('volatile restart state', () => {
-  it('marks machines offline and running agents inactive', async () => {
+  it('marks machines offline without clearing agent run intent or observed status', async () => {
     await store.upsertMachine({
       id: 'machine-1',
       hostname: 'h',
@@ -158,6 +158,7 @@ describe('volatile restart state', () => {
       name: 'bot',
       runtime: 'claude',
       status: 'running',
+      autoStart: true,
       machineId: 'machine-1',
       createdAt: new Date().toISOString(),
     });
@@ -165,6 +166,6 @@ describe('volatile restart state', () => {
     await resetVolatileState();
 
     expect((await store.getMachine('machine-1'))?.status).toBe('offline');
-    expect((await store.getAgent('agent-1'))?.status).toBe('inactive');
+    expect((await store.getAgent('agent-1'))).toMatchObject({ status: 'running', autoStart: true });
   });
 });

@@ -35,6 +35,7 @@ export async function agentRoutes(app: FastifyInstance) {
       systemPrompt,
       machineId,
       status: 'inactive',
+      autoStart: false,
       createdAt: new Date().toISOString(),
     });
     return reply.status(201).send(agent);
@@ -74,7 +75,7 @@ export async function agentRoutes(app: FastifyInstance) {
 
     if (!sent) return reply.status(503).send({ error: 'Machine not connected' });
 
-    const updated = (await store.updateAgent(agent.id, { machineId, status: 'starting' }))!;
+    const updated = (await store.updateAgent(agent.id, { machineId, status: 'starting', autoStart: true }))!;
     eventBus.emit({ type: 'agent:update', agent: updated });
     return updated;
   });
@@ -86,7 +87,7 @@ export async function agentRoutes(app: FastifyInstance) {
     if (!agent.machineId) return reply.status(400).send({ error: 'Agent has no machine assigned' });
 
     daemonRegistry.send(agent.machineId, { type: 'agent:stop', agentId: agent.id });
-    const updated = (await store.updateAgentStatus(agent.id, 'inactive'))!;
+    const updated = (await store.updateAgent(agent.id, { status: 'inactive', autoStart: false }))!;
     eventBus.emit({ type: 'agent:update', agent: updated });
     return updated;
   });

@@ -164,6 +164,7 @@ describe('PatchAgentRequestSchema', () => {
     expect(PatchAgentRequestSchema.safeParse({ machineId: 'm-2' }).success).toBe(true);
     expect(PatchAgentRequestSchema.safeParse({ model: 'sonnet' }).success).toBe(true);
     expect(PatchAgentRequestSchema.safeParse({ systemPrompt: 'sp' }).success).toBe(true);
+    expect(PatchAgentRequestSchema.safeParse({ autoStart: true }).success).toBe(true);
   });
 
   it('rejects empty body', () => {

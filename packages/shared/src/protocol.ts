@@ -93,6 +93,7 @@ export type Agent = {
   systemPrompt?: string;
   machineId?: string;
   status: AgentStatus;
+  autoStart?: boolean;
   createdAt: string;
 };
 

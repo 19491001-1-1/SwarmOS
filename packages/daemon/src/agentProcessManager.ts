@@ -52,6 +52,15 @@ export class AgentProcessManager {
     const driver = DRIVERS[config.runtime];
     if (!driver) throw new Error(`Unknown runtime: ${config.runtime}`);
 
+    const existing = this.agents.get(agentId);
+    if (existing) {
+      existing.config = config;
+      existing.channelId = channelId;
+      existing.driver = driver;
+      this.onStatus(agentId, existing.proc ? 'working' : 'idle');
+      return;
+    }
+
     const workspaceDir = join(this.workspaceBase, agentId);
     const transcriptFile = join(workspaceDir, 'transcript.txt');
 
@@ -178,5 +187,9 @@ export class AgentProcessManager {
 
   isRunning(agentId: string): boolean {
     return this.agents.has(agentId);
+  }
+
+  listRunningAgentIds(): string[] {
+    return Array.from(this.agents.keys());
   }
 }

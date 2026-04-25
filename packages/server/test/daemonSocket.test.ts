@@ -253,7 +253,123 @@ describe('daemon WebSocket', () => {
     const res = await app.inject({ method: 'POST', url: '/api/agents/agent-1/start' });
     expect(res.statusCode).toBe(200);
     expect((await startMessage).agentId).toBe('agent-1');
+    expect((await getStore().getAgent('agent-1'))?.autoStart).toBe(true);
     second.close();
+  });
+
+  it('auto-starts enabled agents when daemon reports ready', async () => {
+    const store = getStore();
+    await store.createAgent({
+      id: 'agent-1',
+      name: 'bot',
+      runtime: 'claude',
+      status: 'inactive',
+      autoStart: true,
+      createdAt: new Date().toISOString(),
+    });
+
+    const ws = await connectDaemon('dev-machine-key');
+    const startMessage = waitForDaemonMessage(ws, 'agent:start');
+    await sendAndWait(ws, {
+      type: 'ready',
+      machineId: 'machine-1',
+      hostname: 'h',
+      os: 'linux',
+      daemonVersion: '0.1.0',
+      runtimes: ['claude'],
+      runtimeVersions: { claude: '1.0' },
+      runningAgents: [],
+      capabilities: [],
+    });
+
+    expect((await startMessage).agentId).toBe('agent-1');
+    expect(await store.getAgent('agent-1')).toMatchObject({
+      machineId: 'machine-1',
+      status: 'starting',
+      autoStart: true,
+    });
+    ws.close();
+  });
+
+  it('does not auto-start manually stopped agents when daemon reports ready', async () => {
+    const store = getStore();
+    await store.createAgent({
+      id: 'agent-1',
+      name: 'bot',
+      runtime: 'claude',
+      status: 'inactive',
+      autoStart: false,
+      createdAt: new Date().toISOString(),
+    });
+
+    const ws = await connectDaemon('dev-machine-key');
+    const messages: any[] = [];
+    ws.on('message', (raw) => messages.push(JSON.parse(raw.toString())));
+    await sendAndWait(ws, {
+      type: 'ready',
+      machineId: 'machine-1',
+      hostname: 'h',
+      os: 'linux',
+      daemonVersion: '0.1.0',
+      runtimes: ['claude'],
+      runtimeVersions: { claude: '1.0' },
+      runningAgents: [],
+      capabilities: [],
+    });
+
+    expect(messages.some((msg) => msg.type === 'agent:start')).toBe(false);
+    expect((await store.getAgent('agent-1'))?.status).toBe('inactive');
+    ws.close();
+  });
+
+  it('marks only disconnected machine agents inactive without clearing autoStart', async () => {
+    const store = getStore();
+    await store.upsertMachine({
+      id: 'machine-2',
+      hostname: 'other',
+      os: 'linux',
+      daemonVersion: '0.1.0',
+      runtimes: ['claude'],
+      runtimeVersions: { claude: '1.0' },
+      status: 'online',
+      connectedAt: new Date().toISOString(),
+    });
+    await store.createAgent({
+      id: 'agent-1',
+      name: 'bot',
+      runtime: 'claude',
+      status: 'running',
+      autoStart: true,
+      machineId: 'machine-1',
+      createdAt: new Date().toISOString(),
+    });
+    await store.createAgent({
+      id: 'agent-2',
+      name: 'other-bot',
+      runtime: 'claude',
+      status: 'running',
+      autoStart: true,
+      machineId: 'machine-2',
+      createdAt: new Date().toISOString(),
+    });
+
+    const ws = await connectDaemon('dev-machine-key');
+    await sendAndWait(ws, {
+      type: 'ready',
+      machineId: 'machine-1',
+      hostname: 'h',
+      os: 'linux',
+      daemonVersion: '0.1.0',
+      runtimes: ['claude'],
+      runtimeVersions: { claude: '1.0' },
+      runningAgents: ['agent-1'],
+      capabilities: [],
+    });
+    ws.close();
+    await new Promise((resolve) => setTimeout(resolve, 80));
+
+    expect(await store.getAgent('agent-1')).toMatchObject({ status: 'inactive', autoStart: true });
+    expect(await store.getAgent('agent-2')).toMatchObject({ status: 'running', autoStart: true });
   });
 
   it('rebinds a persisted agent to a currently connected compatible machine on start', async () => {
