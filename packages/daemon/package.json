@@ -4,7 +4,8 @@
   "type": "module",
   "main": "./dist/index.js",
   "bin": {
-    "mini-slock-daemon": "./dist/cli.js"
+    "mini-slock-daemon": "./dist/cli.js",
+    "xoxiang": "./dist/agentCli.js"
   },
   "scripts": {
     "start": "tsx src/cli.ts",

@@ -252,6 +252,99 @@ describe('GET /api/agents/:id/activities', () => {
   });
 });
 
+describe('agent internal API', () => {
+  async function createInternalAgent() {
+    const app = await buildApp();
+    const store = getStore();
+    await store.createAgent({
+      id: 'agent-1',
+      name: 'bot',
+      displayName: 'Bot',
+      runtime: 'claude',
+      status: 'idle',
+      createdAt: new Date().toISOString(),
+    });
+    const token = (await store.getOrCreateAgentToken('agent-1')).token;
+    const headers = { Authorization: `Bearer ${token}`, 'X-Agent-Id': 'agent-1' };
+    return { app, store, headers };
+  }
+
+  it('rejects missing and invalid agent tokens', async () => {
+    const { app } = await createInternalAgent();
+
+    const missing = await app.inject({ method: 'GET', url: '/internal/agent/agent-1/auth/whoami' });
+    expect(missing.statusCode).toBe(401);
+
+    const wrong = await app.inject({
+      method: 'GET',
+      url: '/internal/agent/agent-1/auth/whoami',
+      headers: { Authorization: 'Bearer wrong', 'X-Agent-Id': 'agent-1' },
+    });
+    expect(wrong.statusCode).toBe(401);
+    await app.close();
+  });
+
+  it('returns whoami and server info for a valid token', async () => {
+    const { app, headers } = await createInternalAgent();
+    const whoami = await app.inject({ method: 'GET', url: '/internal/agent/agent-1/auth/whoami', headers });
+    expect(whoami.statusCode).toBe(200);
+    expect(whoami.json().agent.name).toBe('bot');
+
+    const info = await app.inject({ method: 'GET', url: '/internal/agent/agent-1/server/info', headers });
+    expect(info.statusCode).toBe(200);
+    expect(info.json().channels[0].id).toBe('general');
+    expect(info.json().version.component).toBe('server');
+    await app.close();
+  });
+
+  it('sends and reads channel messages', async () => {
+    const { app, headers } = await createInternalAgent();
+    const sent = await app.inject({
+      method: 'POST',
+      url: '/internal/agent/agent-1/messages/send',
+      headers,
+      payload: { channel: 'general', content: 'hello from cli' },
+    });
+    expect(sent.statusCode).toBe(201);
+    expect(sent.json()).toMatchObject({ channelId: 'general', agentId: 'agent-1', senderName: 'Bot', content: 'hello from cli' });
+
+    const read = await app.inject({ method: 'GET', url: '/internal/agent/agent-1/messages/read?channel=general&limit=5', headers });
+    expect(read.statusCode).toBe(200);
+    expect(read.json().at(-1).content).toBe('hello from cli');
+    await app.close();
+  });
+
+  it('sends direct messages and delegates through existing logic', async () => {
+    const { app, store, headers } = await createInternalAgent();
+    await store.createAgent({
+      id: 'agent-2',
+      name: 'target',
+      runtime: 'claude',
+      status: 'inactive',
+      createdAt: new Date().toISOString(),
+    });
+
+    const dm = await app.inject({
+      method: 'POST',
+      url: '/internal/agent/agent-1/dms/send',
+      headers,
+      payload: { to: 'target', content: 'private note' },
+    });
+    expect(dm.statusCode).toBe(201);
+    expect(dm.json()).toMatchObject({ fromAgentId: 'agent-1', toAgentId: 'agent-2', content: 'private note' });
+
+    const delegation = await app.inject({
+      method: 'POST',
+      url: '/internal/agent/agent-1/delegate',
+      headers,
+      payload: { to: 'target', content: 'please handle this', startIfInactive: false },
+    });
+    expect(delegation.statusCode).toBe(201);
+    expect(delegation.json()).toMatchObject({ fromAgentId: 'agent-1', toAgentId: 'agent-2', status: 'queued' });
+    await app.close();
+  });
+});
+
 describe('GET /api/machines', () => {
   it('returns empty list initially', async () => {
     const app = await buildApp();

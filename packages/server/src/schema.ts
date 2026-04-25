@@ -41,6 +41,12 @@ export const agentDelegations = sqliteTable('agent_delegations', {
   createdAt: text('created_at').notNull(),
 });
 
+export const agentTokens = sqliteTable('agent_tokens', {
+  agentId: text('agent_id').primaryKey(),
+  token: text('token').notNull(),
+  createdAt: text('created_at').notNull(),
+});
+
 export const agents = sqliteTable('agents', {
   id: text('id').primaryKey(),
   name: text('name').notNull(),

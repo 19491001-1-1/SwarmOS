@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { AgentProcessManager } from '../src/agentProcessManager.js';
 import { BRIDGE_MARKER } from '../src/bridge/simpleToolBridge.js';
 import { EventEmitter } from 'events';
-import { appendFile } from 'fs/promises';
+import { appendFile, writeFile } from 'fs/promises';
 
 // Mock child_process.spawn
 vi.mock('child_process', () => ({
@@ -13,6 +13,8 @@ vi.mock('child_process', () => ({
 vi.mock('fs/promises', () => ({
   mkdir: vi.fn().mockResolvedValue(undefined),
   appendFile: vi.fn().mockResolvedValue(undefined),
+  chmod: vi.fn().mockResolvedValue(undefined),
+  writeFile: vi.fn().mockResolvedValue(undefined),
   readFile: vi.fn().mockResolvedValue('transcript content'),
   readdir: vi.fn(),
   stat: vi.fn(),
@@ -82,6 +84,21 @@ describe('AgentProcessManager', () => {
     );
   });
 
+  it('startAgent injects agent-facing CLI wrapper and token file', async () => {
+    await manager.startAgent('agent-1', { runtime: 'claude', name: 'bot', agentToken: 'agent-token-1' }, 'general');
+
+    expect(vi.mocked(writeFile)).toHaveBeenCalledWith(
+      expect.stringContaining('/tmp/test-workspaces/agent-1/.xoxiang/agent-token'),
+      'agent-token-1\n',
+      { mode: 0o600 }
+    );
+    expect(vi.mocked(writeFile)).toHaveBeenCalledWith(
+      expect.stringContaining('/tmp/test-workspaces/agent-1/.xoxiang/xoxiang'),
+      expect.stringContaining('agentCli.ts'),
+      { mode: 0o755 }
+    );
+  });
+
   it('startAgent uses correct driver', async () => {
     await manager.startAgent('agent-1', { runtime: 'gemini', name: 'bot' }, 'general');
     expect(manager.isRunning('agent-1')).toBe(true);
@@ -113,8 +130,16 @@ describe('AgentProcessManager', () => {
     expect(mockSpawn).toHaveBeenCalledWith(
       'claude',
       expect.any(Array),
-      expect.any(Object)
+      expect.objectContaining({
+        env: expect.objectContaining({
+          XOXIANG_AGENT_ID: 'agent-1',
+          XOXIANG_SERVER_URL: 'http://localhost:3000',
+          XOXIANG_AGENT_TOKEN_FILE: expect.stringContaining('agent-token'),
+        }),
+      })
     );
+    const spawnOptions = mockSpawn.mock.calls[0]?.[2] as { env?: Record<string, string> };
+    expect(spawnOptions.env?.XOXIANG_AGENT_TOKEN).toBeUndefined();
     expect(activities.some((a) => a.agentId === 'agent-1' && a.type === 'working' && a.detail === 'Message received')).toBe(true);
     expect(activities.some((a) => a.agentId === 'agent-1' && a.type === 'thinking')).toBe(true);
   });

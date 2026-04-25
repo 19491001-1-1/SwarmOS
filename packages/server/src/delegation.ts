@@ -4,6 +4,7 @@ import { resolveStartMachineId, toRuntimeConfig } from '@mini-slock/hub-core';
 import { getStore } from './db.js';
 import { daemonRegistry } from './daemonRegistry.js';
 import { eventBus } from './events.js';
+import { toAgentRuntimeConfig } from './runtimeConfig.js';
 
 const ACTIVE_STATUSES = new Set(['starting', 'running', 'working', 'idle']);
 
@@ -69,7 +70,7 @@ export async function delegateAgent(input: {
   const sent = daemonRegistry.send(machineId, {
     type: 'agent:start',
     agentId: target.id,
-    config: toRuntimeConfig(target),
+    config: await toAgentRuntimeConfig(target),
     launchId: nanoid(),
     wakeMessage: toDelegationDelivery(dm),
   });

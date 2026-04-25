@@ -8,6 +8,7 @@ import { daemonRegistry } from '../daemonRegistry.js';
 import { eventBus } from '../events.js';
 import { findDuplicateMachineIds, findExistingMachineId, toRuntimeConfig } from '@mini-slock/hub-core';
 import { delegateAgent } from '../delegation.js';
+import { toAgentRuntimeConfig } from '../runtimeConfig.js';
 
 const VALID_KEYS = new Set(['dev-machine-key']);
 const VOLATILE_AGENT_STATUSES = new Set(['starting', 'running', 'working', 'idle']);
@@ -203,14 +204,7 @@ async function reconcileReadyAgents(machineId: string, runtimes: string[], runni
     const sent = daemonRegistry.send(machineId, {
       type: 'agent:start',
       agentId: agent.id,
-      config: {
-        runtime: agent.runtime,
-        model: agent.model,
-        name: agent.name,
-        displayName: agent.displayName,
-        description: agent.description,
-        systemPrompt: agent.systemPrompt,
-      },
+      config: await toAgentRuntimeConfig(agent),
       launchId,
     });
     if (!sent) continue;

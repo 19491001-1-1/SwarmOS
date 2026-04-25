@@ -14,6 +14,7 @@ export const AgentRuntimeConfigSchema = z.object({
   description: z.string().optional(),
   systemPrompt: z.string().optional(),
   envVars: z.record(z.string()).optional(),
+  agentToken: z.string().optional(),
 });
 
 export const AgentDeliverySchema = z.object({
@@ -172,11 +173,36 @@ export const CreateAgentDelegationRequestSchema = z.object({
   startIfInactive: z.boolean().optional(),
 });
 
+export const InternalMessageSendRequestSchema = z.object({
+  channel: z.string().min(1).default('general'),
+  content: z.string().min(1),
+});
+
+export const InternalMessageReadRequestSchema = z.object({
+  channel: z.string().min(1).default('general'),
+  limit: z.coerce.number().int().positive().max(200).default(20),
+});
+
+export const InternalDmSendRequestSchema = z.object({
+  to: z.string().min(1),
+  content: z.string().min(1),
+});
+
+export const InternalAgentDelegateRequestSchema = z.object({
+  to: z.string().min(1),
+  content: z.string().min(1),
+  startIfInactive: z.boolean().optional(),
+});
+
 export type CreateAgentRequest = z.infer<typeof CreateAgentRequestSchema>;
 export type PatchAgentRequest = z.infer<typeof PatchAgentRequestSchema>;
 export type CreateMessageRequest = z.infer<typeof CreateMessageRequestSchema>;
 export type CreateDirectMessageRequest = z.infer<typeof CreateDirectMessageRequestSchema>;
 export type CreateAgentDelegationRequest = z.infer<typeof CreateAgentDelegationRequestSchema>;
+export type InternalMessageSendRequest = z.infer<typeof InternalMessageSendRequestSchema>;
+export type InternalMessageReadRequest = z.infer<typeof InternalMessageReadRequestSchema>;
+export type InternalDmSendRequest = z.infer<typeof InternalDmSendRequestSchema>;
+export type InternalAgentDelegateRequest = z.infer<typeof InternalAgentDelegateRequestSchema>;
 
 export const ServerToDaemonSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('ping') }),

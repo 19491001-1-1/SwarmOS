@@ -63,6 +63,75 @@ describe('browser auth', () => {
   });
 });
 
+describe('agent internal API', () => {
+  it('authenticates agent token and supports messages, dm, and delegation', async () => {
+    const daemon = await connectDaemon();
+    daemon.send(JSON.stringify({
+      type: 'ready',
+      machineId: `internal-machine-${crypto.randomUUID()}`,
+      hostname: 'internal-host',
+      os: 'test',
+      daemonVersion: 'test',
+      runtimes: ['claude'],
+      runtimeVersions: {},
+      runningAgents: [],
+      capabilities: [],
+    }));
+
+    const created = await SELF.fetch('https://hub.test/api/agents', {
+      method: 'POST',
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ name: `internal-agent-${crypto.randomUUID()}`, runtime: 'claude' }),
+    });
+    const agent = (await created.json()) as { id: string };
+
+    const startMsgPromise = waitForMessage(daemon, 'agent:start');
+    const started = await SELF.fetch(`https://hub.test/api/agents/${agent.id}/start`, { method: 'POST', headers: authHeaders() });
+    expect(started.status).toBe(200);
+    const startMsg = await startMsgPromise;
+    const token = startMsg.config.agentToken;
+    expect(token).toBeTruthy();
+
+    const missing = await SELF.fetch(`https://hub.test/internal/agent/${agent.id}/auth/whoami`);
+    expect(missing.status).toBe(401);
+
+    const internalHeaders = { Authorization: `Bearer ${token}`, 'X-Agent-Id': agent.id, 'Content-Type': 'application/json' };
+    const whoami = await SELF.fetch(`https://hub.test/internal/agent/${agent.id}/auth/whoami`, { headers: internalHeaders });
+    expect(whoami.status).toBe(200);
+
+    const sent = await SELF.fetch(`https://hub.test/internal/agent/${agent.id}/messages/send`, {
+      method: 'POST',
+      headers: internalHeaders,
+      body: JSON.stringify({ channel: 'general', content: 'internal hello' }),
+    });
+    expect(sent.status).toBe(201);
+    expect(await sent.json()).toMatchObject({ content: 'internal hello' });
+
+    const targetCreated = await SELF.fetch('https://hub.test/api/agents', {
+      method: 'POST',
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ name: `internal-target-${crypto.randomUUID()}`, runtime: 'claude' }),
+    });
+    const target = (await targetCreated.json()) as { id: string; name: string };
+
+    const dm = await SELF.fetch(`https://hub.test/internal/agent/${agent.id}/dms/send`, {
+      method: 'POST',
+      headers: internalHeaders,
+      body: JSON.stringify({ to: target.name, content: 'private internal' }),
+    });
+    expect(dm.status).toBe(201);
+
+    const delegation = await SELF.fetch(`https://hub.test/internal/agent/${agent.id}/delegate`, {
+      method: 'POST',
+      headers: internalHeaders,
+      body: JSON.stringify({ to: target.name, content: 'handle work', startIfInactive: false }),
+    });
+    expect(delegation.status).toBe(201);
+    expect(await delegation.json()).toMatchObject({ status: 'queued' });
+    daemon.close();
+  });
+});
+
 describe('input validation', () => {
   it('returns 400 for invalid agent body', async () => {
     const res = await SELF.fetch('https://hub.test/api/agents', {

@@ -1,6 +1,7 @@
-import { mkdir, appendFile, readdir, readFile, stat } from 'fs/promises';
+import { mkdir, appendFile, chmod, readdir, readFile, stat, writeFile } from 'fs/promises';
 import { existsSync } from 'fs';
-import { isAbsolute, join, normalize, sep } from 'path';
+import { dirname, isAbsolute, join, normalize, sep } from 'path';
+import { fileURLToPath } from 'url';
 import { spawn, type ChildProcess } from 'child_process';
 import type { AgentRuntimeConfig, AgentDelivery, AgentActivity, WorkspaceEntry, WorkspaceError } from '@mini-slock/shared';
 import type { RuntimeDriver } from './drivers/types.js';
@@ -15,6 +16,20 @@ const DRIVERS: Record<string, RuntimeDriver> = {
 };
 
 const MAX_WORKSPACE_FILE_BYTES = 100 * 1024;
+
+function buildAgentCliWrapper(): string {
+  const moduleDir = dirname(fileURLToPath(import.meta.url));
+  const packageDir = dirname(moduleDir);
+  const isSourceRun = moduleDir.endsWith(`${sep}src`);
+  const command = isSourceRun
+    ? `exec pnpm --dir ${shQuote(packageDir)} exec tsx src/agentCli.ts "$@"`
+    : `exec node ${shQuote(join(moduleDir, 'agentCli.js'))} "$@"`;
+  return `#!/usr/bin/env sh\n${command}\n`;
+}
+
+function shQuote(value: string): string {
+  return `'${value.replace(/'/g, `'\\''`)}'`;
+}
 
 export type AgentMessageCallback = (agentId: string, channelId: string, content: string) => void;
 export type AgentStatusCallback = (agentId: string, status: string) => void;
@@ -40,6 +55,7 @@ export class AgentProcessManager {
   private onActivity: AgentActivityCallback;
   private onDm: AgentDmCallback;
   private onDelegate: AgentDelegateCallback;
+  private serverUrl: string;
 
   constructor(
     workspaceBase: string,
@@ -47,7 +63,8 @@ export class AgentProcessManager {
     onStatus: AgentStatusCallback,
     onActivity: AgentActivityCallback = () => {},
     onDm: AgentDmCallback = () => {},
-    onDelegate: AgentDelegateCallback = () => {}
+    onDelegate: AgentDelegateCallback = () => {},
+    serverUrl = 'http://localhost:3000'
   ) {
     this.workspaceBase = workspaceBase;
     this.onMessage = onMessage;
@@ -55,6 +72,7 @@ export class AgentProcessManager {
     this.onActivity = onActivity;
     this.onDm = onDm;
     this.onDelegate = onDelegate;
+    this.serverUrl = serverUrl;
   }
 
   async startAgent(agentId: string, config: AgentRuntimeConfig, channelId: string): Promise<void> {
@@ -66,6 +84,7 @@ export class AgentProcessManager {
       existing.config = config;
       existing.channelId = channelId;
       existing.driver = driver;
+      await this.ensureAgentTools(config, existing.workspaceDir);
       this.onStatus(agentId, existing.proc ? 'working' : 'idle');
       return;
     }
@@ -76,6 +95,7 @@ export class AgentProcessManager {
     if (!existsSync(workspaceDir)) {
       await mkdir(workspaceDir, { recursive: true });
     }
+    await this.ensureAgentTools(config, workspaceDir);
 
     this.agents.set(agentId, {
       agentId,
@@ -120,7 +140,15 @@ export class AgentProcessManager {
 
     const proc = spawn(cmd.cmd, cmd.args, {
       cwd: entry.workspaceDir,
-      env: { ...process.env, ...cmd.env, ...entry.config.envVars },
+      env: {
+        ...process.env,
+        ...cmd.env,
+        ...entry.config.envVars,
+        PATH: `${join(entry.workspaceDir, '.xoxiang')}${process.env.PATH ? `${sep}${process.env.PATH}` : ''}`,
+        XOXIANG_AGENT_ID: entry.agentId,
+        XOXIANG_SERVER_URL: this.serverUrl,
+        XOXIANG_AGENT_TOKEN_FILE: join(entry.workspaceDir, '.xoxiang', 'agent-token'),
+      },
       stdio: ['ignore', 'pipe', 'pipe'],
     });
 
@@ -212,6 +240,17 @@ export class AgentProcessManager {
 
   private agentTranscriptName(entry: AgentEntry): string {
     return entry.config.displayName ?? entry.config.name ?? entry.agentId;
+  }
+
+  private async ensureAgentTools(config: AgentRuntimeConfig, workspaceDir: string): Promise<void> {
+    const toolsDir = join(workspaceDir, '.xoxiang');
+    await mkdir(toolsDir, { recursive: true });
+    if (config.agentToken !== undefined) {
+      await writeFile(join(toolsDir, 'agent-token'), `${config.agentToken}\n`, { mode: 0o600 });
+    }
+    const wrapperPath = join(toolsDir, 'xoxiang');
+    await writeFile(wrapperPath, buildAgentCliWrapper(), { mode: 0o755 });
+    await chmod(wrapperPath, 0o755);
   }
 
   stopAgent(agentId: string): void {

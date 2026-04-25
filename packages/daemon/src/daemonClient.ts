@@ -32,7 +32,8 @@ export class DaemonClient {
       (agentId, status) => this.sendMessage({ type: 'agent:status', agentId, status: status as any }),
       (agentId, activityType, detail) => this.sendActivity(agentId, activityType, detail),
       (fromAgentId, toAgentId, content) => this.sendMessage({ type: 'agent:dm', fromAgentId, toAgentId, content }),
-      (fromAgentId, toAgentId, content, startIfInactive) => this.sendMessage({ type: 'agent:delegate', fromAgentId, toAgentId, content, startIfInactive })
+      (fromAgentId, toAgentId, content, startIfInactive) => this.sendMessage({ type: 'agent:delegate', fromAgentId, toAgentId, content, startIfInactive }),
+      options.serverUrl
     );
   }
 

@@ -5,6 +5,7 @@ import { channelRoutes } from './routes/channels.js';
 import { messageRoutes } from './routes/messages.js';
 import { agentRoutes } from './routes/agents.js';
 import { machineRoutes } from './routes/machines.js';
+import { internalAgentRoutes } from './routes/internalAgent.js';
 import { daemonSocketHandler } from './ws/daemonSocket.js';
 import { browserSocketHandler } from './ws/browserSocket.js';
 import { initDb } from './db.js';
@@ -30,6 +31,7 @@ export async function buildApp(opts: { logger?: boolean } = {}) {
   await app.register(messageRoutes);
   await app.register(agentRoutes);
   await app.register(machineRoutes);
+  await app.register(internalAgentRoutes);
   await app.register(daemonSocketHandler);
   await app.register(browserSocketHandler);
 

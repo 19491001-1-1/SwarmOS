@@ -20,6 +20,10 @@ import {
   CreateAgentDelegationRequestSchema,
   CreateAgentRequestSchema,
   CreateDirectMessageRequestSchema,
+  InternalAgentDelegateRequestSchema,
+  InternalDmSendRequestSchema,
+  InternalMessageReadRequestSchema,
+  InternalMessageSendRequestSchema,
   CreateMessageRequestSchema,
   PatchAgentRequestSchema,
 } from '@mini-slock/shared';
@@ -77,6 +81,10 @@ export class XoxiangHub extends DurableObject<Env> {
       return this.acceptBrowser(request);
     }
     if (url.pathname === '/daemon/connect') return this.acceptDaemon(request, url);
+
+    if (url.pathname.startsWith('/internal/agent/')) {
+      return this.handleInternalAgentRequest(request, url);
+    }
 
     if (url.pathname.startsWith('/api/')) {
       const authResp = await requireBrowserAuth(request, this.env);
@@ -364,6 +372,13 @@ export class XoxiangHub extends DurableObject<Env> {
       )
     `);
     this.ctx.storage.sql.exec(`
+      CREATE TABLE IF NOT EXISTS agent_tokens (
+        agent_id TEXT PRIMARY KEY,
+        token TEXT NOT NULL,
+        created_at TEXT NOT NULL
+      )
+    `);
+    this.ctx.storage.sql.exec(`
       CREATE TABLE IF NOT EXISTS agents (
         id TEXT PRIMARY KEY,
         name TEXT NOT NULL,
@@ -440,12 +455,119 @@ export class XoxiangHub extends DurableObject<Env> {
           seq: Date.now(),
           message: toAgentDelivery(message, channel),
           channelId: channel.id,
-          config: toRuntimeConfig(agent),
+          config: this.toAgentRuntimeConfig(agent),
         });
       }
     }
 
     return json(message, 201);
+  }
+
+  private async handleInternalAgentRequest(request: Request, url: URL): Promise<Response> {
+    const match = url.pathname.match(/^\/internal\/agent\/([^/]+)(\/.*)$/);
+    if (!match) return json({ error: 'Not found' }, 404);
+    const agentId = decodeURIComponent(match[1]);
+    const path = match[2];
+    const agent = this.getAgent(agentId);
+    if (!agent) return json({ error: 'Agent not found' }, 404);
+
+    const authResp = this.requireAgentAuth(request, agentId);
+    if (authResp) return authResp;
+
+    if (request.method === 'GET' && path === '/auth/whoami') return json({ agent });
+
+    if (request.method === 'GET' && path === '/server/info') {
+      return json({
+        agent,
+        channels: this.listChannels(),
+        agents: this.listAgents(),
+        version: createVersionInfo('cloudflare-hub', {
+          version: this.env.XOXIANG_VERSION,
+          commit: this.env.XOXIANG_COMMIT_SHA,
+          build: this.env.XOXIANG_BUILD_ID,
+        }),
+      });
+    }
+
+    if (request.method === 'GET' && path === '/messages/check') {
+      return json({
+        channels: this.listChannels().map((channel) => {
+          const latest = this.listRecentMessages(channel.id, 1)[0];
+          return { channelId: channel.id, channelName: channel.name, count: latest ? 1 : 0, latestMessage: latest };
+        }),
+        dms: this.listDirectMessageThreads(agent.id).map((thread) => ({
+          otherAgentId: thread.otherAgentId,
+          count: 1,
+          latestMessage: thread.lastMessage,
+        })),
+      });
+    }
+
+    if (request.method === 'GET' && path === '/messages/read') {
+      const parsed = InternalMessageReadRequestSchema.safeParse(Object.fromEntries(url.searchParams.entries()));
+      if (!parsed.success) return json({ error: 'Invalid query', issues: parsed.error.issues }, 400);
+      const channel = this.findChannel(parsed.data.channel);
+      if (!channel) return json({ error: 'Channel not found' }, 404);
+      return json(this.listRecentMessages(channel.id, parsed.data.limit));
+    }
+
+    if (request.method === 'POST' && path === '/messages/send') {
+      return this.createInternalMessage(agent, request);
+    }
+
+    if (request.method === 'POST' && path === '/dms/send') {
+      return this.createInternalDirectMessage(agent, request);
+    }
+
+    if (request.method === 'POST' && path === '/delegate') {
+      return this.createInternalDelegation(agent, request);
+    }
+
+    return json({ error: 'Not found' }, 404);
+  }
+
+  private async createInternalMessage(agent: Agent, request: Request): Promise<Response> {
+    const parsed = InternalMessageSendRequestSchema.safeParse(await request.json());
+    if (!parsed.success) return json({ error: 'Invalid request body', issues: parsed.error.issues }, 400);
+    const channel = this.findChannel(parsed.data.channel);
+    if (!channel) return json({ error: 'Channel not found' }, 404);
+    const message = this.createMessage({
+      id: crypto.randomUUID(),
+      channelId: channel.id,
+      senderName: agent.displayName ?? agent.name,
+      agentId: agent.id,
+      content: parsed.data.content,
+    });
+    this.broadcast({ type: 'message:new', message });
+    return json(message, 201);
+  }
+
+  private async createInternalDirectMessage(agent: Agent, request: Request): Promise<Response> {
+    const parsed = InternalDmSendRequestSchema.safeParse(await request.json());
+    if (!parsed.success) return json({ error: 'Invalid request body', issues: parsed.error.issues }, 400);
+    const target = this.findAgentByNameOrId(parsed.data.to);
+    if (!target) return json({ error: 'Target agent not found' }, 404);
+    const dm = this.createDirectMessage({
+      id: crypto.randomUUID(),
+      fromAgentId: agent.id,
+      toAgentId: target.id,
+      content: parsed.data.content,
+    });
+    this.broadcast({ type: 'dm:new', dm });
+    this.deliverDirectMessage(target, dm);
+    return json(dm, 201);
+  }
+
+  private async createInternalDelegation(agent: Agent, request: Request): Promise<Response> {
+    const parsed = InternalAgentDelegateRequestSchema.safeParse(await request.json());
+    if (!parsed.success) return json({ error: 'Invalid request body', issues: parsed.error.issues }, 400);
+    const delegation = this.delegateAgent({
+      fromAgentId: agent.id,
+      toAgentId: parsed.data.to,
+      content: parsed.data.content,
+      startIfInactive: parsed.data.startIfInactive,
+    });
+    return json(delegation, delegation.status === 'failed' ? 202 : 201);
   }
 
   private createUserDirectMessage(agentId: string, otherId: string, body: unknown): Response {
@@ -548,7 +670,7 @@ export class XoxiangHub extends DurableObject<Env> {
     const sent = this.sendToDaemon(machineId, {
       type: 'agent:start',
       agentId,
-      config: toRuntimeConfig(agent),
+      config: this.toAgentRuntimeConfig(agent),
       launchId: crypto.randomUUID(),
     });
     if (!sent) return json({ error: 'Machine not connected' }, 503);
@@ -594,6 +716,20 @@ export class XoxiangHub extends DurableObject<Env> {
       .exec<Row>('SELECT * FROM messages WHERE channel_id = ? ORDER BY created_at', channelId)
       .toArray()
       .map(toMessage);
+  }
+
+  private listRecentMessages(channelId: string, limit: number): Message[] {
+    return this.ctx.storage.sql
+      .exec<Row>('SELECT * FROM messages WHERE channel_id = ? ORDER BY created_at DESC LIMIT ?', channelId, limit)
+      .toArray()
+      .map(toMessage)
+      .reverse();
+  }
+
+  private findChannel(value: string): Channel | undefined {
+    const byId = this.getChannel(value);
+    if (byId) return byId;
+    return this.listChannels().find((channel) => channel.name === value);
   }
 
   private createMessage(message: Omit<Message, 'createdAt'>): Message {
@@ -654,6 +790,36 @@ export class XoxiangHub extends DurableObject<Env> {
       created.createdAt
     );
     return created;
+  }
+
+  private getOrCreateAgentToken(agentId: string): string {
+    const existing = this.ctx.storage.sql.exec<Row>('SELECT * FROM agent_tokens WHERE agent_id = ? LIMIT 1', agentId).toArray()[0];
+    if (existing?.token) return String(existing.token);
+    const token = `xox_agent_${crypto.randomUUID().replaceAll('-', '')}`;
+    this.ctx.storage.sql.exec(
+      'INSERT INTO agent_tokens (agent_id, token, created_at) VALUES (?, ?, ?)',
+      agentId,
+      token,
+      new Date().toISOString(),
+    );
+    return token;
+  }
+
+  private requireAgentAuth(request: Request, agentId: string): Response | undefined {
+    if (request.headers.get('X-Agent-Id') !== agentId) return unauthorized('agent id mismatch');
+    const provided = getBearerToken(request.headers.get('Authorization'));
+    if (!provided) return unauthorized('missing bearer token');
+    const expected = this.getOrCreateAgentToken(agentId);
+    if (!timingSafeEqualStr(provided, expected)) return unauthorized('invalid token');
+    return undefined;
+  }
+
+  private toAgentRuntimeConfig(agent: Agent) {
+    return {
+      ...toRuntimeConfig(agent),
+      envVars: agent.envVars,
+      agentToken: this.getOrCreateAgentToken(agent.id),
+    };
   }
 
   private updateAgentDelegation(delegation: AgentDelegation, status: AgentDelegation['status'], error?: string): AgentDelegation {
@@ -821,7 +987,7 @@ export class XoxiangHub extends DurableObject<Env> {
         agentId: target.id,
         seq: Date.now(),
         channelId: `dm:${dm.fromAgentId}:${dm.toAgentId}`,
-        config: toRuntimeConfig(target),
+        config: this.toAgentRuntimeConfig(target),
         message: toDirectMessageDelivery(dm),
       });
       return this.updateAgentDelegation(queued, sent ? 'delivered' : 'failed', sent ? undefined : 'Machine not connected');
@@ -839,7 +1005,7 @@ export class XoxiangHub extends DurableObject<Env> {
     const sent = this.sendToDaemon(machineId, {
       type: 'agent:start',
       agentId: target.id,
-      config: toRuntimeConfig(target),
+      config: this.toAgentRuntimeConfig(target),
       launchId: crypto.randomUUID(),
       wakeMessage: toDirectMessageDelivery(dm),
     });
@@ -859,7 +1025,7 @@ export class XoxiangHub extends DurableObject<Env> {
       agentId: target.id,
       seq: Date.now(),
       channelId: `dm:${dm.fromAgentId}:${dm.toAgentId}`,
-      config: toRuntimeConfig(target),
+      config: this.toAgentRuntimeConfig(target),
       message: {
         id: dm.id,
         channelId: `dm:${dm.fromAgentId}:${dm.toAgentId}`,
@@ -935,7 +1101,7 @@ export class XoxiangHub extends DurableObject<Env> {
       const sent = this.sendToDaemon(machineId, {
         type: 'agent:start',
         agentId: agent.id,
-        config: toRuntimeConfig(agent),
+        config: this.toAgentRuntimeConfig(agent),
         launchId: crypto.randomUUID(),
       });
       if (!sent) continue;
@@ -1014,6 +1180,11 @@ function json(data: unknown, status = 200): Response {
 
 function unauthorized(reason: string): Response {
   return json({ error: 'Unauthorized', reason }, 401);
+}
+
+function getBearerToken(header: string | null): string | undefined {
+  const match = (header ?? '').match(/^Bearer\s+(.+)$/i);
+  return match?.[1]?.trim() || undefined;
 }
 
 function isUnsafeWorkspacePath(value: string): boolean {
