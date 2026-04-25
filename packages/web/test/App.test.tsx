@@ -197,6 +197,48 @@ describe('App', () => {
       expect(screen.getAllByText('MVP plan is actionable').length).toBeGreaterThan(0);
     });
   });
+
+  it('shows blocked work on task board and agent work summary', async () => {
+    vi.mocked(api.getAgents).mockResolvedValue([{
+      id: 'agent-1',
+      name: 'engineer',
+      displayName: 'Engineer',
+      runtime: 'codex',
+      status: 'idle',
+      organization: { roles: ['Engineer'], capabilities: ['coding'] },
+      createdAt: '2026-04-25T00:00:00.000Z',
+    }]);
+    vi.mocked(api.getTasks).mockResolvedValue([{
+      id: 'task-1',
+      channelId: 'general',
+      title: 'Implement coding task',
+      status: 'in_review',
+      creatorName: 'user',
+      assigneeId: 'agent-1',
+      context: {
+        blockedReason: 'missing API token',
+        blockedNeeds: 'user provides token',
+        progressEvents: [{ id: 'evt-1', taskId: 'task-1', agentId: 'agent-1', type: 'blocked', detail: 'missing API token', createdAt: '2026-04-25T00:00:00.000Z' }],
+      },
+      createdAt: '2026-04-25T00:00:00.000Z',
+      updatedAt: '2026-04-25T00:00:01.000Z',
+    }]);
+
+    render(<App />);
+
+    fireEvent.click(await screen.findByText('Tasks'));
+    await waitFor(() => {
+      expect(screen.getByText('BLOCKED')).toBeTruthy();
+      expect(screen.getByText('missing API token')).toBeTruthy();
+      expect(screen.getByText('Needs: user provides token')).toBeTruthy();
+    });
+
+    fireEvent.click(screen.getAllByText('Engineer')[0]);
+    await waitFor(() => {
+      expect(screen.getByText('WORK SUMMARY')).toBeTruthy();
+      expect(screen.getByText('BLOCKED 1')).toBeTruthy();
+    });
+  });
 });
 
 vi.mock('../src/api.js', () => ({

@@ -189,6 +189,37 @@ describe('agent-facing xoxiang CLI', () => {
     );
   });
 
+  it('supports inbox, work list, and autonomous task progress commands', async () => {
+    const inboxFetch = okFetch([{ id: 'item-1' }]);
+    const inbox = await run(['inbox'], inboxFetch);
+    expect(inbox.code).toBe(0);
+    expect(inboxFetch).toHaveBeenCalledWith('http://hub.test/internal/agent/agent-1/inbox', expect.objectContaining({ method: 'GET' }));
+
+    const workFetch = okFetch({ inbox: [] });
+    const work = await run(['work', 'list'], workFetch);
+    expect(work.code).toBe(0);
+    expect(workFetch).toHaveBeenCalledWith('http://hub.test/internal/agent/agent-1/work', expect.objectContaining({ method: 'GET' }));
+
+    const claimFetch = okFetch({ id: 'task-1', assigneeId: 'agent-1' });
+    expect((await run(['task', 'claim', 'task-1'], claimFetch)).code).toBe(0);
+    expect(claimFetch).toHaveBeenCalledWith('http://hub.test/internal/agent/agent-1/tasks/task-1/claim', expect.objectContaining({ method: 'POST', body: JSON.stringify({}) }));
+
+    const progressFetch = okFetch({ id: 'task-1' });
+    expect((await run(['task', 'progress', 'task-1', '--detail', 'heartbeat'], progressFetch)).code).toBe(0);
+    expect(progressFetch).toHaveBeenCalledWith('http://hub.test/internal/agent/agent-1/tasks/task-1/progress', expect.objectContaining({ method: 'POST', body: JSON.stringify({ detail: 'heartbeat' }) }));
+
+    const blockFetch = okFetch({ id: 'task-1' });
+    expect((await run(['task', 'block', 'task-1', '--reason', 'missing input', '--needs', 'user decision'], blockFetch)).code).toBe(0);
+    expect(blockFetch).toHaveBeenCalledWith('http://hub.test/internal/agent/agent-1/tasks/task-1/block', expect.objectContaining({
+      method: 'POST',
+      body: JSON.stringify({ reason: 'missing input', needs: 'user decision' }),
+    }));
+
+    const escalateFetch = okFetch({ id: 'task-1' });
+    expect((await run(['task', 'escalate', 'task-1', '--reason', 'blocked'], escalateFetch)).code).toBe(0);
+    expect(escalateFetch).toHaveBeenCalledWith('http://hub.test/internal/agent/agent-1/tasks/task-1/escalate', expect.objectContaining({ method: 'POST', body: JSON.stringify({ reason: 'blocked' }) }));
+  });
+
   it('lists goals with optional filters', async () => {
     const fetchImpl = okFetch([{ id: 'goal-1', objective: 'ship v1.1' }]);
     const result = await run(['goal', 'list', '--channel', 'general', '--status', 'draft'], fetchImpl);

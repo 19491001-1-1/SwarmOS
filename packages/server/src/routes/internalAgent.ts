@@ -12,15 +12,22 @@ import {
   InternalAgentDelegateRequestSchema,
   InternalAgentResolveRequestSchema,
   InternalDmSendRequestSchema,
+  InternalInboxRequestSchema,
   InternalMessageReadRequestSchema,
   InternalMessageSendRequestSchema,
   InternalTaskHandoffRequestSchema,
+  InternalTaskBlockRequestSchema,
+  InternalTaskEscalateRequestSchema,
   InternalTaskListRequestSchema,
+  InternalTaskProgressRequestSchema,
   InternalTaskUpdateRequestSchema,
   PatchReminderRequestSchema,
   type GoalAlignment,
+  type AgentInboxItem,
   type Agent,
   type DirectMessage,
+  type Task,
+  type TaskProgressEventType,
 } from '@mini-slock/shared';
 import { buildClarifyingQuestions, inferGoalRiskLevel, recommendAgentsForGoal, toRuntimeConfig } from '@mini-slock/hub-core';
 import { getStore } from '../db.js';
@@ -181,6 +188,24 @@ export async function internalAgentRoutes(app: FastifyInstance) {
       assigneeId: parsed.data.all ? undefined : agent.id,
     });
     return tasks;
+  });
+
+  app.get<{ Params: { agentId: string }; Querystring: { limit?: string } }>('/internal/agent/:agentId/inbox', async (req, reply) => {
+    const store = getStore();
+    const agent = await store.getAgent(req.params.agentId);
+    if (!agent) return reply.status(404).send({ error: 'Agent not found' });
+    const parsed = InternalInboxRequestSchema.safeParse(req.query);
+    if (!parsed.success) return reply.status(400).send({ error: 'Invalid query', issues: parsed.error.issues });
+    return buildInbox(agent, parsed.data.limit);
+  });
+
+  app.get<{ Params: { agentId: string }; Querystring: { limit?: string } }>('/internal/agent/:agentId/work', async (req, reply) => {
+    const store = getStore();
+    const agent = await store.getAgent(req.params.agentId);
+    if (!agent) return reply.status(404).send({ error: 'Agent not found' });
+    const parsed = InternalInboxRequestSchema.safeParse(req.query);
+    if (!parsed.success) return reply.status(400).send({ error: 'Invalid query', issues: parsed.error.issues });
+    return { inbox: await buildInbox(agent, parsed.data.limit), next: 'Work assigned tasks first, claim only matching open tasks, and report blockers with task block/escalate.' };
   });
 
   app.get<{ Params: { agentId: string }; Querystring: { channel?: string; status?: string } }>('/internal/agent/:agentId/goals', async (req, reply) => {
@@ -450,6 +475,81 @@ export async function internalAgentRoutes(app: FastifyInstance) {
     return task;
   });
 
+  app.post<{ Params: { agentId: string; taskId: string } }>('/internal/agent/:agentId/tasks/:taskId/claim', async (req, reply) => {
+    const store = getStore();
+    const agent = await store.getAgent(req.params.agentId);
+    if (!agent) return reply.status(404).send({ error: 'Agent not found' });
+    const existing = await store.getTask(req.params.taskId);
+    if (!existing) return reply.status(404).send({ error: 'Task not found' });
+    if (existing.assigneeId && existing.assigneeId !== agent.id) return reply.status(409).send({ error: 'Task is assigned to another agent' });
+    const task = await store.updateTask(existing.id, {
+      assigneeId: agent.id,
+      status: existing.status === 'todo' ? 'in_progress' : existing.status,
+      context: appendProgress(existing, agent.id, 'claimed', `Claimed by ${agent.displayName ?? agent.name}`),
+    });
+    if (!task) return reply.status(404).send({ error: 'Task not found' });
+    eventBus.emit({ type: 'task:update', task });
+    return task;
+  });
+
+  app.post<{ Params: { agentId: string; taskId: string } }>('/internal/agent/:agentId/tasks/:taskId/progress', async (req, reply) => {
+    const store = getStore();
+    const agent = await store.getAgent(req.params.agentId);
+    if (!agent) return reply.status(404).send({ error: 'Agent not found' });
+    const existing = await store.getTask(req.params.taskId);
+    if (!existing) return reply.status(404).send({ error: 'Task not found' });
+    if (existing.assigneeId && existing.assigneeId !== agent.id) return reply.status(403).send({ error: 'Task is assigned to another agent' });
+    const parsed = InternalTaskProgressRequestSchema.safeParse(req.body);
+    if (!parsed.success) return reply.status(400).send({ error: 'Invalid request body', issues: parsed.error.issues });
+    const task = await store.updateTask(existing.id, { context: appendProgress(existing, agent.id, 'heartbeat', parsed.data.detail) });
+    if (!task) return reply.status(404).send({ error: 'Task not found' });
+    eventBus.emit({ type: 'task:update', task });
+    return task;
+  });
+
+  app.post<{ Params: { agentId: string; taskId: string } }>('/internal/agent/:agentId/tasks/:taskId/block', async (req, reply) => {
+    const store = getStore();
+    const agent = await store.getAgent(req.params.agentId);
+    if (!agent) return reply.status(404).send({ error: 'Agent not found' });
+    const existing = await store.getTask(req.params.taskId);
+    if (!existing) return reply.status(404).send({ error: 'Task not found' });
+    if (existing.assigneeId && existing.assigneeId !== agent.id) return reply.status(403).send({ error: 'Task is assigned to another agent' });
+    const parsed = InternalTaskBlockRequestSchema.safeParse(req.body);
+    if (!parsed.success) return reply.status(400).send({ error: 'Invalid request body', issues: parsed.error.issues });
+    const context = appendProgress(existing, agent.id, 'blocked', `${parsed.data.reason}; needs: ${parsed.data.needs}`);
+    const task = await store.updateTask(existing.id, {
+      status: 'in_review',
+      context: { ...context, blockedReason: parsed.data.reason, blockedNeeds: parsed.data.needs },
+    });
+    if (!task) return reply.status(404).send({ error: 'Task not found' });
+    eventBus.emit({ type: 'task:update', task });
+    return task;
+  });
+
+  app.post<{ Params: { agentId: string; taskId: string } }>('/internal/agent/:agentId/tasks/:taskId/escalate', async (req, reply) => {
+    const store = getStore();
+    const agent = await store.getAgent(req.params.agentId);
+    if (!agent) return reply.status(404).send({ error: 'Agent not found' });
+    const existing = await store.getTask(req.params.taskId);
+    if (!existing) return reply.status(404).send({ error: 'Task not found' });
+    const parsed = InternalTaskEscalateRequestSchema.safeParse(req.body);
+    if (!parsed.success) return reply.status(400).send({ error: 'Invalid request body', issues: parsed.error.issues });
+    const context = appendProgress(existing, agent.id, 'escalated', parsed.data.reason);
+    const task = await store.updateTask(existing.id, { context: { ...context, escalatedReason: parsed.data.reason } });
+    if (!task) return reply.status(404).send({ error: 'Task not found' });
+    eventBus.emit({ type: 'task:update', task });
+    const message = await store.createMessage({
+      id: nanoid(),
+      channelId: existing.channelId,
+      senderName: agent.displayName ?? agent.name,
+      agentId: agent.id,
+      content: `Escalation for task "${existing.title}": ${parsed.data.reason}`,
+      threadRootId: existing.messageId,
+    });
+    eventBus.emit(message.threadRootId ? { type: 'thread:message:new', root: (await store.getThread(message.threadRootId))!.root, message } : { type: 'message:new', message });
+    return task;
+  });
+
   app.post<{ Params: { agentId: string; taskId: string } }>('/internal/agent/:agentId/tasks/:taskId/update', async (req, reply) => {
     const store = getStore();
     const agent = await store.getAgent(req.params.agentId);
@@ -533,6 +633,109 @@ function buildPlanSummary(objective: string, recommendation: ReturnType<typeof r
   const owners = recommendation.ownerAgentIds.length > 0 ? recommendation.ownerAgentIds.join(', ') : 'No owner match';
   const reviewers = recommendation.reviewerAgentIds.length > 0 ? recommendation.reviewerAgentIds.join(', ') : 'No reviewer match';
   return `Draft plan for "${objective}". Owners: ${owners}. Reviewers: ${reviewers}. Risk: ${riskLevel}.`;
+}
+
+async function buildInbox(agent: Agent, limit: number): Promise<AgentInboxItem[]> {
+  const store = getStore();
+  const tasks = await store.listTasks();
+  const reminders = await store.listReminders(agent.id);
+  const dms = await store.listDirectMessageThreads(agent.id);
+  const items: AgentInboxItem[] = [];
+  for (const task of tasks) {
+    if (task.status === 'done') continue;
+    if (task.assigneeId === agent.id) {
+      items.push({
+        id: `assigned_task:${task.id}`,
+        kind: task.context?.blockedReason ? 'blocked_escalation' : 'assigned_task',
+        agentId: agent.id,
+        channelId: task.channelId,
+        messageId: task.messageId,
+        taskId: task.id,
+        goalId: task.context?.goalId,
+        priority: task.context?.blockedReason ? 'high' : 'normal',
+        summary: task.context?.blockedReason ? `Blocked task: ${task.title} (${task.context.blockedReason})` : `Assigned task: ${task.title}`,
+        createdAt: task.updatedAt,
+      });
+    } else if (!task.assigneeId && matchesAgentCapability(agent, task)) {
+      items.push({
+        id: `claimable_task:${task.id}`,
+        kind: 'claimable_task',
+        agentId: agent.id,
+        channelId: task.channelId,
+        messageId: task.messageId,
+        taskId: task.id,
+        goalId: task.context?.goalId,
+        priority: 'normal',
+        summary: `Claimable task matching your role/capability: ${task.title}`,
+        createdAt: task.createdAt,
+      });
+    }
+  }
+  for (const reminder of reminders.filter((reminder) => reminder.status === 'pending')) {
+    items.push({
+      id: `reminder:${reminder.id}`,
+      kind: 'reminder',
+      agentId: agent.id,
+      channelId: reminder.channelId,
+      priority: 'normal',
+      summary: `Reminder: ${reminder.message}`,
+      dueAt: reminder.triggerAt,
+      createdAt: reminder.createdAt,
+    });
+  }
+  for (const thread of dms.slice(0, 10)) {
+    items.push({
+      id: `dm:${thread.lastMessage.id}`,
+      kind: 'dm',
+      agentId: agent.id,
+      priority: 'normal',
+      summary: `DM from ${thread.otherAgentId}: ${thread.lastMessage.content.slice(0, 120)}`,
+      createdAt: thread.lastMessage.createdAt,
+    });
+  }
+  return items.sort(compareInboxItems).slice(0, limit);
+}
+
+function matchesAgentCapability(agent: Agent, task: Task): boolean {
+  const haystack = [
+    task.title,
+    task.context?.goal,
+    task.context?.goalObjective,
+    task.context?.background,
+    ...(task.context?.acceptanceCriteria ?? []),
+    ...(task.context?.artifacts ?? []),
+  ].filter(Boolean).join(' ').toLowerCase();
+  const capabilities = [
+    agent.name,
+    agent.displayName,
+    agent.description,
+    ...(agent.organization?.roles ?? []),
+    ...(agent.organization?.capabilities ?? []),
+    ...(agent.organization?.responsibilities ?? []),
+  ].filter(Boolean).map((item) => item!.toLowerCase());
+  if (capabilities.length === 0) return false;
+  return capabilities.some((capability) => capability.length >= 3 && (haystack.includes(capability) || capability.split(/\W+/).some((part) => part.length >= 4 && haystack.includes(part))));
+}
+
+function compareInboxItems(a: AgentInboxItem, b: AgentInboxItem): number {
+  const rank = { urgent: 0, high: 1, normal: 2, low: 3 };
+  return rank[a.priority] - rank[b.priority] || new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+}
+
+function appendProgress(task: Task, agentId: string, type: TaskProgressEventType, detail: string): Task['context'] {
+  const event = {
+    id: nanoid(),
+    taskId: task.id,
+    agentId,
+    type,
+    detail,
+    createdAt: new Date().toISOString(),
+  };
+  return {
+    ...task.context,
+    claimedByAgentId: type === 'claimed' ? agentId : task.context?.claimedByAgentId,
+    progressEvents: [...(task.context?.progressEvents ?? []), event].slice(-20),
+  };
 }
 
 function deliverDirectMessage(target: Agent, dm: DirectMessage): void {

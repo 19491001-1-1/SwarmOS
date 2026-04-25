@@ -147,11 +147,14 @@ function TaskCard({ task, agents, channels, onStatus, onDelete, compact = false 
   compact?: boolean;
 }) {
   const assignee = agents.find((agent) => agent.id === task.assigneeId);
+  const claimedBy = agents.find((agent) => agent.id === task.context?.claimedByAgentId);
   const channel = channels.find((candidate) => candidate.id === task.channelId);
+  const lastProgress = task.context?.progressEvents?.at(-1);
+  const blocked = Boolean(task.context?.blockedReason);
   return (
     <article style={{
       border: '2px solid #000',
-      background: '#fff',
+      background: blocked ? '#fff0f4' : '#fff',
       padding: 10,
       marginBottom: compact ? 8 : 0,
       boxShadow: '3px 3px 0 #000',
@@ -163,8 +166,21 @@ function TaskCard({ task, agents, channels, onStatus, onDelete, compact = false 
       <div style={{ display: 'flex', gap: 8, marginTop: 8, flexWrap: 'wrap', fontSize: 11 }}>
         <span>#{channel?.name ?? task.channelId}</span>
         <span>{assignee ? `@${assignee.displayName ?? assignee.name}` : '@unassigned'}</span>
+        {claimedBy ? <span style={{ fontWeight: 700 }}>CLAIMED: @{claimedBy.displayName ?? claimedBy.name}</span> : null}
         {task.context?.goalObjective ? <span style={{ fontWeight: 700 }}>GOAL: {task.context.goalObjective}</span> : null}
       </div>
+      {blocked ? (
+        <div style={{ marginTop: 8, border: '2px solid #9f1239', background: '#ffe4ec', padding: 7, fontSize: 11, lineHeight: 1.35 }}>
+          <strong>BLOCKED</strong>
+          <div>{task.context?.blockedReason}</div>
+          {task.context?.blockedNeeds ? <div>Needs: {task.context.blockedNeeds}</div> : null}
+        </div>
+      ) : lastProgress ? (
+        <div style={{ marginTop: 8, border: '1.5px solid #000', background: '#f6f6ee', padding: 7, fontSize: 11, lineHeight: 1.35 }}>
+          <strong>{lastProgress.type.toUpperCase()}</strong>
+          <div>{lastProgress.detail}</div>
+        </div>
+      ) : null}
       {task.context?.acceptanceCriteria?.length ? (
         <div style={{ marginTop: 8, border: '1.5px dashed #777', padding: 7, fontSize: 11, lineHeight: 1.35 }}>
           <strong>ACCEPTANCE</strong>

@@ -530,6 +530,56 @@ describe('agent internal API', () => {
     });
     await app.close();
   });
+
+  it('returns inbox items and records claim/progress/block/escalation events', async () => {
+    const { app, store, headers } = await createInternalAgent();
+    await store.updateAgent('agent-1', { organization: { roles: ['Engineer'], capabilities: ['coding'] } });
+    await store.createTask({
+      id: 'task-claim',
+      channelId: 'general',
+      title: 'coding task for agent',
+      status: 'todo',
+      creatorName: 'user',
+      context: { goal: 'coding implementation' },
+    });
+
+    const inbox = await app.inject({ method: 'GET', url: '/internal/agent/agent-1/inbox', headers });
+    expect(inbox.statusCode).toBe(200);
+    expect(inbox.json()).toContainEqual(expect.objectContaining({ kind: 'claimable_task', taskId: 'task-claim' }));
+
+    const claimed = await app.inject({ method: 'POST', url: '/internal/agent/agent-1/tasks/task-claim/claim', headers });
+    expect(claimed.statusCode).toBe(200);
+    expect(claimed.json()).toMatchObject({ assigneeId: 'agent-1', status: 'in_progress', context: { claimedByAgentId: 'agent-1' } });
+    expect(claimed.json().context.progressEvents.at(-1)).toMatchObject({ type: 'claimed', agentId: 'agent-1' });
+
+    const progress = await app.inject({
+      method: 'POST',
+      url: '/internal/agent/agent-1/tasks/task-claim/progress',
+      headers,
+      payload: { detail: 'implemented first slice' },
+    });
+    expect(progress.statusCode).toBe(200);
+    expect(progress.json().context.progressEvents.at(-1)).toMatchObject({ type: 'heartbeat', detail: 'implemented first slice' });
+
+    const blocked = await app.inject({
+      method: 'POST',
+      url: '/internal/agent/agent-1/tasks/task-claim/block',
+      headers,
+      payload: { reason: 'missing API token', needs: 'user provides token' },
+    });
+    expect(blocked.statusCode).toBe(200);
+    expect(blocked.json().context).toMatchObject({ blockedReason: 'missing API token', blockedNeeds: 'user provides token' });
+
+    const escalated = await app.inject({
+      method: 'POST',
+      url: '/internal/agent/agent-1/tasks/task-claim/escalate',
+      headers,
+      payload: { reason: 'blocked after retry' },
+    });
+    expect(escalated.statusCode).toBe(200);
+    expect(escalated.json().context).toMatchObject({ escalatedReason: 'blocked after retry' });
+    await app.close();
+  });
 });
 
 describe('GET /api/machines', () => {

@@ -555,6 +555,7 @@ export function App() {
           agent={selectedAgent}
           activities={activitiesByAgent[selectedAgent.id] ?? []}
           reminders={remindersByAgent[selectedAgent.id] ?? []}
+          tasks={tasks}
           onReminderUpdated={upsertReminder}
           onAgentUpdated={(updated) => setAgents((prev) => prev.map((agent) => (agent.id === updated.id ? updated : agent)))}
           onClose={() => setSelectedAgentId(undefined)}

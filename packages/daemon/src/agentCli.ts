@@ -63,6 +63,8 @@ function parseCommand(argv: string[]): ParsedCommand {
     return { method: 'GET', path: `/agents/resolve?${params.toString()}` };
   }
   if (group === 'message' && action === 'check') return { method: 'GET', path: '/messages/check' };
+  if (group === 'inbox' && action === undefined) return { method: 'GET', path: '/inbox' };
+  if (group === 'work' && action === 'list') return { method: 'GET', path: '/work' };
   if (group === 'message' && action === 'read') {
     const opts = parseFlags(rest);
     const params = new URLSearchParams({
@@ -134,6 +136,30 @@ function parseCommand(argv: string[]): ParsedCommand {
         nextStep: typeof opts['next-step'] === 'string' ? opts['next-step'] : undefined,
       },
     };
+  }
+  if (group === 'task' && action === 'claim') {
+    const taskId = required(rest[0], 'task id');
+    if (rest.length > 1) throw new Error(`unexpected argument: ${rest[1]}`);
+    return { method: 'POST', path: `/tasks/${encodeURIComponent(taskId)}/claim`, body: {} };
+  }
+  if (group === 'task' && action === 'progress') {
+    const taskId = required(rest[0], 'task id');
+    const opts = parseFlags(rest.slice(1));
+    return { method: 'POST', path: `/tasks/${encodeURIComponent(taskId)}/progress`, body: { detail: required(opts.detail, '--detail') } };
+  }
+  if (group === 'task' && action === 'block') {
+    const taskId = required(rest[0], 'task id');
+    const opts = parseFlags(rest.slice(1));
+    return {
+      method: 'POST',
+      path: `/tasks/${encodeURIComponent(taskId)}/block`,
+      body: { reason: required(opts.reason, '--reason'), needs: required(opts.needs, '--needs') },
+    };
+  }
+  if (group === 'task' && action === 'escalate') {
+    const taskId = required(rest[0], 'task id');
+    const opts = parseFlags(rest.slice(1));
+    return { method: 'POST', path: `/tasks/${encodeURIComponent(taskId)}/escalate`, body: { reason: required(opts.reason, '--reason') } };
   }
   if (group === 'goal' && action === 'list') {
     const opts = parseFlags(rest);

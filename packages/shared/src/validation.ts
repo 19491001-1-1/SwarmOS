@@ -9,6 +9,9 @@ export const TaskStatusSchema = z.enum(['todo', 'in_progress', 'in_review', 'don
 export const GoalBriefStatusSchema = z.enum(['draft', 'confirmed', 'cancelled', 'completed']);
 export const GoalAlignmentStatusSchema = z.enum(['needs_clarification', 'awaiting_confirmation', 'confirmed', 'cancelled']);
 export const GoalAlignmentRiskLevelSchema = z.enum(['low', 'medium', 'high']);
+export const WorkItemKindSchema = z.enum(['mention', 'dm', 'assigned_task', 'claimable_task', 'reminder', 'review_request', 'blocked_escalation']);
+export const WorkItemPrioritySchema = z.enum(['low', 'normal', 'high', 'urgent']);
+export const TaskProgressEventTypeSchema = z.enum(['claimed', 'started', 'heartbeat', 'blocked', 'handoff', 'completed', 'escalated']);
 export const ReminderStatusSchema = z.enum(['pending', 'triggered', 'cancelled']);
 
 export const MentionSchema = z.object({
@@ -92,6 +95,18 @@ export const TaskContextSchema = z.object({
   previousAgentId: z.string().optional(),
   handoffNotes: z.array(z.string()).optional(),
   privateNotes: z.array(z.string()).optional(),
+  claimedByAgentId: z.string().optional(),
+  blockedReason: z.string().optional(),
+  blockedNeeds: z.string().optional(),
+  escalatedReason: z.string().optional(),
+  progressEvents: z.array(z.object({
+    id: z.string(),
+    taskId: z.string(),
+    agentId: z.string(),
+    type: TaskProgressEventTypeSchema,
+    detail: z.string(),
+    createdAt: z.string(),
+  })).optional(),
 }).partial();
 
 export const TaskSchema = z.object({
@@ -488,6 +503,23 @@ export const InternalTaskHandoffRequestSchema = z.object({
   nextStep: z.string().optional(),
 });
 
+export const InternalInboxRequestSchema = z.object({
+  limit: z.coerce.number().int().positive().max(100).default(20),
+});
+
+export const InternalTaskProgressRequestSchema = z.object({
+  detail: z.string().min(1),
+});
+
+export const InternalTaskBlockRequestSchema = z.object({
+  reason: z.string().min(1),
+  needs: z.string().min(1),
+});
+
+export const InternalTaskEscalateRequestSchema = z.object({
+  reason: z.string().min(1),
+});
+
 export const InternalGoalListRequestSchema = z.object({
   channel: z.string().min(1).optional(),
   status: GoalBriefStatusSchema.optional(),
@@ -531,6 +563,10 @@ export type InternalAgentResolveRequest = z.infer<typeof InternalAgentResolveReq
 export type InternalTaskListRequest = z.infer<typeof InternalTaskListRequestSchema>;
 export type InternalTaskUpdateRequest = z.infer<typeof InternalTaskUpdateRequestSchema>;
 export type InternalTaskHandoffRequest = z.infer<typeof InternalTaskHandoffRequestSchema>;
+export type InternalInboxRequest = z.infer<typeof InternalInboxRequestSchema>;
+export type InternalTaskProgressRequest = z.infer<typeof InternalTaskProgressRequestSchema>;
+export type InternalTaskBlockRequest = z.infer<typeof InternalTaskBlockRequestSchema>;
+export type InternalTaskEscalateRequest = z.infer<typeof InternalTaskEscalateRequestSchema>;
 export type InternalGoalListRequest = z.infer<typeof InternalGoalListRequestSchema>;
 export type InternalGoalCreateRequest = z.infer<typeof InternalGoalCreateRequestSchema>;
 export type InternalGoalCreateTasksRequest = z.infer<typeof InternalGoalCreateTasksRequestSchema>;

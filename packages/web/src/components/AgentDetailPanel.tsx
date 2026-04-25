@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import type { Agent, AgentActivity, DirectMessage, DirectMessageThread, Reminder } from '../api.js';
+import type { Agent, AgentActivity, DirectMessage, DirectMessageThread, Reminder, Task } from '../api.js';
 import { cancelReminder, createAgentReminder, getAgentDirectMessages, getAgentDmThreads, patchAgent, sendAgentDirectMessage } from '../api.js';
 import { WorkspaceBrowser } from './WorkspaceBrowser.js';
 
@@ -7,6 +7,7 @@ type Props = {
   agent: Agent;
   activities: AgentActivity[];
   reminders: Reminder[];
+  tasks: Task[];
   onReminderUpdated: (reminder: Reminder) => void;
   onAgentUpdated: (agent: Agent) => void;
   onClose: () => void;
@@ -25,7 +26,7 @@ const ACTIVITY_META: Record<AgentActivity['type'], { label: string; color: strin
   error: { label: 'ERROR', color: '#f44336' },
 };
 
-export function AgentDetailPanel({ agent, activities, reminders, onReminderUpdated, onAgentUpdated, onClose }: Props) {
+export function AgentDetailPanel({ agent, activities, reminders, tasks, onReminderUpdated, onAgentUpdated, onClose }: Props) {
   const [tab, setTab] = useState<Tab>('profile');
 
   return (
@@ -64,7 +65,7 @@ export function AgentDetailPanel({ agent, activities, reminders, onReminderUpdat
       </div>
 
       <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: 12 }}>
-        {tab === 'profile' ? <Profile agent={agent} onAgentUpdated={onAgentUpdated} /> : null}
+        {tab === 'profile' ? <Profile agent={agent} tasks={tasks} onAgentUpdated={onAgentUpdated} /> : null}
         {tab === 'dms' ? <DirectMessages agent={agent} /> : null}
         {tab === 'reminders' ? <Reminders agent={agent} reminders={reminders} onReminderUpdated={onReminderUpdated} /> : null}
         {tab === 'workspace' ? <WorkspaceBrowser agentId={agent.id} /> : null}
@@ -74,7 +75,7 @@ export function AgentDetailPanel({ agent, activities, reminders, onReminderUpdat
   );
 }
 
-function Profile({ agent, onAgentUpdated }: { agent: Agent; onAgentUpdated: (agent: Agent) => void }) {
+function Profile({ agent, tasks, onAgentUpdated }: { agent: Agent; tasks: Task[]; onAgentUpdated: (agent: Agent) => void }) {
   const [displayName, setDisplayName] = useState(agent.displayName ?? '');
   const [description, setDescription] = useState(agent.description ?? '');
   const [model, setModel] = useState(agent.model ?? '');
@@ -113,6 +114,7 @@ function Profile({ agent, onAgentUpdated }: { agent: Agent; onAgentUpdated: (age
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <WorkSummary agent={agent} tasks={tasks} />
       <div style={{ border: '2px solid #000', background: '#fff', display: 'grid', gridTemplateColumns: '58px 1fr' }}>
         <div style={{ height: 58, background: '#FFD700', borderRight: '2px solid #000', display: 'grid', placeItems: 'center', fontWeight: 700, fontSize: 20 }}>
           {(agent.displayName ?? agent.name).slice(0, 2).toUpperCase()}
@@ -137,6 +139,41 @@ function Profile({ agent, onAgentUpdated }: { agent: Agent; onAgentUpdated: (age
       </button>
     </div>
   );
+}
+
+function WorkSummary({ agent, tasks }: { agent: Agent; tasks: Task[] }) {
+  const openAssigned = tasks.filter((task) => task.assigneeId === agent.id && task.status !== 'done');
+  const blocked = openAssigned.filter((task) => task.context?.blockedReason);
+  const claimable = tasks.filter((task) => !task.assigneeId && task.status !== 'done' && matchesAgentTask(agent, task)).slice(0, 5);
+  return (
+    <div style={{ border: '2px solid #000', background: '#fff', padding: 9, display: 'grid', gap: 7 }}>
+      <strong style={{ fontSize: 12 }}>WORK SUMMARY</strong>
+      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', fontSize: 11 }}>
+        <span>ASSIGNED {openAssigned.length}</span>
+        <span>CLAIMABLE {claimable.length}</span>
+        <span style={{ color: blocked.length ? '#b00020' : '#555' }}>BLOCKED {blocked.length}</span>
+      </div>
+      {[...blocked, ...openAssigned.filter((task) => !task.context?.blockedReason).slice(0, 3), ...claimable].slice(0, 5).map((task) => (
+        <div key={task.id} style={{ borderTop: '1px solid #ddd', paddingTop: 5, fontSize: 11 }}>
+          <strong>{task.context?.blockedReason ? 'BLOCKED' : task.assigneeId ? 'ASSIGNED' : 'CLAIMABLE'}</strong> {task.title}
+          {task.context?.blockedReason ? <div style={{ color: '#b00020' }}>{task.context.blockedReason}</div> : null}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function matchesAgentTask(agent: Agent, task: Task): boolean {
+  const haystack = [task.title, task.context?.goal, task.context?.goalObjective, task.context?.background].filter(Boolean).join(' ').toLowerCase();
+  const fields = [
+    agent.name,
+    agent.displayName,
+    agent.description,
+    ...(agent.organization?.roles ?? []),
+    ...(agent.organization?.capabilities ?? []),
+    ...(agent.organization?.responsibilities ?? []),
+  ].filter(Boolean).map((item) => item!.toLowerCase());
+  return fields.some((field) => field.length >= 3 && (haystack.includes(field) || field.split(/\W+/).some((part) => part.length >= 4 && haystack.includes(part))));
 }
 
 function DirectMessages({ agent }: { agent: Agent }) {

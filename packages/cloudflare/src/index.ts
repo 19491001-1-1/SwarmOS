@@ -3,6 +3,7 @@ import type {
   Agent,
   AgentActivity,
   AgentDelegation,
+  AgentInboxItem,
   BrowserEvent,
   Channel,
   DaemonToServer,
@@ -20,6 +21,7 @@ import type {
   RuntimeId,
   ServerToDaemon,
   Task,
+  TaskProgressEventType,
   TaskStatus,
   WorkspaceEntry,
   WorkspaceError,
@@ -45,10 +47,14 @@ import {
   InternalGoalListRequestSchema,
   InternalGoalAlignRequestSchema,
   InternalGoalAlignmentPatchRequestSchema,
+  InternalInboxRequestSchema,
   InternalMessageReadRequestSchema,
   InternalMessageSendRequestSchema,
+  InternalTaskBlockRequestSchema,
+  InternalTaskEscalateRequestSchema,
   InternalTaskHandoffRequestSchema,
   InternalTaskListRequestSchema,
+  InternalTaskProgressRequestSchema,
   InternalTaskUpdateRequestSchema,
   CreateMessageRequestSchema,
   MessageToGoalBriefRequestSchema,
@@ -1216,6 +1222,18 @@ export class XoxiangHub extends DurableObject<Env> {
       }));
     }
 
+    if (request.method === 'GET' && path === '/inbox') {
+      const parsed = InternalInboxRequestSchema.safeParse(Object.fromEntries(url.searchParams.entries()));
+      if (!parsed.success) return json({ error: 'Invalid query', issues: parsed.error.issues }, 400);
+      return json(this.buildInbox(agent, parsed.data.limit));
+    }
+
+    if (request.method === 'GET' && path === '/work') {
+      const parsed = InternalInboxRequestSchema.safeParse(Object.fromEntries(url.searchParams.entries()));
+      if (!parsed.success) return json({ error: 'Invalid query', issues: parsed.error.issues }, 400);
+      return json({ inbox: this.buildInbox(agent, parsed.data.limit), next: 'Work assigned tasks first, claim only matching open tasks, and report blockers with task block/escalate.' });
+    }
+
     if (request.method === 'GET' && path === '/goals') {
       const parsed = InternalGoalListRequestSchema.safeParse(Object.fromEntries(url.searchParams.entries()));
       if (!parsed.success) return json({ error: 'Invalid query', issues: parsed.error.issues }, 400);
@@ -1365,6 +1383,75 @@ export class XoxiangHub extends DurableObject<Env> {
       const task = this.updateTask(existing.id, parsed.data);
       if (!task) return json({ error: 'Task not found' }, 404);
       this.broadcast({ type: 'task:update', task });
+      return json(task);
+    }
+
+    const taskClaimMatch = path.match(/^\/tasks\/([^/]+)\/claim$/);
+    if (request.method === 'POST' && taskClaimMatch) {
+      const existing = this.getTask(decodeURIComponent(taskClaimMatch[1]));
+      if (!existing) return json({ error: 'Task not found' }, 404);
+      if (existing.assigneeId && existing.assigneeId !== agent.id) return json({ error: 'Task is assigned to another agent' }, 409);
+      const task = this.updateTask(existing.id, {
+        assigneeId: agent.id,
+        status: existing.status === 'todo' ? 'in_progress' : existing.status,
+        context: appendProgress(existing, agent.id, 'claimed', `Claimed by ${agent.displayName ?? agent.name}`),
+      });
+      if (!task) return json({ error: 'Task not found' }, 404);
+      this.broadcast({ type: 'task:update', task });
+      return json(task);
+    }
+
+    const taskProgressMatch = path.match(/^\/tasks\/([^/]+)\/progress$/);
+    if (request.method === 'POST' && taskProgressMatch) {
+      const existing = this.getTask(decodeURIComponent(taskProgressMatch[1]));
+      if (!existing) return json({ error: 'Task not found' }, 404);
+      if (existing.assigneeId && existing.assigneeId !== agent.id) return json({ error: 'Task is assigned to another agent' }, 403);
+      const parsed = InternalTaskProgressRequestSchema.safeParse(await request.json());
+      if (!parsed.success) return json({ error: 'Invalid request body', issues: parsed.error.issues }, 400);
+      const task = this.updateTask(existing.id, { context: appendProgress(existing, agent.id, 'heartbeat', parsed.data.detail) });
+      if (!task) return json({ error: 'Task not found' }, 404);
+      this.broadcast({ type: 'task:update', task });
+      return json(task);
+    }
+
+    const taskBlockMatch = path.match(/^\/tasks\/([^/]+)\/block$/);
+    if (request.method === 'POST' && taskBlockMatch) {
+      const existing = this.getTask(decodeURIComponent(taskBlockMatch[1]));
+      if (!existing) return json({ error: 'Task not found' }, 404);
+      if (existing.assigneeId && existing.assigneeId !== agent.id) return json({ error: 'Task is assigned to another agent' }, 403);
+      const parsed = InternalTaskBlockRequestSchema.safeParse(await request.json());
+      if (!parsed.success) return json({ error: 'Invalid request body', issues: parsed.error.issues }, 400);
+      const context = appendProgress(existing, agent.id, 'blocked', `${parsed.data.reason}; needs: ${parsed.data.needs}`);
+      const task = this.updateTask(existing.id, { status: 'in_review', context: { ...context, blockedReason: parsed.data.reason, blockedNeeds: parsed.data.needs } });
+      if (!task) return json({ error: 'Task not found' }, 404);
+      this.broadcast({ type: 'task:update', task });
+      return json(task);
+    }
+
+    const taskEscalateMatch = path.match(/^\/tasks\/([^/]+)\/escalate$/);
+    if (request.method === 'POST' && taskEscalateMatch) {
+      const existing = this.getTask(decodeURIComponent(taskEscalateMatch[1]));
+      if (!existing) return json({ error: 'Task not found' }, 404);
+      const parsed = InternalTaskEscalateRequestSchema.safeParse(await request.json());
+      if (!parsed.success) return json({ error: 'Invalid request body', issues: parsed.error.issues }, 400);
+      const context = appendProgress(existing, agent.id, 'escalated', parsed.data.reason);
+      const task = this.updateTask(existing.id, { context: { ...context, escalatedReason: parsed.data.reason } });
+      if (!task) return json({ error: 'Task not found' }, 404);
+      this.broadcast({ type: 'task:update', task });
+      const message = this.createMessage({
+        id: crypto.randomUUID(),
+        channelId: existing.channelId,
+        senderName: agent.displayName ?? agent.name,
+        agentId: agent.id,
+        content: `Escalation for task "${existing.title}": ${parsed.data.reason}`,
+        threadRootId: existing.messageId,
+      });
+      if (message.threadRootId) {
+        const thread = this.getThread(message.threadRootId);
+        if (thread) this.broadcast({ type: 'thread:message:new', root: thread.root, message });
+      } else {
+        this.broadcast({ type: 'message:new', message });
+      }
       return json(task);
     }
 
@@ -1700,6 +1787,63 @@ export class XoxiangHub extends DurableObject<Env> {
   private getTask(id: string): Task | undefined {
     const row = this.ctx.storage.sql.exec<Row>('SELECT * FROM tasks WHERE id = ? LIMIT 1', id).toArray()[0];
     return row ? toTask(row) : undefined;
+  }
+
+  private buildInbox(agent: Agent, limit: number): AgentInboxItem[] {
+    const items: AgentInboxItem[] = [];
+    for (const task of this.listTasks()) {
+      if (task.status === 'done') continue;
+      if (task.assigneeId === agent.id) {
+        items.push({
+          id: `assigned_task:${task.id}`,
+          kind: task.context?.blockedReason ? 'blocked_escalation' : 'assigned_task',
+          agentId: agent.id,
+          channelId: task.channelId,
+          messageId: task.messageId,
+          taskId: task.id,
+          goalId: task.context?.goalId,
+          priority: task.context?.blockedReason ? 'high' : 'normal',
+          summary: task.context?.blockedReason ? `Blocked task: ${task.title} (${task.context.blockedReason})` : `Assigned task: ${task.title}`,
+          createdAt: task.updatedAt,
+        });
+      } else if (!task.assigneeId && matchesAgentCapability(agent, task)) {
+        items.push({
+          id: `claimable_task:${task.id}`,
+          kind: 'claimable_task',
+          agentId: agent.id,
+          channelId: task.channelId,
+          messageId: task.messageId,
+          taskId: task.id,
+          goalId: task.context?.goalId,
+          priority: 'normal',
+          summary: `Claimable task matching your role/capability: ${task.title}`,
+          createdAt: task.createdAt,
+        });
+      }
+    }
+    for (const reminder of this.listReminders(agent.id).filter((candidate) => candidate.status === 'pending')) {
+      items.push({
+        id: `reminder:${reminder.id}`,
+        kind: 'reminder',
+        agentId: agent.id,
+        channelId: reminder.channelId,
+        priority: 'normal',
+        summary: `Reminder: ${reminder.message}`,
+        dueAt: reminder.triggerAt,
+        createdAt: reminder.createdAt,
+      });
+    }
+    for (const thread of this.listDirectMessageThreads(agent.id).slice(0, 10)) {
+      items.push({
+        id: `dm:${thread.lastMessage.id}`,
+        kind: 'dm',
+        agentId: agent.id,
+        priority: 'normal',
+        summary: `DM from ${thread.otherAgentId}: ${thread.lastMessage.content.slice(0, 120)}`,
+        createdAt: thread.lastMessage.createdAt,
+      });
+    }
+    return items.sort(compareInboxItems).slice(0, limit);
   }
 
   private listGoals(filter: { channelId?: string; status?: GoalBriefStatus } = {}): GoalBrief[] {
@@ -2623,6 +2767,47 @@ function buildPlanSummary(objective: string, recommendation: ReturnType<typeof r
   const owners = recommendation.ownerAgentIds.length > 0 ? recommendation.ownerAgentIds.join(', ') : 'No owner match';
   const reviewers = recommendation.reviewerAgentIds.length > 0 ? recommendation.reviewerAgentIds.join(', ') : 'No reviewer match';
   return `Draft plan for "${objective}". Owners: ${owners}. Reviewers: ${reviewers}. Risk: ${riskLevel}.`;
+}
+
+function matchesAgentCapability(agent: Agent, task: Task): boolean {
+  const haystack = [
+    task.title,
+    task.context?.goal,
+    task.context?.goalObjective,
+    task.context?.background,
+    ...(task.context?.acceptanceCriteria ?? []),
+    ...(task.context?.artifacts ?? []),
+  ].filter(Boolean).join(' ').toLowerCase();
+  const capabilities = [
+    agent.name,
+    agent.displayName,
+    agent.description,
+    ...(agent.organization?.roles ?? []),
+    ...(agent.organization?.capabilities ?? []),
+    ...(agent.organization?.responsibilities ?? []),
+  ].filter(Boolean).map((item) => item!.toLowerCase());
+  return capabilities.some((capability) => capability.length >= 3 && (haystack.includes(capability) || capability.split(/\W+/).some((part) => part.length >= 4 && haystack.includes(part))));
+}
+
+function compareInboxItems(a: AgentInboxItem, b: AgentInboxItem): number {
+  const rank = { urgent: 0, high: 1, normal: 2, low: 3 };
+  return rank[a.priority] - rank[b.priority] || new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+}
+
+function appendProgress(task: Task, agentId: string, type: TaskProgressEventType, detail: string): Task['context'] {
+  const event = {
+    id: crypto.randomUUID(),
+    taskId: task.id,
+    agentId,
+    type,
+    detail,
+    createdAt: new Date().toISOString(),
+  };
+  return {
+    ...task.context,
+    claimedByAgentId: type === 'claimed' ? agentId : task.context?.claimedByAgentId,
+    progressEvents: [...(task.context?.progressEvents ?? []), event].slice(-20),
+  };
 }
 
 function toReminder(row: Row): Reminder {

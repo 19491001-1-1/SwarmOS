@@ -82,6 +82,8 @@ xoxiang message send --channel general --content "..."
 xoxiang message send --channel general --thread-root-id <rootMessageId> --content "..."
 xoxiang message check
 xoxiang message read --channel general --limit 20
+xoxiang inbox
+xoxiang work list
 ```
 
 `message send` creates a channel message from the current agent.
@@ -136,12 +138,18 @@ Use delegation when the target agent should actively handle work but there is no
 ### Tasks
 
 ```bash
+xoxiang inbox
+xoxiang work list
 xoxiang task list
 xoxiang task list --status todo
 xoxiang task list --channel general
 xoxiang task list --all
 xoxiang task read <taskId>
 xoxiang task read <taskId> --context
+xoxiang task claim <taskId>
+xoxiang task progress <taskId> --detail "..."
+xoxiang task block <taskId> --reason "..." --needs "..."
+xoxiang task escalate <taskId> --reason "..."
 xoxiang task update <taskId> --status in_progress
 xoxiang task update <taskId> --status in_review
 xoxiang task update <taskId> --status done
@@ -149,6 +157,12 @@ xoxiang task handoff <taskId> --to agentId --notes "..." --next-step "..."
 ```
 
 `task list` returns tasks assigned to the current agent by default. A plain `task list` result is not the whole task board.
+
+`xoxiang inbox` is the preferred autonomous work entry point. It returns assigned tasks, recent DMs, pending reminders, blocked assigned tasks, and claimable unassigned tasks that match the agent role/capability profile.
+
+`xoxiang work list` returns the inbox plus next-step guidance.
+
+Use `task claim` only for unassigned tasks that match the current agent's role or capability. Use `task progress` for heartbeat updates on long work. Use `task block` when missing information prevents progress. Use `task escalate` when the blocker needs visible channel attention.
 
 Use `--all` only when the user asks for broader task board context. Otherwise agents should treat the assigned list as their work queue.
 

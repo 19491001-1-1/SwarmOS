@@ -79,6 +79,16 @@ describe('parseBridgeLine', () => {
     expect(instruction).toContain('broad multi-step objective');
     expect(instruction).toContain('success criteria');
   });
+
+  it('instructs agents to use inbox and task progress commands', () => {
+    const instruction = buildBridgeInstruction();
+    expect(instruction).toContain('xoxiang inbox');
+    expect(instruction).toContain('xoxiang work list');
+    expect(instruction).toContain('xoxiang task claim');
+    expect(instruction).toContain('xoxiang task progress');
+    expect(instruction).toContain('xoxiang task block');
+    expect(instruction).toContain('xoxiang task escalate');
+  });
 });
 
 describe('memory instruction', () => {
