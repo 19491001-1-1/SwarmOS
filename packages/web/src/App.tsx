@@ -10,7 +10,7 @@ import { MobileTopBar } from './components/MobileTopBar.js';
 import { LoginView } from './components/LoginView.js';
 import type { Channel, Message, MessageThread, Agent, Machine, AgentActivity, VersionInfo, Task, Reminder, SearchMessageResult } from './api.js';
 import { AuthError, WEB_COMMIT_SHA, WEB_VERSION, buildWsUrl, getChannels, getMessages, getMessageThread, sendMessage, getAgents, getMachines, getAgentActivities, getHubVersion, getTasks, messageToTask, getAgentReminders, createChannel, deleteChannel, searchMessages, setAuthFailureHandler, verifyAuthToken } from './api.js';
-import { clearStoredAuthToken, getEffectiveAuthToken, setStoredAuthToken } from './auth.js';
+import { clearStoredAuthToken, getEffectiveAuthToken, markSignedOut, setStoredAuthToken } from './auth.js';
 
 export function App() {
   const [authState, setAuthState] = useState<'checking' | 'authenticated' | 'login'>('checking');
@@ -65,7 +65,7 @@ export function App() {
   }, [resetWorkspaceState]);
 
   const handleSignOut = useCallback(() => {
-    clearStoredAuthToken();
+    markSignedOut();
     wsRef.current?.close();
     resetWorkspaceState();
     setAuthError(undefined);
