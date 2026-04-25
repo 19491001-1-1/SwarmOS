@@ -5,7 +5,7 @@ import { Composer } from './components/Composer.js';
 import { AgentPanel } from './components/AgentPanel.js';
 import { AgentDetailPanel } from './components/AgentDetailPanel.js';
 import type { Channel, Message, Agent, Machine, AgentActivity } from './api.js';
-import { API_BASE, getChannels, getMessages, sendMessage, getAgents, getMachines, getAgentActivities } from './api.js';
+import { buildWsUrl, getChannels, getMessages, sendMessage, getAgents, getMachines, getAgentActivities } from './api.js';
 
 export function App() {
   const [channels, setChannels] = useState<Channel[]>([]);
@@ -56,10 +56,7 @@ export function App() {
 
   // WebSocket for real-time updates
   useEffect(() => {
-    const wsBase = API_BASE
-      ? API_BASE.replace(/^https:/, 'wss:').replace(/^http:/, 'ws:')
-      : `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}`;
-    const wsUrl = `${wsBase}/ws`;
+    const wsUrl = buildWsUrl('/ws');
     const ws = new WebSocket(wsUrl);
     wsRef.current = ws;
 

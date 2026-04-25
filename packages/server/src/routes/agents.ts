@@ -3,7 +3,7 @@ import { nanoid } from 'nanoid';
 import { getStore } from '../db.js';
 import { daemonRegistry } from '../daemonRegistry.js';
 import { eventBus } from '../events.js';
-import type { RuntimeId } from '@mini-slock/shared';
+import { CreateAgentRequestSchema, PatchAgentRequestSchema } from '@mini-slock/shared';
 import { resolveStartMachineId, toRuntimeConfig } from '@mini-slock/hub-core';
 
 export async function agentRoutes(app: FastifyInstance) {
@@ -18,19 +18,12 @@ export async function agentRoutes(app: FastifyInstance) {
     return store.listAgentActivities(agent.id, 200);
   });
 
-  app.post<{
-    Body: {
-      name: string;
-      displayName?: string;
-      description?: string;
-      runtime: RuntimeId;
-      model?: string;
-      systemPrompt?: string;
-      machineId?: string;
-    };
-  }>('/api/agents', async (req, reply) => {
-    const { name, displayName, description, runtime, model, systemPrompt, machineId } = req.body;
-    if (!name || !runtime) return reply.status(400).send({ error: 'name and runtime required' });
+  app.post('/api/agents', async (req, reply) => {
+    const parsed = CreateAgentRequestSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: 'Invalid request body', issues: parsed.error.issues });
+    }
+    const { name, displayName, description, runtime, model, systemPrompt, machineId } = parsed.data;
 
     const agent = await getStore().createAgent({
       id: nanoid(),
@@ -47,14 +40,15 @@ export async function agentRoutes(app: FastifyInstance) {
     return reply.status(201).send(agent);
   });
 
-  app.patch<{
-    Params: { id: string };
-    Body: { machineId?: string; displayName?: string; model?: string; systemPrompt?: string };
-  }>('/api/agents/:id', async (req, reply) => {
+  app.patch<{ Params: { id: string } }>('/api/agents/:id', async (req, reply) => {
     const store = getStore();
     const agent = await store.getAgent(req.params.id);
     if (!agent) return reply.status(404).send({ error: 'Agent not found' });
-    const updated = await store.updateAgent(agent.id, req.body);
+    const parsed = PatchAgentRequestSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: 'Invalid request body', issues: parsed.error.issues });
+    }
+    const updated = await store.updateAgent(agent.id, parsed.data);
     if (updated) eventBus.emit({ type: 'agent:update', agent: updated });
     return updated;
   });

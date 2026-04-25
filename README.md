@@ -57,11 +57,20 @@ pnpm --filter @mini-slock/cloudflare exec wrangler login
 pnpm --filter @mini-slock/cloudflare run deploy
 ```
 
+Set the daemon and browser auth secrets on the Worker once:
+
+```bash
+printf '%s' '<daemon-key>' | pnpm --filter @mini-slock/cloudflare exec wrangler secret put DAEMON_API_KEY
+printf '%s' '<web-token>'  | pnpm --filter @mini-slock/cloudflare exec wrangler secret put WEB_AUTH_TOKEN
+```
+
 Then point daemons and the web UI at the Worker URL:
 
 ```bash
-pnpm --filter @mini-slock/daemon start -- --server-url https://xoxiang-hub.<account>.workers.dev --api-key dev-machine-key
-VITE_API_BASE=https://xoxiang-hub.<account>.workers.dev pnpm --filter @mini-slock/web dev
+pnpm --filter @mini-slock/daemon start -- --server-url https://xoxiang-hub.<account>.workers.dev --api-key <daemon-key>
+VITE_API_BASE=https://xoxiang-hub.<account>.workers.dev \
+VITE_WEB_AUTH_TOKEN=<web-token> \
+pnpm --filter @mini-slock/web dev
 ```
 
 #### CI/CD (recommended)
@@ -72,7 +81,8 @@ Push to `main` automatically deploys via GitHub Actions. Required secrets in rep
 |--------|---------|
 | `CLOUDFLARE_API_TOKEN` | Wrangler auth |
 | `CLOUDFLARE_ACCOUNT_ID` | Your account |
-| `DAEMON_API_KEY` | Worker secret |
+| `DAEMON_API_KEY` | Worker secret for daemon connections |
+| `WEB_AUTH_TOKEN` | Worker secret for browser/REST auth (optional but required for public hub) |
 
 To trigger manually:
 

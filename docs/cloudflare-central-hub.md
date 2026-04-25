@@ -155,6 +155,23 @@ Set or rotate the daemon API key as a Cloudflare secret:
 printf '%s' '<new-key>' | pnpm --filter @mini-slock/cloudflare exec wrangler secret put DAEMON_API_KEY
 ```
 
+Set or rotate the browser auth token (required by `/api/*` and `/ws`):
+
+```bash
+printf '%s' '<new-web-token>' | pnpm --filter @mini-slock/cloudflare exec wrangler secret put WEB_AUTH_TOKEN
+```
+
+Generate a fresh token with `openssl rand -hex 32`. Browser clients must send this token as
+`Authorization: Bearer <token>` for REST and as `?token=<token>` for the `/ws` upgrade.
+Daemon connections continue to use `DAEMON_API_KEY`.
+
+Worker integration tests live in `packages/cloudflare/test/hub.test.ts` and cover auth, validation,
+and daemon-machine flow. Run them with:
+
+```bash
+pnpm --filter @mini-slock/cloudflare test
+```
+
 Dry-run packaging validation:
 
 ```bash
@@ -253,22 +270,31 @@ Each daemon persists a local machine identity at `~/.xoxiang/machine-id`, so one
 
 ## Web UI
 
+The Cloudflare hub requires `WEB_AUTH_TOKEN` for all browser traffic. Local web must pass the same token via `VITE_WEB_AUTH_TOKEN`.
+
 For local web development pointed at the Cloudflare hub:
 
 ```bash
-VITE_API_BASE=https://xoxiang-hub.xingke0.workers.dev pnpm --filter @mini-slock/web dev
+VITE_API_BASE=https://xoxiang-hub.xingke0.workers.dev \
+VITE_WEB_AUTH_TOKEN=<web-token> \
+pnpm --filter @mini-slock/web dev
 ```
 
 For a static production web build:
 
 ```bash
-VITE_API_BASE=https://xoxiang-hub.xingke0.workers.dev pnpm --filter @mini-slock/web build
+VITE_API_BASE=https://xoxiang-hub.xingke0.workers.dev \
+VITE_WEB_AUTH_TOKEN=<web-token> \
+pnpm --filter @mini-slock/web build
 ```
 
 The web app will use:
 
-- `VITE_API_BASE/api/*` for REST
-- `VITE_API_BASE/ws` for realtime browser events
+- `VITE_API_BASE/api/*` for REST, with `Authorization: Bearer <VITE_WEB_AUTH_TOKEN>`
+- `VITE_API_BASE/ws?token=<VITE_WEB_AUTH_TOKEN>` for realtime browser events
+
+If `VITE_WEB_AUTH_TOKEN` is empty, the web app still works against the local server (which does
+not enforce browser auth), but every Cloudflare request will receive 401.
 
 ### Deploy Static Web To Cloudflare Pages
 
@@ -281,9 +307,19 @@ pnpm deploy:web:pages
 The script runs:
 
 1. `wrangler whoami` to verify Cloudflare authentication.
-2. `VITE_API_BASE=<hub-url> pnpm --filter @mini-slock/web build`.
-3. `wrangler pages deploy packages/web/dist`.
-4. If the Pages project does not exist yet, `wrangler pages project create` creates it and the deploy is retried.
+2. Validates that `VITE_WEB_AUTH_TOKEN` is set when targeting the public hub, and fails fast if not.
+3. `VITE_API_BASE=<hub-url> VITE_WEB_AUTH_TOKEN=<token> pnpm --filter @mini-slock/web build`.
+4. `wrangler pages deploy packages/web/dist`.
+5. If the Pages project does not exist yet, `wrangler pages project create` creates it and the deploy is retried.
+
+Set the token before running:
+
+```bash
+export VITE_WEB_AUTH_TOKEN=<web-token>
+pnpm deploy:web:pages
+```
+
+The script does not echo the full token to stdout; only the configured length is logged.
 
 Defaults:
 

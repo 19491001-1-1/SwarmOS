@@ -6,6 +6,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PROJECT_NAME="${CLOUDFLARE_PAGES_PROJECT:-xoxiang-web}"
 BRANCH="${CLOUDFLARE_PAGES_BRANCH:-main}"
 API_BASE="${VITE_API_BASE:-https://xoxiang-hub.xingke0.workers.dev}"
+WEB_TOKEN="${VITE_WEB_AUTH_TOKEN:-}"
 DIST_DIR="$ROOT/packages/web/dist"
 
 log() {
@@ -16,11 +17,20 @@ log "Project: $PROJECT_NAME"
 log "Branch: $BRANCH"
 log "API base: $API_BASE"
 
+if [[ "$API_BASE" == *workers.dev* || "$API_BASE" == https://* ]]; then
+  if [[ -z "$WEB_TOKEN" ]]; then
+    log "ERROR: VITE_WEB_AUTH_TOKEN is required when deploying against the public Cloudflare hub."
+    log "Set it via: export VITE_WEB_AUTH_TOKEN=<token>"
+    exit 1
+  fi
+  log "Web auth token: configured (length=${#WEB_TOKEN})"
+fi
+
 log "Checking Cloudflare authentication..."
 pnpm --dir "$ROOT" --filter @mini-slock/cloudflare exec wrangler whoami >/dev/null
 
 log "Building web UI..."
-VITE_API_BASE="$API_BASE" pnpm --dir "$ROOT" --filter @mini-slock/web build
+VITE_API_BASE="$API_BASE" VITE_WEB_AUTH_TOKEN="$WEB_TOKEN" pnpm --dir "$ROOT" --filter @mini-slock/web build
 
 log "Deploying $DIST_DIR to Cloudflare Pages..."
 set +e

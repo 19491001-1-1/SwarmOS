@@ -10,6 +10,11 @@ import type {
   RuntimeId,
   ServerToDaemon,
 } from '@mini-slock/shared';
+import {
+  CreateAgentRequestSchema,
+  CreateMessageRequestSchema,
+  PatchAgentRequestSchema,
+} from '@mini-slock/shared';
 import { findDuplicateMachineIds, resolveStartMachineId, toAgentDelivery, toRuntimeConfig } from '@mini-slock/hub-core';
 
 type SocketAttachment =
@@ -27,7 +32,8 @@ const JSON_HEADERS = {
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
-    const hub = env.HUB.getByName('central');
+    const id = env.HUB.idFromName('central');
+    const hub = env.HUB.get(id);
     return hub.fetch(request);
   },
 };
@@ -45,8 +51,17 @@ export class XoxiangHub extends DurableObject<Env> {
     if (request.method === 'OPTIONS') return new Response(null, { headers: JSON_HEADERS });
 
     const url = new URL(request.url);
-    if (url.pathname === '/ws') return this.acceptBrowser(request);
+    if (url.pathname === '/ws') {
+      const authResp = await requireBrowserAuthForWs(url, this.env);
+      if (authResp) return authResp;
+      return this.acceptBrowser(request);
+    }
     if (url.pathname === '/daemon/connect') return this.acceptDaemon(request, url);
+
+    if (url.pathname.startsWith('/api/')) {
+      const authResp = await requireBrowserAuth(request, this.env);
+      if (authResp) return authResp;
+    }
 
     try {
       if (request.method === 'GET' && url.pathname === '/api/channels') {
@@ -190,7 +205,8 @@ export class XoxiangHub extends DurableObject<Env> {
 
   private acceptDaemon(request: Request, url: URL): Response {
     const key = url.searchParams.get('key');
-    if (!key || key !== this.env.DAEMON_API_KEY) {
+    const expected = this.env.DAEMON_API_KEY;
+    if (!key || !expected || !timingSafeEqualStr(key, expected)) {
       return new Response('Unauthorized', { status: 401 });
     }
 
@@ -270,8 +286,11 @@ export class XoxiangHub extends DurableObject<Env> {
   private createUserMessage(channelId: string, body: unknown): Response {
     const channel = this.getChannel(channelId);
     if (!channel) return json({ error: 'Channel not found' }, 404);
-    const payload = body as { senderName?: string; content?: string; agentId?: string };
-    if (!payload.senderName || !payload.content) return json({ error: 'senderName and content required' }, 400);
+    const parsed = CreateMessageRequestSchema.safeParse(body);
+    if (!parsed.success) {
+      return json({ error: 'Invalid request body', issues: parsed.error.issues }, 400);
+    }
+    const payload = parsed.data;
 
     const message = this.createMessage({
       id: crypto.randomUUID(),
@@ -301,8 +320,11 @@ export class XoxiangHub extends DurableObject<Env> {
   }
 
   private createAgent(body: unknown): Response {
-    const payload = body as Partial<Agent>;
-    if (!payload.name || !payload.runtime) return json({ error: 'name and runtime required' }, 400);
+    const parsed = CreateAgentRequestSchema.safeParse(body);
+    if (!parsed.success) {
+      return json({ error: 'Invalid request body', issues: parsed.error.issues }, 400);
+    }
+    const payload = parsed.data;
 
     const agent: Agent = {
       id: crypto.randomUUID(),
@@ -337,7 +359,11 @@ export class XoxiangHub extends DurableObject<Env> {
   private patchAgent(agentId: string, body: unknown): Response {
     const agent = this.getAgent(agentId);
     if (!agent) return json({ error: 'Agent not found' }, 404);
-    const updated = this.updateAgent(agentId, body as Partial<Agent>);
+    const parsed = PatchAgentRequestSchema.safeParse(body);
+    if (!parsed.success) {
+      return json({ error: 'Invalid request body', issues: parsed.error.issues }, 400);
+    }
+    const updated = this.updateAgent(agentId, parsed.data);
     if (updated) this.broadcast({ type: 'agent:update', agent: updated });
     return json(updated);
   }
@@ -551,6 +577,43 @@ export class XoxiangHub extends DurableObject<Env> {
 
 function json(data: unknown, status = 200): Response {
   return new Response(JSON.stringify(data), { status, headers: JSON_HEADERS });
+}
+
+function unauthorized(reason: string): Response {
+  return json({ error: 'Unauthorized', reason }, 401);
+}
+
+export async function requireBrowserAuth(request: Request, env: Env): Promise<Response | null> {
+  const expected = env.WEB_AUTH_TOKEN;
+  if (!expected) return unauthorized('WEB_AUTH_TOKEN not configured');
+  const header = request.headers.get('Authorization') ?? '';
+  const match = header.match(/^Bearer\s+(.+)$/i);
+  if (!match) return unauthorized('missing bearer token');
+  const provided = match[1].trim();
+  if (!provided) return unauthorized('missing bearer token');
+  if (!timingSafeEqualStr(provided, expected)) return unauthorized('invalid token');
+  return null;
+}
+
+export async function requireBrowserAuthForWs(url: URL, env: Env): Promise<Response | null> {
+  const expected = env.WEB_AUTH_TOKEN;
+  if (!expected) return new Response('Unauthorized', { status: 401 });
+  const provided = url.searchParams.get('token') ?? '';
+  if (!provided) return new Response('Unauthorized', { status: 401 });
+  if (!timingSafeEqualStr(provided, expected)) return new Response('Unauthorized', { status: 401 });
+  return null;
+}
+
+export function timingSafeEqualStr(a: string, b: string): boolean {
+  const enc = new TextEncoder();
+  const ab = enc.encode(a);
+  const bb = enc.encode(b);
+  if (ab.byteLength !== bb.byteLength) return false;
+  let diff = 0;
+  for (let i = 0; i < ab.byteLength; i++) {
+    diff |= ab[i] ^ bb[i];
+  }
+  return diff === 0;
 }
 
 function toChannel(row: Row): Channel {

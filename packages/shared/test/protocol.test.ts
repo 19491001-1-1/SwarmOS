@@ -1,5 +1,12 @@
 import { describe, it, expect } from 'vitest';
-import { DaemonToServerSchema, ServerToDaemonSchema, RuntimeIdSchema } from '../src/validation.js';
+import {
+  DaemonToServerSchema,
+  ServerToDaemonSchema,
+  RuntimeIdSchema,
+  CreateAgentRequestSchema,
+  PatchAgentRequestSchema,
+  CreateMessageRequestSchema,
+} from '../src/validation.js';
 
 describe('DaemonToServer protocol', () => {
   it('parses a valid ready message', () => {
@@ -115,5 +122,78 @@ describe('RuntimeId validation', () => {
   it('rejects invalid runtime', () => {
     expect(RuntimeIdSchema.safeParse('gpt4').success).toBe(false);
     expect(RuntimeIdSchema.safeParse('').success).toBe(false);
+  });
+});
+
+describe('CreateAgentRequestSchema', () => {
+  it('accepts minimal valid body', () => {
+    const result = CreateAgentRequestSchema.safeParse({ name: 'a', runtime: 'claude' });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts body with all optional fields', () => {
+    const result = CreateAgentRequestSchema.safeParse({
+      name: 'a',
+      runtime: 'claude',
+      displayName: 'A',
+      description: 'desc',
+      model: 'sonnet',
+      systemPrompt: 'be helpful',
+      machineId: 'm-1',
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects empty name', () => {
+    expect(CreateAgentRequestSchema.safeParse({ name: '', runtime: 'claude' }).success).toBe(false);
+  });
+
+  it('rejects missing runtime', () => {
+    expect(CreateAgentRequestSchema.safeParse({ name: 'a' }).success).toBe(false);
+  });
+
+  it('rejects invalid runtime', () => {
+    expect(CreateAgentRequestSchema.safeParse({ name: 'a', runtime: 'gpt4' }).success).toBe(false);
+  });
+});
+
+describe('PatchAgentRequestSchema', () => {
+  it('accepts single field update', () => {
+    expect(PatchAgentRequestSchema.safeParse({ displayName: 'New' }).success).toBe(true);
+    expect(PatchAgentRequestSchema.safeParse({ machineId: 'm-2' }).success).toBe(true);
+    expect(PatchAgentRequestSchema.safeParse({ model: 'sonnet' }).success).toBe(true);
+    expect(PatchAgentRequestSchema.safeParse({ systemPrompt: 'sp' }).success).toBe(true);
+  });
+
+  it('rejects empty body', () => {
+    expect(PatchAgentRequestSchema.safeParse({}).success).toBe(false);
+  });
+});
+
+describe('CreateMessageRequestSchema', () => {
+  it('accepts valid message', () => {
+    const result = CreateMessageRequestSchema.safeParse({ senderName: 'u', content: 'hi' });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts message with agentId', () => {
+    const result = CreateMessageRequestSchema.safeParse({
+      senderName: 'u',
+      content: 'hi',
+      agentId: 'a-1',
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects empty senderName', () => {
+    expect(
+      CreateMessageRequestSchema.safeParse({ senderName: '', content: 'hi' }).success,
+    ).toBe(false);
+  });
+
+  it('rejects empty content', () => {
+    expect(
+      CreateMessageRequestSchema.safeParse({ senderName: 'u', content: '' }).success,
+    ).toBe(false);
   });
 });

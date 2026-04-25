@@ -3,19 +3,20 @@ import { nanoid } from 'nanoid';
 import { getStore } from '../db.js';
 import { daemonRegistry } from '../daemonRegistry.js';
 import { eventBus } from '../events.js';
+import { CreateMessageRequestSchema } from '@mini-slock/shared';
 import { toAgentDelivery, toRuntimeConfig } from '@mini-slock/hub-core';
 
 export async function messageRoutes(app: FastifyInstance) {
-  app.post<{
-    Params: { id: string };
-    Body: { senderName: string; content: string; agentId?: string };
-  }>('/api/channels/:id/messages', async (req, reply) => {
+  app.post<{ Params: { id: string } }>('/api/channels/:id/messages', async (req, reply) => {
     const store = getStore();
     const channel = await store.getChannel(req.params.id);
     if (!channel) return reply.status(404).send({ error: 'Channel not found' });
 
-    const { senderName, content, agentId } = req.body;
-    if (!senderName || !content) return reply.status(400).send({ error: 'senderName and content required' });
+    const parsed = CreateMessageRequestSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: 'Invalid request body', issues: parsed.error.issues });
+    }
+    const { senderName, content, agentId } = parsed.data;
 
     const message = await store.createMessage({
       id: nanoid(),

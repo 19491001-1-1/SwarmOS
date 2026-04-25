@@ -43,6 +43,28 @@ describe('POST /api/channels/:id/messages', () => {
     expect(res.statusCode).toBe(404);
     await app.close();
   });
+
+  it('returns 400 for empty content', async () => {
+    const app = await buildApp();
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/channels/general/messages',
+      payload: { senderName: 'user', content: '' },
+    });
+    expect(res.statusCode).toBe(400);
+    await app.close();
+  });
+
+  it('returns 400 for missing senderName', async () => {
+    const app = await buildApp();
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/channels/general/messages',
+      payload: { content: 'hi' },
+    });
+    expect(res.statusCode).toBe(400);
+    await app.close();
+  });
 });
 
 describe('POST /api/agents', () => {
@@ -69,6 +91,54 @@ describe('POST /api/agents', () => {
       payload: { name: 'no-runtime' },
     });
     expect(res.statusCode).toBe(400);
+    await app.close();
+  });
+
+  it('returns 400 for invalid runtime', async () => {
+    const app = await buildApp();
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/agents',
+      payload: { name: 'a', runtime: 'gpt4' },
+    });
+    expect(res.statusCode).toBe(400);
+    await app.close();
+  });
+});
+
+describe('PATCH /api/agents/:id', () => {
+  it('returns 400 when no fields provided', async () => {
+    const app = await buildApp();
+    const created = await app.inject({
+      method: 'POST',
+      url: '/api/agents',
+      payload: { name: 'a', runtime: 'claude' },
+    });
+    const agentId = created.json().id;
+    const res = await app.inject({
+      method: 'PATCH',
+      url: `/api/agents/${agentId}`,
+      payload: {},
+    });
+    expect(res.statusCode).toBe(400);
+    await app.close();
+  });
+
+  it('updates a single field', async () => {
+    const app = await buildApp();
+    const created = await app.inject({
+      method: 'POST',
+      url: '/api/agents',
+      payload: { name: 'a', runtime: 'claude' },
+    });
+    const agentId = created.json().id;
+    const res = await app.inject({
+      method: 'PATCH',
+      url: `/api/agents/${agentId}`,
+      payload: { displayName: 'New' },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().displayName).toBe('New');
     await app.close();
   });
 });

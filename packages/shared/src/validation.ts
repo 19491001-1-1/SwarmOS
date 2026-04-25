@@ -78,6 +78,42 @@ export const DaemonToServerSchema = z.discriminatedUnion('type', [
   }),
 ]);
 
+export const CreateAgentRequestSchema = z.object({
+  name: z.string().min(1),
+  runtime: RuntimeIdSchema,
+  displayName: z.string().optional(),
+  description: z.string().optional(),
+  model: z.string().optional(),
+  systemPrompt: z.string().optional(),
+  machineId: z.string().optional(),
+});
+
+export const PatchAgentRequestSchema = z
+  .object({
+    machineId: z.string().optional(),
+    displayName: z.string().optional(),
+    model: z.string().optional(),
+    systemPrompt: z.string().optional(),
+  })
+  .refine(
+    (val) =>
+      val.machineId !== undefined ||
+      val.displayName !== undefined ||
+      val.model !== undefined ||
+      val.systemPrompt !== undefined,
+    { message: 'At least one field must be provided' },
+  );
+
+export const CreateMessageRequestSchema = z.object({
+  senderName: z.string().min(1),
+  content: z.string().min(1),
+  agentId: z.string().optional(),
+});
+
+export type CreateAgentRequest = z.infer<typeof CreateAgentRequestSchema>;
+export type PatchAgentRequest = z.infer<typeof PatchAgentRequestSchema>;
+export type CreateMessageRequest = z.infer<typeof CreateMessageRequestSchema>;
+
 export const ServerToDaemonSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('ping') }),
   z.object({
