@@ -1,11 +1,13 @@
 import { useEffect, useState } from 'react';
-import type { Agent, AgentActivity, DirectMessage, DirectMessageThread } from '../api.js';
-import { getAgentDirectMessages, getAgentDmThreads, patchAgent, sendAgentDirectMessage } from '../api.js';
+import type { Agent, AgentActivity, DirectMessage, DirectMessageThread, Reminder } from '../api.js';
+import { cancelReminder, createAgentReminder, getAgentDirectMessages, getAgentDmThreads, patchAgent, sendAgentDirectMessage } from '../api.js';
 import { WorkspaceBrowser } from './WorkspaceBrowser.js';
 
 type Props = {
   agent: Agent;
   activities: AgentActivity[];
+  reminders: Reminder[];
+  onReminderUpdated: (reminder: Reminder) => void;
   onAgentUpdated: (agent: Agent) => void;
   onClose: () => void;
 };
@@ -23,7 +25,7 @@ const ACTIVITY_META: Record<AgentActivity['type'], { label: string; color: strin
   error: { label: 'ERROR', color: '#f44336' },
 };
 
-export function AgentDetailPanel({ agent, activities, onAgentUpdated, onClose }: Props) {
+export function AgentDetailPanel({ agent, activities, reminders, onReminderUpdated, onAgentUpdated, onClose }: Props) {
   const [tab, setTab] = useState<Tab>('profile');
 
   return (
@@ -64,7 +66,7 @@ export function AgentDetailPanel({ agent, activities, onAgentUpdated, onClose }:
       <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: 12 }}>
         {tab === 'profile' ? <Profile agent={agent} onAgentUpdated={onAgentUpdated} /> : null}
         {tab === 'dms' ? <DirectMessages agent={agent} /> : null}
-        {tab === 'reminders' ? <EmptyBox label="[ NO REMINDERS ]" /> : null}
+        {tab === 'reminders' ? <Reminders agent={agent} reminders={reminders} onReminderUpdated={onReminderUpdated} /> : null}
         {tab === 'workspace' ? <WorkspaceBrowser agentId={agent.id} /> : null}
         {tab === 'activity' ? <ActivityTimeline activities={activities} /> : null}
       </div>
@@ -217,6 +219,59 @@ function DirectMessages({ agent }: { agent: Agent }) {
       </div>
       <textarea value={draft} onChange={(event) => setDraft(event.target.value)} style={{ ...inputStyle, minHeight: 74, resize: 'vertical' }} />
       <button onClick={send} style={buttonStyle('#000', '#FFD700')}>SEND DM</button>
+    </div>
+  );
+}
+
+function Reminders({ agent, reminders, onReminderUpdated }: { agent: Agent; reminders: Reminder[]; onReminderUpdated: (reminder: Reminder) => void }) {
+  const [message, setMessage] = useState('');
+  const [triggerAt, setTriggerAt] = useState('');
+  const [channelId, setChannelId] = useState('general');
+  const [error, setError] = useState<string | undefined>();
+
+  const create = async () => {
+    setError(undefined);
+    if (!message.trim() || !triggerAt) return;
+    try {
+      const iso = new Date(triggerAt).toISOString();
+      const reminder = await createAgentReminder(agent.id, { channelId: channelId.trim() || 'general', message: message.trim(), triggerAt: iso });
+      setMessage('');
+      setTriggerAt('');
+      onReminderUpdated(reminder);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'CREATE FAILED');
+    }
+  };
+
+  const cancel = async (id: string) => {
+    const updated = await cancelReminder(id);
+    onReminderUpdated(updated);
+  };
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <div style={{ border: '2px dashed #000', background: '#fff', padding: 10, display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <div style={{ fontSize: 18 }}>BEL</div>
+        <input value={message} onChange={(event) => setMessage(event.target.value)} style={inputStyle} placeholder="message" />
+        <input value={triggerAt} onChange={(event) => setTriggerAt(event.target.value)} style={inputStyle} type="datetime-local" />
+        <input value={channelId} onChange={(event) => setChannelId(event.target.value)} style={inputStyle} placeholder="channel" />
+        {error ? <div style={{ fontSize: 11, color: '#b00020', fontWeight: 700 }}>{error}</div> : null}
+        <button onClick={create} style={buttonStyle('#000', '#FFD700')}>ADD REMINDER</button>
+      </div>
+      {reminders.length === 0 ? <EmptyBox label="[ NO PENDING REMINDERS ]" /> : null}
+      {reminders.map((reminder) => (
+        <div key={reminder.id} style={{ border: '2px solid #000', background: '#fff', padding: 8, display: 'grid', gap: 6 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center' }}>
+            <span style={{ fontSize: 11, fontWeight: 700 }}>{formatDate(reminder.triggerAt)}</span>
+            <span style={{ border: '2px solid #000', background: reminder.status === 'pending' ? '#FFD700' : '#fafaf5', padding: '2px 5px', fontSize: 10, fontWeight: 700 }}>
+              {reminder.status.toUpperCase()}
+            </span>
+          </div>
+          <div style={{ fontSize: 12, overflowWrap: 'anywhere' }}>{reminder.message}</div>
+          <div style={{ fontSize: 10, color: '#555' }}>#{reminder.channelId}</div>
+          {reminder.status === 'pending' ? <button onClick={() => cancel(reminder.id)} style={buttonStyle('#fff', '#000')}>CANCEL</button> : null}
+        </div>
+      ))}
     </div>
   );
 }

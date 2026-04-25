@@ -11,6 +11,7 @@ import { daemonSocketHandler } from './ws/daemonSocket.js';
 import { browserSocketHandler } from './ws/browserSocket.js';
 import { initDb } from './db.js';
 import { createVersionInfo } from '@mini-slock/shared';
+import { startReminderScheduler } from './reminders.js';
 
 export async function buildApp(opts: { logger?: boolean } = {}) {
   await initDb();
@@ -36,6 +37,9 @@ export async function buildApp(opts: { logger?: boolean } = {}) {
   await app.register(internalAgentRoutes);
   await app.register(daemonSocketHandler);
   await app.register(browserSocketHandler);
+
+  const stopReminders = startReminderScheduler();
+  app.addHook('onClose', async () => stopReminders());
 
   return app;
 }

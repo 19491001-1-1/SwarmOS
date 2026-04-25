@@ -4,9 +4,9 @@ import { homedir } from 'node:os';
 import { drizzle, type LibSQLDatabase } from 'drizzle-orm/libsql';
 import { createClient, type Client } from '@libsql/client';
 import { asc, desc, eq, inArray, or } from 'drizzle-orm';
-import type { Channel, Message, Machine, Agent, RuntimeId, AgentStatus, AgentActivity, DirectMessage, DirectMessageThread, AgentDelegation, AgentTokenInfo, Task, TaskStatus } from '@mini-slock/shared';
+import type { Channel, Message, Machine, Agent, RuntimeId, AgentStatus, AgentActivity, DirectMessage, DirectMessageThread, AgentDelegation, AgentTokenInfo, Task, TaskStatus, Reminder, ReminderStatus } from '@mini-slock/shared';
 import { resolveAgentReference } from '@mini-slock/hub-core';
-import { activities, agentDelegations, agentTokens, agents, channels, directMessages, machines, messages, tasks } from './schema.js';
+import { activities, agentDelegations, agentTokens, agents, channels, directMessages, machines, messages, reminders, tasks } from './schema.js';
 
 type Database = LibSQLDatabase<typeof import('./schema.js')>;
 
@@ -33,7 +33,7 @@ async function ensureDbDirectory(path: string): Promise<void> {
 function createDatabase(): Database {
   const path = getDbPath();
   client = createClient({ url: getDbUrl(path) });
-  db = drizzle(client, { schema: { activities, agentDelegations, agentTokens, agents, channels, directMessages, machines, messages, tasks } });
+  db = drizzle(client, { schema: { activities, agentDelegations, agentTokens, agents, channels, directMessages, machines, messages, reminders, tasks } });
   return db;
 }
 
@@ -115,6 +115,17 @@ export async function initDb(): Promise<void> {
         context TEXT,
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL
+      )
+    `);
+    await database.run(`
+      CREATE TABLE IF NOT EXISTS reminders (
+        id TEXT PRIMARY KEY,
+        agent_id TEXT NOT NULL,
+        channel_id TEXT NOT NULL,
+        message TEXT NOT NULL,
+        trigger_at TEXT NOT NULL,
+        status TEXT NOT NULL,
+        created_at TEXT NOT NULL
       )
     `);
     await database.run(`ALTER TABLE tasks ADD COLUMN context TEXT`).catch(() => undefined);
@@ -249,6 +260,18 @@ function toTask(row: typeof tasks.$inferSelect): Task {
     context: row.context ? JSON.parse(row.context) as Task['context'] : undefined,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
+  };
+}
+
+function toReminder(row: typeof reminders.$inferSelect): Reminder {
+  return {
+    id: row.id,
+    agentId: row.agentId,
+    channelId: row.channelId,
+    message: row.message,
+    triggerAt: row.triggerAt,
+    status: row.status as ReminderStatus,
+    createdAt: row.createdAt,
   };
 }
 
@@ -454,6 +477,38 @@ export class SqliteStore {
     return true;
   }
 
+  async listReminders(agentId?: string): Promise<Reminder[]> {
+    await initDb();
+    const rows = await getDb().select().from(reminders).orderBy(asc(reminders.triggerAt));
+    return rows.map(toReminder).filter((reminder) => !agentId || reminder.agentId === agentId);
+  }
+
+  async listDueReminders(nowIso: string): Promise<Reminder[]> {
+    return (await this.listReminders()).filter((reminder) => reminder.status === 'pending' && reminder.triggerAt <= nowIso);
+  }
+
+  async getReminder(id: string): Promise<Reminder | undefined> {
+    await initDb();
+    const [reminder] = await getDb().select().from(reminders).where(eq(reminders.id, id)).limit(1);
+    return reminder ? toReminder(reminder) : undefined;
+  }
+
+  async createReminder(reminder: Omit<Reminder, 'createdAt'>): Promise<Reminder> {
+    await initDb();
+    const created: Reminder = { ...reminder, createdAt: new Date().toISOString() };
+    await getDb().insert(reminders).values(created);
+    return created;
+  }
+
+  async updateReminder(id: string, patch: Partial<Pick<Reminder, 'status'>>): Promise<Reminder | undefined> {
+    await initDb();
+    const existing = await this.getReminder(id);
+    if (!existing) return undefined;
+    const updated: Reminder = { ...existing, status: patch.status ?? existing.status };
+    await getDb().update(reminders).set({ status: updated.status }).where(eq(reminders.id, id));
+    return updated;
+  }
+
   async listDirectMessages(agentId: string, otherId: string): Promise<DirectMessage[]> {
     await initDb();
     const rows = await getDb()
@@ -645,6 +700,7 @@ export async function resetStore(): Promise<void> {
   await database.delete(agentDelegations);
   await database.delete(agentTokens);
   await database.delete(tasks);
+  await database.delete(reminders);
   await database.delete(agents);
   await database.delete(machines);
   await database.delete(channels);

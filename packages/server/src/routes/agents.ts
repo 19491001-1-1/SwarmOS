@@ -3,7 +3,7 @@ import { nanoid } from 'nanoid';
 import { getStore } from '../db.js';
 import { daemonRegistry } from '../daemonRegistry.js';
 import { eventBus } from '../events.js';
-import { CreateAgentDelegationRequestSchema, CreateAgentRequestSchema, CreateDirectMessageRequestSchema, PatchAgentRequestSchema, type Agent, type DirectMessage } from '@mini-slock/shared';
+import { CreateAgentDelegationRequestSchema, CreateAgentRequestSchema, CreateDirectMessageRequestSchema, CreateReminderRequestSchema, PatchAgentRequestSchema, PatchReminderRequestSchema, type Agent, type DirectMessage } from '@mini-slock/shared';
 import { resolveStartMachineId, toRuntimeConfig } from '@mini-slock/hub-core';
 import { delegateAgent } from '../delegation.js';
 import { toAgentRuntimeConfig } from '../runtimeConfig.js';
@@ -25,6 +25,33 @@ export async function agentRoutes(app: FastifyInstance) {
     const agent = await store.getAgent(req.params.id);
     if (!agent) return reply.status(404).send({ error: 'Agent not found' });
     return store.listAgentActivities(agent.id, 200);
+  });
+
+  app.get<{ Params: { id: string } }>('/api/agents/:id/reminders', async (req, reply) => {
+    const store = getStore();
+    const agent = await store.getAgent(req.params.id);
+    if (!agent) return reply.status(404).send({ error: 'Agent not found' });
+    return store.listReminders(agent.id);
+  });
+
+  app.post<{ Params: { id: string } }>('/api/agents/:id/reminders', async (req, reply) => {
+    const store = getStore();
+    const agent = await store.getAgent(req.params.id);
+    if (!agent) return reply.status(404).send({ error: 'Agent not found' });
+    const parsed = CreateReminderRequestSchema.safeParse(req.body);
+    if (!parsed.success) return reply.status(400).send({ error: 'Invalid request body', issues: parsed.error.issues });
+    const channel = await store.getChannel(parsed.data.channelId);
+    if (!channel) return reply.status(404).send({ error: 'Channel not found' });
+    const reminder = await store.createReminder({
+      id: nanoid(),
+      agentId: agent.id,
+      channelId: channel.id,
+      message: parsed.data.message,
+      triggerAt: parsed.data.triggerAt,
+      status: 'pending',
+    });
+    eventBus.emit({ type: 'reminder:update', reminder });
+    return reply.status(201).send(reminder);
   });
 
   app.get<{ Params: { id: string }; Querystring: { path?: string } }>('/api/agents/:id/workspace', async (req, reply) => {
@@ -72,6 +99,15 @@ export async function agentRoutes(app: FastifyInstance) {
       createdAt: new Date().toISOString(),
     });
     return reply.status(201).send(agent);
+  });
+
+  app.patch<{ Params: { id: string } }>('/api/reminders/:id', async (req, reply) => {
+    const parsed = PatchReminderRequestSchema.safeParse(req.body);
+    if (!parsed.success) return reply.status(400).send({ error: 'Invalid request body', issues: parsed.error.issues });
+    const reminder = await getStore().updateReminder(req.params.id, { status: parsed.data.status });
+    if (!reminder) return reply.status(404).send({ error: 'Reminder not found' });
+    eventBus.emit({ type: 'reminder:update', reminder });
+    return reminder;
   });
 
   app.patch<{ Params: { id: string } }>('/api/agents/:id', async (req, reply) => {

@@ -3,6 +3,8 @@ export const DM_BRIDGE_MARKER = '[[MINI_SLOCK_SEND_DM]]';
 export const DELEGATE_BRIDGE_MARKER = '[[MINI_SLOCK_DELEGATE_AGENT]]';
 export const CREATE_TASK_BRIDGE_MARKER = '[[MINI_SLOCK_CREATE_TASK]]';
 export const UPDATE_TASK_BRIDGE_MARKER = '[[MINI_SLOCK_UPDATE_TASK]]';
+export const SET_REMINDER_BRIDGE_MARKER = '[[MINI_SLOCK_SET_REMINDER]]';
+export const CANCEL_REMINDER_BRIDGE_MARKER = '[[MINI_SLOCK_CANCEL_REMINDER]]';
 
 export type ParsedBridgeMessage = {
   content: string;
@@ -28,6 +30,16 @@ export type ParsedBridgeCreateTask = {
 export type ParsedBridgeUpdateTask = {
   taskId: string;
   status: 'todo' | 'in_progress' | 'in_review' | 'done';
+};
+
+export type ParsedBridgeSetReminder = {
+  message: string;
+  triggerAt: string;
+  channelId?: string;
+};
+
+export type ParsedBridgeCancelReminder = {
+  reminderId: string;
 };
 
 export function parseBridgeLine(line: string): ParsedBridgeMessage | null {
@@ -119,6 +131,42 @@ export function parseUpdateTaskLine(line: string): ParsedBridgeUpdateTask | null
   }
 }
 
+export function parseReminderLine(line: string): ParsedBridgeSetReminder | null {
+  const idx = line.indexOf(SET_REMINDER_BRIDGE_MARKER);
+  if (idx === -1) return null;
+
+  const jsonPart = line.slice(idx + SET_REMINDER_BRIDGE_MARKER.length).trim();
+  try {
+    const parsed = JSON.parse(jsonPart);
+    if (typeof parsed?.message === 'string' && parsed.message.trim() && typeof parsed.triggerAt === 'string' && parsed.triggerAt.trim()) {
+      return {
+        message: parsed.message,
+        triggerAt: parsed.triggerAt,
+        channelId: typeof parsed.channelId === 'string' ? parsed.channelId : undefined,
+      };
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+export function parseCancelReminderLine(line: string): ParsedBridgeCancelReminder | null {
+  const idx = line.indexOf(CANCEL_REMINDER_BRIDGE_MARKER);
+  if (idx === -1) return null;
+
+  const jsonPart = line.slice(idx + CANCEL_REMINDER_BRIDGE_MARKER.length).trim();
+  try {
+    const parsed = JSON.parse(jsonPart);
+    if (typeof parsed?.reminderId === 'string' && parsed.reminderId.trim()) {
+      return { reminderId: parsed.reminderId };
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 export function buildBridgeInstruction(): string {
   return [
     'Use xoxiang collaboration tools in this order: MCP tools when available, then the injected `xoxiang` CLI, then stdout marker fallback.',
@@ -168,6 +216,14 @@ export function buildTaskInstruction(): string {
     `${CREATE_TASK_BRIDGE_MARKER} {"title":"task title","assignee":"agentId or agentName","channel":"general"}`,
     `${UPDATE_TASK_BRIDGE_MARKER} {"taskId":"task id","status":"todo|in_progress|in_review|done"}`,
     'Use channel "general" unless the user specified another channel.',
+  ].join('\n');
+}
+
+export function buildReminderInstruction(): string {
+  return [
+    'To schedule or cancel one-time reminders, output exactly one line and no extra prose:',
+    `${SET_REMINDER_BRIDGE_MARKER} {"message":"reminder message","triggerAt":"<ISO8601>","channelId":"general"}`,
+    `${CANCEL_REMINDER_BRIDGE_MARKER} {"reminderId":"reminder id"}`,
   ].join('\n');
 }
 

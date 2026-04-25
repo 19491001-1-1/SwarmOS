@@ -6,6 +6,7 @@ export const AgentStatusSchema = z.enum(['inactive', 'starting', 'running', 'wor
 
 export const AgentActivityTypeSchema = z.enum(['thinking', 'working', 'output', 'idle', 'sending', 'error']);
 export const TaskStatusSchema = z.enum(['todo', 'in_progress', 'in_review', 'done']);
+export const ReminderStatusSchema = z.enum(['pending', 'triggered', 'cancelled']);
 
 export const AgentRuntimeConfigSchema = z.object({
   runtime: RuntimeIdSchema,
@@ -81,6 +82,16 @@ export const TaskSchema = z.object({
   updatedAt: z.string(),
 });
 
+export const ReminderSchema = z.object({
+  id: z.string(),
+  agentId: z.string(),
+  channelId: z.string(),
+  message: z.string(),
+  triggerAt: z.string(),
+  status: ReminderStatusSchema,
+  createdAt: z.string(),
+});
+
 export const DaemonToServerSchema = z.discriminatedUnion('type', [
   z.object({
     type: z.literal('ready'),
@@ -138,6 +149,18 @@ export const DaemonToServerSchema = z.discriminatedUnion('type', [
     agentId: z.string(),
     taskId: z.string(),
     status: TaskStatusSchema,
+  }),
+  z.object({
+    type: z.literal('agent:set_reminder'),
+    agentId: z.string(),
+    channelId: z.string().optional(),
+    message: z.string().min(1),
+    triggerAt: z.string().datetime(),
+  }),
+  z.object({
+    type: z.literal('agent:cancel_reminder'),
+    agentId: z.string(),
+    reminderId: z.string().min(1),
   }),
   z.object({
     type: z.literal('agent:message'),
@@ -232,6 +255,16 @@ export const PatchTaskRequestSchema = z
   .refine((val) => val.status !== undefined || val.assigneeId !== undefined || val.context !== undefined, {
     message: 'At least one field must be provided',
   });
+
+export const CreateReminderRequestSchema = z.object({
+  channelId: z.string().min(1).default('general'),
+  message: z.string().min(1),
+  triggerAt: z.string().datetime(),
+});
+
+export const PatchReminderRequestSchema = z.object({
+  status: z.literal('cancelled'),
+});
 
 export const MessageToTaskRequestSchema = z.object({
   assigneeId: z.string().optional(),

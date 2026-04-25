@@ -60,6 +60,16 @@ export const tasks = sqliteTable('tasks', {
   updatedAt: text('updated_at').notNull(),
 });
 
+export const reminders = sqliteTable('reminders', {
+  id: text('id').primaryKey(),
+  agentId: text('agent_id').notNull(),
+  channelId: text('channel_id').notNull(),
+  message: text('message').notNull(),
+  triggerAt: text('trigger_at').notNull(),
+  status: text('status').notNull(),
+  createdAt: text('created_at').notNull(),
+});
+
 export const agents = sqliteTable('agents', {
   id: text('id').primaryKey(),
   name: text('name').notNull(),
