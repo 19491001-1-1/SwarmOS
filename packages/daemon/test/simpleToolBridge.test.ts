@@ -49,6 +49,8 @@ describe('parseBridgeLine', () => {
 
   it('instructs agents to use the agent directory before asking for help', () => {
     const instruction = buildBridgeInstruction();
+    expect(instruction).toContain('MCP tools when available');
+    expect(instruction).toContain('do not invent tool results');
     expect(instruction).toContain('xoxiang agent list');
     expect(instruction).toContain('xoxiang agent resolve');
     expect(instruction).toContain('need a specialist role');

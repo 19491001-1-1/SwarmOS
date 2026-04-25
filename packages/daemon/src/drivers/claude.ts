@@ -1,5 +1,7 @@
 import type { RuntimeDriver, AgentSpawnContext, RuntimeCommand, AgentOutputEvent } from './types.js';
 import { parseBridgeLine, buildBridgeInstruction, buildDmInstruction, parseDmLine, buildDelegateInstruction, parseDelegateLine, buildTaskInstruction, buildMemoryInstruction, parseCreateTaskLine, parseUpdateTaskLine } from '../bridge/simpleToolBridge.js';
+import { mkdir, writeFile } from 'fs/promises';
+import { join } from 'path';
 
 export const claudeDriver: RuntimeDriver = {
   id: 'claude',
@@ -8,7 +10,25 @@ export const claudeDriver: RuntimeDriver = {
     supportsStdinDelivery: true,
     busyDeliveryMode: 'notification',
     supportsSessionResume: true,
-    supportsMcpBridge: false,
+    supportsMcpBridge: true,
+  },
+
+  async prepareWorkspace(ctx: AgentSpawnContext): Promise<void> {
+    const claudeDir = join(ctx.workspaceDir, '.claude');
+    await mkdir(claudeDir, { recursive: true });
+    await writeFile(join(claudeDir, 'xoxiang-mcp.json'), JSON.stringify({
+      mcpServers: {
+        xoxiang: {
+          command: join(ctx.workspaceDir, '.xoxiang', 'xoxiang'),
+          args: [
+            'mcp-bridge',
+            '--agent-id', ctx.agentId,
+            '--server-url', ctx.serverUrl,
+            '--auth-token-file', ctx.agentTokenFile,
+          ],
+        },
+      },
+    }, null, 2));
   },
 
   buildCommand(ctx: AgentSpawnContext): RuntimeCommand {
@@ -28,6 +48,7 @@ export const claudeDriver: RuntimeDriver = {
       '--verbose',
       '--output-format', 'stream-json',
       '--input-format', 'stream-json',
+      '--mcp-config', join(ctx.workspaceDir, '.claude', 'xoxiang-mcp.json'),
       '--append-system-prompt', systemPrompt,
     ];
     if (ctx.config.model) {
