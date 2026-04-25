@@ -241,7 +241,7 @@ export const CreateMessageRequestSchema = z.object({
 });
 
 export const CreateChannelRequestSchema = z.object({
-  name: z.string().min(1).max(80).regex(/^[a-zA-Z0-9_-]+$/, 'Use letters, numbers, underscore, or dash'),
+  name: z.string().trim().min(1).max(80).refine((value) => !/[\r\n\t]/.test(value), 'Channel name cannot contain control characters'),
 });
 
 export const SearchRequestSchema = z.object({
