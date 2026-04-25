@@ -81,6 +81,7 @@ export async function sendMessage(channelId: string, senderName: string, content
     headers: authHeaders({ 'Content-Type': 'application/json' }),
     body: JSON.stringify({ senderName, content, agentId }),
   });
+  if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error ?? 'Send message failed');
   return r.json();
 }
 
