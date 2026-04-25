@@ -25,6 +25,7 @@ export async function messageRoutes(app: FastifyInstance) {
       normalizedThreadRootId = thread.root.id;
     }
 
+    const mentions = parseMentions(content, await store.listAgents());
     const message = await store.createMessage({
       id: nanoid(),
       channelId: req.params.id,
@@ -32,7 +33,7 @@ export async function messageRoutes(app: FastifyInstance) {
       content,
       agentId,
       threadRootId: normalizedThreadRootId,
-      mentions: parseMentions(content, await store.listAgents()),
+      mentions,
     });
 
     if (message.threadRootId) {
@@ -42,12 +43,18 @@ export async function messageRoutes(app: FastifyInstance) {
       eventBus.emit({ type: 'message:new', message });
     }
 
-    if (agentId) {
-      const agent = await store.getAgent(agentId);
+    const targetAgentIds = new Set<string>();
+    if (agentId) targetAgentIds.add(agentId);
+    for (const mention of mentions ?? []) {
+      if (mention.type === 'agent') targetAgentIds.add(mention.id);
+    }
+
+    for (const targetAgentId of targetAgentIds) {
+      const agent = await store.getAgent(targetAgentId);
       if (agent?.machineId && agent.status !== 'inactive') {
         daemonRegistry.send(agent.machineId, {
           type: 'agent:deliver',
-          agentId,
+          agentId: agent.id,
           seq: Date.now(),
           message: toAgentDelivery(message, channel),
           channelId: channel.id,

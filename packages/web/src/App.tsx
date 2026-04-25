@@ -324,10 +324,14 @@ export function App() {
   };
 
   const handleOpenThread = async (message: Message) => {
-    setThread(await getMessageThread(message.threadRootId ?? message.id));
+    const rootId = message.threadRootId ?? message.id;
+    if (!message.threadRootId) {
+      setThread((current) => current?.root.id === rootId ? current : { root: message, replies: [] });
+    }
     setThreadTargetMessageId(undefined);
     setRightPanel(undefined);
     setSelectedAgentId(undefined);
+    setThread(await getMessageThread(rootId));
   };
 
   const handleOpenAgent = (agentId: string) => {

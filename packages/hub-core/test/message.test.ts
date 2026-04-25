@@ -10,6 +10,7 @@ describe('toAgentDelivery', () => {
           channelId: 'general',
           senderName: 'user',
           content: 'hello',
+          threadRootId: 'thread-root',
           createdAt: '2026-01-01T00:00:00.000Z',
         },
         {
@@ -24,6 +25,7 @@ describe('toAgentDelivery', () => {
       channelName: 'general',
       senderName: 'user',
       content: 'hello',
+      threadRootId: 'thread-root',
       createdAt: '2026-01-01T00:00:00.000Z',
     });
   });

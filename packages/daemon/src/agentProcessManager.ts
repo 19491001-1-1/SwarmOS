@@ -37,7 +37,7 @@ function shQuote(value: string): string {
   return `'${value.replace(/'/g, `'\\''`)}'`;
 }
 
-export type AgentMessageCallback = (agentId: string, channelId: string, content: string) => void;
+export type AgentMessageCallback = (agentId: string, channelId: string, content: string, inReplyToMessageId?: string) => void;
 export type AgentStatusCallback = (agentId: string, status: string) => void;
 export type AgentActivityCallback = (agentId: string, type: AgentActivity['type'], detail?: string) => void;
 export type AgentDmCallback = (fromAgentId: string, toAgentId: string, content: string) => void;
@@ -333,10 +333,14 @@ export class AgentProcessManager {
   }
 
   private buildWakePrompt(entry: AgentEntry, delivery: AgentDelivery, queuedCount: number): string {
-    return [
+    const parts = [
       this.buildUnreadSummary(entry, queuedCount),
       this.formatDelivery(delivery),
-    ].join('\n\n');
+    ];
+    if (delivery.threadRootId) {
+      parts.push(`This delivery is inside thread ${delivery.threadRootId}. Keep your reply in that thread. If using the xoxiang CLI, include \`--thread-root-id ${delivery.threadRootId}\`.`);
+    }
+    return parts.join('\n\n');
   }
 
   private buildUnreadSummary(entry: AgentEntry, queuedCount: number): string {
@@ -348,7 +352,8 @@ export class AgentProcessManager {
   }
 
   private formatDelivery(delivery: AgentDelivery): string {
-    return `[target=#${delivery.channelName} msg=${delivery.id} time=${delivery.createdAt} type=human] @${delivery.senderName}: ${delivery.content}`;
+    const thread = delivery.threadRootId ? ` thread=${delivery.threadRootId}` : '';
+    return `[target=#${delivery.channelName} msg=${delivery.id}${thread} time=${delivery.createdAt} type=human] @${delivery.senderName}: ${delivery.content}`;
   }
 
   private handleOutputLine(entry: AgentEntry, line: string): boolean {
@@ -356,7 +361,8 @@ export class AgentProcessManager {
     if (parsed?.type === 'message') {
       console.log(`[daemon] agent ${entry.agentId} reply: ${parsed.content}`);
       this.appendTranscriptLater(entry, this.agentTranscriptName(entry), parsed.content);
-      this.onMessage(entry.agentId, entry.channelId, parsed.content);
+      const activeDelivery = entry.inbox.find((delivery) => delivery.id === entry.activeDeliveryId) ?? entry.inbox[0];
+      this.onMessage(entry.agentId, entry.channelId, parsed.content, activeDelivery?.threadRootId);
       this.onActivity(entry.agentId, 'sending', `channel:${entry.channelId}`);
       return true;
     }

@@ -331,14 +331,26 @@ export class XoxiangHub extends DurableObject<Env> {
       const channel = this.getChannel(data.channelId);
       if (!channel) return;
       const agent = this.getAgent(data.agentId);
+      let threadRootId = data.inReplyToMessageId;
+      if (threadRootId) {
+        const thread = this.getThread(threadRootId);
+        if (!thread || thread.root.channelId !== data.channelId) return;
+        threadRootId = thread.root.id;
+      }
       const created = this.createMessage({
         id: crypto.randomUUID(),
         channelId: data.channelId,
         agentId: data.agentId,
         senderName: agent?.displayName ?? agent?.name ?? data.agentId,
         content: data.content,
+        threadRootId,
       });
-      this.broadcast({ type: 'message:new', message: created });
+      if (created.threadRootId) {
+        const thread = this.getThread(created.threadRootId);
+        if (thread) this.broadcast({ type: 'thread:message:new', root: thread.root, message: created });
+      } else {
+        this.broadcast({ type: 'message:new', message: created });
+      }
       return;
     }
 
@@ -632,6 +644,7 @@ export class XoxiangHub extends DurableObject<Env> {
       threadRootId = thread.root.id;
     }
 
+    const mentions = this.parseMentions(payload.content);
     const message = this.createMessage({
       id: crypto.randomUUID(),
       channelId,
@@ -639,7 +652,7 @@ export class XoxiangHub extends DurableObject<Env> {
       content: payload.content,
       agentId: payload.agentId,
       threadRootId,
-      mentions: this.parseMentions(payload.content),
+      mentions,
     });
     if (message.threadRootId) {
       const thread = this.getThread(message.threadRootId);
@@ -648,8 +661,14 @@ export class XoxiangHub extends DurableObject<Env> {
       this.broadcast({ type: 'message:new', message });
     }
 
-    if (payload.agentId) {
-      const agent = this.getAgent(payload.agentId);
+    const targetAgentIds = new Set<string>();
+    if (payload.agentId) targetAgentIds.add(payload.agentId);
+    for (const mention of mentions ?? []) {
+      if (mention.type === 'agent') targetAgentIds.add(mention.id);
+    }
+
+    for (const targetAgentId of targetAgentIds) {
+      const agent = this.getAgent(targetAgentId);
       const machineId = agent ? this.resolveStartMachineId(agent) : undefined;
       if (agent && machineId && agent.status !== 'inactive') {
         this.sendToDaemon(machineId, {
@@ -936,14 +955,27 @@ export class XoxiangHub extends DurableObject<Env> {
     if (!parsed.success) return json({ error: 'Invalid request body', issues: parsed.error.issues }, 400);
     const channel = this.findChannel(parsed.data.channel);
     if (!channel) return json({ error: 'Channel not found' }, 404);
+    let threadRootId = parsed.data.threadRootId;
+    if (threadRootId) {
+      const thread = this.getThread(threadRootId);
+      if (!thread) return json({ error: 'Thread root not found' }, 404);
+      if (thread.root.channelId !== channel.id) return json({ error: 'Thread root belongs to another channel' }, 400);
+      threadRootId = thread.root.id;
+    }
     const message = this.createMessage({
       id: crypto.randomUUID(),
       channelId: channel.id,
       senderName: agent.displayName ?? agent.name,
       agentId: agent.id,
       content: parsed.data.content,
+      threadRootId,
     });
-    this.broadcast({ type: 'message:new', message });
+    if (message.threadRootId) {
+      const thread = this.getThread(message.threadRootId);
+      if (thread) this.broadcast({ type: 'thread:message:new', root: thread.root, message });
+    } else {
+      this.broadcast({ type: 'message:new', message });
+    }
     return json(message, 201);
   }
 

@@ -121,6 +121,7 @@ export type AgentDelivery = {
   channelName: string;
   senderName: string;
   content: string;
+  threadRootId?: string;
   createdAt: string;
 };
 

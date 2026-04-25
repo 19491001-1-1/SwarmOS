@@ -41,6 +41,7 @@ export const AgentDeliverySchema = z.object({
   channelName: z.string(),
   senderName: z.string(),
   content: z.string(),
+  threadRootId: z.string().optional(),
   createdAt: z.string(),
 });
 
@@ -304,6 +305,7 @@ export const MessageToTaskRequestSchema = z.object({
 export const InternalMessageSendRequestSchema = z.object({
   channel: z.string().min(1).default('general'),
   content: z.string().min(1),
+  threadRootId: z.string().optional(),
 });
 
 export const InternalMessageReadRequestSchema = z.object({

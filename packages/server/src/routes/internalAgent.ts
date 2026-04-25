@@ -74,6 +74,13 @@ export async function internalAgentRoutes(app: FastifyInstance) {
 
     const channel = await findChannel(parsed.data.channel);
     if (!channel) return reply.status(404).send({ error: 'Channel not found' });
+    let threadRootId = parsed.data.threadRootId;
+    if (threadRootId) {
+      const thread = await store.getThread(threadRootId);
+      if (!thread) return reply.status(404).send({ error: 'Thread root not found' });
+      if (thread.root.channelId !== channel.id) return reply.status(400).send({ error: 'Thread root belongs to another channel' });
+      threadRootId = thread.root.id;
+    }
 
     const message = await store.createMessage({
       id: nanoid(),
@@ -81,8 +88,14 @@ export async function internalAgentRoutes(app: FastifyInstance) {
       senderName: agent.displayName ?? agent.name,
       agentId: agent.id,
       content: parsed.data.content,
+      threadRootId,
     });
-    eventBus.emit({ type: 'message:new', message });
+    if (message.threadRootId) {
+      const thread = await store.getThread(message.threadRootId);
+      if (thread) eventBus.emit({ type: 'thread:message:new', root: thread.root, message });
+    } else {
+      eventBus.emit({ type: 'message:new', message });
+    }
     return reply.status(201).send(message);
   });
 

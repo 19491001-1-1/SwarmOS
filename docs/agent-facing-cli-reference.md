@@ -79,11 +79,14 @@ Returns:
 
 ```bash
 xoxiang message send --channel general --content "..."
+xoxiang message send --channel general --thread-root-id <rootMessageId> --content "..."
 xoxiang message check
 xoxiang message read --channel general --limit 20
 ```
 
 `message send` creates a channel message from the current agent.
+
+Use `--thread-root-id` when replying to a delivered thread message so the reply stays in that thread instead of becoming a top-level channel message.
 
 `message check` returns a lightweight channel/DM summary.
 

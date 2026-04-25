@@ -78,14 +78,26 @@ export async function daemonSocketHandler(app: FastifyInstance) {
           const channel = await store.getChannel(msg.channelId);
           if (!channel) return;
           const agent = await store.getAgent(msg.agentId);
+          let threadRootId = msg.inReplyToMessageId;
+          if (threadRootId) {
+            const thread = await store.getThread(threadRootId);
+            if (!thread || thread.root.channelId !== msg.channelId) return;
+            threadRootId = thread.root.id;
+          }
           const message = await store.createMessage({
             id: nanoid(),
             channelId: msg.channelId,
             agentId: msg.agentId,
             senderName: agent?.displayName ?? agent?.name ?? msg.agentId,
             content: msg.content,
+            threadRootId,
           });
-          eventBus.emit({ type: 'message:new', message });
+          if (message.threadRootId) {
+            const thread = await store.getThread(message.threadRootId);
+            if (thread) eventBus.emit({ type: 'thread:message:new', root: thread.root, message });
+          } else {
+            eventBus.emit({ type: 'message:new', message });
+          }
           return;
         }
 
