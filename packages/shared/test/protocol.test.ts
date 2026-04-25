@@ -13,6 +13,7 @@ import {
   InternalDmSendRequestSchema,
   InternalMessageReadRequestSchema,
   InternalMessageSendRequestSchema,
+  InternalTaskHandoffRequestSchema,
   InternalTaskListRequestSchema,
   InternalTaskUpdateRequestSchema,
   MessageToTaskRequestSchema,
@@ -301,12 +302,18 @@ describe('Task schemas', () => {
       title: 'ship board',
       status: 'todo',
       creatorName: 'user',
+      context: {
+        goal: 'ship context',
+        acceptanceCriteria: ['passes tests'],
+        handoffNotes: ['from agent: continue here'],
+      },
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     }).success).toBe(true);
-    expect(CreateTaskRequestSchema.safeParse({ title: 'ship board' }).success).toBe(true);
-    expect(PatchTaskRequestSchema.safeParse({ status: 'done' }).success).toBe(true);
+    expect(CreateTaskRequestSchema.safeParse({ title: 'ship board', context: { goal: 'ship board' } }).success).toBe(true);
+    expect(PatchTaskRequestSchema.safeParse({ status: 'done', context: { artifacts: ['docs/v0.6-task-board.md'] } }).success).toBe(true);
     expect(MessageToTaskRequestSchema.safeParse({ creatorName: 'user' }).success).toBe(true);
+    expect(InternalTaskHandoffRequestSchema.safeParse({ to: 'agent-2', notes: 'done with analysis', nextStep: 'write tests' }).success).toBe(true);
   });
 
   it('rejects invalid task status and empty patches', () => {

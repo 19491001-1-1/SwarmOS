@@ -54,6 +54,19 @@ export const WorkspaceErrorSchema = z.object({
   status: z.number().optional(),
 });
 
+export const TaskContextSchema = z.object({
+  goal: z.string().optional(),
+  background: z.string().optional(),
+  acceptanceCriteria: z.array(z.string()).optional(),
+  constraints: z.array(z.string()).optional(),
+  sourceMessageIds: z.array(z.string()).optional(),
+  artifacts: z.array(z.string()).optional(),
+  requesterAgentId: z.string().optional(),
+  previousAgentId: z.string().optional(),
+  handoffNotes: z.array(z.string()).optional(),
+  privateNotes: z.array(z.string()).optional(),
+}).partial();
+
 export const TaskSchema = z.object({
   id: z.string(),
   channelId: z.string(),
@@ -62,6 +75,7 @@ export const TaskSchema = z.object({
   status: TaskStatusSchema,
   creatorName: z.string(),
   assigneeId: z.string().optional(),
+  context: TaskContextSchema.optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
 });
@@ -205,20 +219,23 @@ export const CreateTaskRequestSchema = z.object({
   title: z.string().min(1).max(200),
   creatorName: z.string().min(1).default('user'),
   assigneeId: z.string().optional(),
+  context: TaskContextSchema.optional(),
 });
 
 export const PatchTaskRequestSchema = z
   .object({
     status: TaskStatusSchema.optional(),
     assigneeId: z.string().optional(),
+    context: TaskContextSchema.optional(),
   })
-  .refine((val) => val.status !== undefined || val.assigneeId !== undefined, {
+  .refine((val) => val.status !== undefined || val.assigneeId !== undefined || val.context !== undefined, {
     message: 'At least one field must be provided',
   });
 
 export const MessageToTaskRequestSchema = z.object({
   assigneeId: z.string().optional(),
   creatorName: z.string().min(1).default('user'),
+  context: TaskContextSchema.optional(),
 });
 
 export const InternalMessageSendRequestSchema = z.object({
@@ -257,10 +274,18 @@ export const InternalTaskUpdateRequestSchema = z
   .object({
     status: TaskStatusSchema.optional(),
     assigneeId: z.string().optional(),
+    context: TaskContextSchema.optional(),
   })
-  .refine((val) => val.status !== undefined || val.assigneeId !== undefined, {
+  .refine((val) => val.status !== undefined || val.assigneeId !== undefined || val.context !== undefined, {
     message: 'At least one field must be provided',
   });
+
+export const InternalTaskHandoffRequestSchema = z.object({
+  to: z.string().min(1),
+  notes: z.string().min(1),
+  goal: z.string().optional(),
+  nextStep: z.string().optional(),
+});
 
 export type CreateAgentRequest = z.infer<typeof CreateAgentRequestSchema>;
 export type PatchAgentRequest = z.infer<typeof PatchAgentRequestSchema>;
@@ -270,12 +295,14 @@ export type CreateAgentDelegationRequest = z.infer<typeof CreateAgentDelegationR
 export type CreateTaskRequest = z.infer<typeof CreateTaskRequestSchema>;
 export type PatchTaskRequest = z.infer<typeof PatchTaskRequestSchema>;
 export type MessageToTaskRequest = z.infer<typeof MessageToTaskRequestSchema>;
+export type TaskContextRequest = z.infer<typeof TaskContextSchema>;
 export type InternalMessageSendRequest = z.infer<typeof InternalMessageSendRequestSchema>;
 export type InternalMessageReadRequest = z.infer<typeof InternalMessageReadRequestSchema>;
 export type InternalDmSendRequest = z.infer<typeof InternalDmSendRequestSchema>;
 export type InternalAgentDelegateRequest = z.infer<typeof InternalAgentDelegateRequestSchema>;
 export type InternalTaskListRequest = z.infer<typeof InternalTaskListRequestSchema>;
 export type InternalTaskUpdateRequest = z.infer<typeof InternalTaskUpdateRequestSchema>;
+export type InternalTaskHandoffRequest = z.infer<typeof InternalTaskHandoffRequestSchema>;
 
 export const ServerToDaemonSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('ping') }),

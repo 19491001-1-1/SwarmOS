@@ -29,6 +29,7 @@ export async function taskRoutes(app: FastifyInstance) {
       status: 'todo',
       creatorName: parsed.data.creatorName,
       assigneeId: parsed.data.assigneeId,
+      context: parsed.data.context,
     });
     eventBus.emit({ type: 'task:update', task });
     await notifyTaskAssignee(task);
@@ -66,6 +67,10 @@ export async function taskRoutes(app: FastifyInstance) {
       status: 'todo',
       creatorName: parsed.data.creatorName,
       assigneeId: parsed.data.assigneeId,
+      context: {
+        ...parsed.data.context,
+        sourceMessageIds: Array.from(new Set([...(parsed.data.context?.sourceMessageIds ?? []), message.id])),
+      },
     });
     eventBus.emit({ type: 'task:update', task });
     await notifyTaskAssignee(task);

@@ -117,7 +117,7 @@ describe('agent-facing xoxiang CLI', () => {
   });
 
   it('reads a task', async () => {
-    const fetchImpl = okFetch({ id: 'task-1', title: 'work' });
+    const fetchImpl = okFetch({ id: 'task-1', title: 'work', context: { goal: 'hidden detail' } });
     const result = await run(['task', 'read', 'task-1'], fetchImpl);
 
     expect(result.code).toBe(0);
@@ -125,6 +125,15 @@ describe('agent-facing xoxiang CLI', () => {
       'http://hub.test/internal/agent/agent-1/tasks/task-1',
       expect.objectContaining({ method: 'GET' })
     );
+    expect(JSON.parse(result.stdout).context).toBeUndefined();
+  });
+
+  it('reads a task with full context when requested', async () => {
+    const fetchImpl = okFetch({ id: 'task-1', title: 'work', context: { goal: 'ship it' } });
+    const result = await run(['task', 'read', 'task-1', '--context'], fetchImpl);
+
+    expect(result.code).toBe(0);
+    expect(JSON.parse(result.stdout).context.goal).toBe('ship it');
   });
 
   it('updates task status', async () => {
@@ -135,6 +144,20 @@ describe('agent-facing xoxiang CLI', () => {
     expect(fetchImpl).toHaveBeenCalledWith(
       'http://hub.test/internal/agent/agent-1/tasks/task-1/update',
       expect.objectContaining({ method: 'POST', body: JSON.stringify({ status: 'done' }) })
+    );
+  });
+
+  it('hands off a task with notes', async () => {
+    const fetchImpl = okFetch({ id: 'task-1', assigneeId: 'agent-2' });
+    const result = await run(['task', 'handoff', 'task-1', '--to', 'agent-2', '--notes', 'done with analysis', '--next-step', 'write tests'], fetchImpl);
+
+    expect(result.code).toBe(0);
+    expect(fetchImpl).toHaveBeenCalledWith(
+      'http://hub.test/internal/agent/agent-1/tasks/task-1/handoff',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ to: 'agent-2', notes: 'done with analysis', nextStep: 'write tests' }),
+      })
     );
   });
 });

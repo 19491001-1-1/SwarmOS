@@ -135,9 +135,11 @@ xoxiang task list --status todo
 xoxiang task list --channel general
 xoxiang task list --all
 xoxiang task read <taskId>
+xoxiang task read <taskId> --context
 xoxiang task update <taskId> --status in_progress
 xoxiang task update <taskId> --status in_review
 xoxiang task update <taskId> --status done
+xoxiang task handoff <taskId> --to agentName --notes "..." --next-step "..."
 ```
 
 `task list` returns tasks assigned to the current agent by default. A plain `task list` result is not the whole task board.
@@ -152,7 +154,19 @@ Use `task list --all` when the user asks about:
 - another agent's tasks
 - global task status or task ownership
 
-`task read <taskId>` returns one task. If a task is assigned to another agent, the hub rejects the read unless the task is unassigned.
+`task read <taskId>` returns one task without the internal context object. If a task is assigned to another agent, the hub rejects the read unless the task is unassigned.
+
+`task read <taskId> --context` returns the full task including agent execution context:
+
+- goal
+- background
+- acceptance criteria
+- constraints
+- source message ids
+- artifacts
+- previous/requester agent ids
+- handoff notes
+- private notes
 
 `task update <taskId>` updates task progress. Valid statuses are:
 
@@ -160,6 +174,14 @@ Use `task list --all` when the user asks about:
 - `in_progress`
 - `in_review`
 - `done`
+
+`task handoff <taskId>` transfers work to another agent and preserves execution context. Use it when another agent should continue from your current state:
+
+```bash
+xoxiang task handoff task-123 --to reviewer --notes "analysis done; risky area is daemon reconnect" --next-step "write regression test"
+```
+
+Before handing off, read the task with `--context` and make the handoff notes specific enough for the next agent to continue without re-discovering the same facts.
 
 When a task is assigned to an online agent, the hub sends the agent a task notification. If the agent is offline but has auto-start enabled, the hub may start it with the task as the wake message.
 

@@ -132,7 +132,7 @@ describe('agent internal API', () => {
     const taskCreated = await SELF.fetch('https://hub.test/api/tasks', {
       method: 'POST',
       headers: authHeaders({ 'Content-Type': 'application/json' }),
-      body: JSON.stringify({ channelId: 'general', title: `internal task ${crypto.randomUUID()}`, creatorName: 'user', assigneeId: agent.id }),
+      body: JSON.stringify({ channelId: 'general', title: `internal task ${crypto.randomUUID()}`, creatorName: 'user', assigneeId: agent.id, context: { goal: 'cloudflare internal task' } }),
     });
     expect(taskCreated.status).toBe(201);
     const task = (await taskCreated.json()) as { id: string; title: string };
@@ -143,7 +143,7 @@ describe('agent internal API', () => {
 
     const taskRead = await SELF.fetch(`https://hub.test/internal/agent/${agent.id}/tasks/${task.id}`, { headers: internalHeaders });
     expect(taskRead.status).toBe(200);
-    expect(await taskRead.json()).toMatchObject({ title: task.title });
+    expect(await taskRead.json()).toMatchObject({ title: task.title, context: { goal: 'cloudflare internal task' } });
 
     const taskUpdated = await SELF.fetch(`https://hub.test/internal/agent/${agent.id}/tasks/${task.id}/update`, {
       method: 'POST',
@@ -152,6 +152,21 @@ describe('agent internal API', () => {
     });
     expect(taskUpdated.status).toBe(200);
     expect(await taskUpdated.json()).toMatchObject({ status: 'in_progress' });
+
+    const taskHandoff = await SELF.fetch(`https://hub.test/internal/agent/${agent.id}/tasks/${task.id}/handoff`, {
+      method: 'POST',
+      headers: internalHeaders,
+      body: JSON.stringify({ to: target.name, notes: 'cloudflare handoff', nextStep: 'continue' }),
+    });
+    expect(taskHandoff.status).toBe(200);
+    expect(await taskHandoff.json()).toMatchObject({
+      assigneeId: target.id,
+      context: {
+        goal: 'cloudflare internal task',
+        previousAgentId: agent.id,
+        handoffNotes: [expect.stringContaining('cloudflare handoff')],
+      },
+    });
     daemon.close();
   });
 });
@@ -210,12 +225,13 @@ describe('input validation', () => {
     const created = await SELF.fetch('https://hub.test/api/tasks', {
       method: 'POST',
       headers: authHeaders({ 'Content-Type': 'application/json' }),
-      body: JSON.stringify({ channelId: 'general', title, creatorName: 'user' }),
+      body: JSON.stringify({ channelId: 'general', title, creatorName: 'user', context: { goal: 'cloudflare task board' } }),
     });
     expect(created.status).toBe(201);
     const task = (await created.json()) as { id: string; title: string; status: string };
     expect(task.title).toBe(title);
     expect(task.status).toBe('todo');
+    expect((task as any).context.goal).toBe('cloudflare task board');
 
     const patched = await SELF.fetch(`https://hub.test/api/tasks/${task.id}`, {
       method: 'PATCH',
