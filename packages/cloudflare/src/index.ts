@@ -1646,6 +1646,7 @@ export class XoxiangHub extends DurableObject<Env> {
       const existing = this.getTask(decodeURIComponent(taskClaimMatch[1]));
       if (!existing) return json({ error: 'Task not found' }, 404);
       if (existing.assigneeId && existing.assigneeId !== agent.id) return json({ error: 'Task is assigned to another agent' }, 409);
+      const shouldAcknowledge = !existing.assigneeId;
       const task = this.updateTask(existing.id, {
         assigneeId: agent.id,
         status: existing.status === 'todo' ? 'in_progress' : existing.status,
@@ -1653,6 +1654,7 @@ export class XoxiangHub extends DurableObject<Env> {
       });
       if (!task) return json({ error: 'Task not found' }, 404);
       this.broadcast({ type: 'task:update', task });
+      if (shouldAcknowledge) this.createTaskClaimAcknowledgement(task, agent);
       return json(task);
     }
 
@@ -2191,6 +2193,24 @@ export class XoxiangHub extends DurableObject<Env> {
       created.createdAt
     );
     return created;
+  }
+
+  private createTaskClaimAcknowledgement(task: Task, agent: Agent): void {
+    const message = this.createMessage({
+      id: crypto.randomUUID(),
+      channelId: task.channelId,
+      senderName: agent.displayName ?? agent.name,
+      agentId: agent.id,
+      content: `@user I have claimed task #${task.id} "${task.title}" and I am starting now. I will post progress or blockers here.`,
+      threadRootId: task.messageId,
+      mentions: [{ type: 'user', id: 'user', label: 'user' }],
+    });
+    if (message.threadRootId) {
+      const thread = this.getThread(message.threadRootId);
+      if (thread) this.broadcast({ type: 'thread:message:new', root: thread.root, message });
+    } else {
+      this.broadcast({ type: 'message:new', message });
+    }
   }
 
   private parseMentions(content: string): Mention[] | undefined {

@@ -583,6 +583,7 @@ export async function internalAgentRoutes(app: FastifyInstance) {
     const existing = await store.getTask(req.params.taskId);
     if (!existing) return reply.status(404).send({ error: 'Task not found' });
     if (existing.assigneeId && existing.assigneeId !== agent.id) return reply.status(409).send({ error: 'Task is assigned to another agent' });
+    const shouldAcknowledge = !existing.assigneeId;
     const task = await store.updateTask(existing.id, {
       assigneeId: agent.id,
       status: existing.status === 'todo' ? 'in_progress' : existing.status,
@@ -590,6 +591,7 @@ export async function internalAgentRoutes(app: FastifyInstance) {
     });
     if (!task) return reply.status(404).send({ error: 'Task not found' });
     eventBus.emit({ type: 'task:update', task });
+    if (shouldAcknowledge) await createTaskClaimAcknowledgement(task, agent);
     return task;
   });
 
@@ -907,6 +909,25 @@ function appendProgress(task: Task, agentId: string, type: TaskProgressEventType
     claimedByAgentId: type === 'claimed' ? agentId : task.context?.claimedByAgentId,
     progressEvents: [...(task.context?.progressEvents ?? []), event].slice(-20),
   };
+}
+
+async function createTaskClaimAcknowledgement(task: Task, agent: Agent): Promise<void> {
+  const store = getStore();
+  const message = await store.createMessage({
+    id: nanoid(),
+    channelId: task.channelId,
+    senderName: agent.displayName ?? agent.name,
+    agentId: agent.id,
+    content: `@user I have claimed task #${task.id} "${task.title}" and I am starting now. I will post progress or blockers here.`,
+    threadRootId: task.messageId,
+    mentions: [{ type: 'user', id: 'user', label: 'user' }],
+  });
+  if (message.threadRootId) {
+    const thread = await store.getThread(message.threadRootId);
+    if (thread) eventBus.emit({ type: 'thread:message:new', root: thread.root, message });
+  } else {
+    eventBus.emit({ type: 'message:new', message });
+  }
 }
 
 function deliverDirectMessage(target: Agent, dm: DirectMessage): void {

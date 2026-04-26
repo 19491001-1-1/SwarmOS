@@ -551,6 +551,12 @@ describe('agent internal API', () => {
     expect(claimed.statusCode).toBe(200);
     expect(claimed.json()).toMatchObject({ assigneeId: 'agent-1', status: 'in_progress', context: { claimedByAgentId: 'agent-1' } });
     expect(claimed.json().context.progressEvents.at(-1)).toMatchObject({ type: 'claimed', agentId: 'agent-1' });
+    expect(await store.listMessages('general')).toContainEqual(expect.objectContaining({
+      senderName: 'Bot',
+      agentId: 'agent-1',
+      content: expect.stringContaining('I have claimed task #task-claim'),
+      mentions: [{ type: 'user', id: 'user', label: 'user' }],
+    }));
 
     const progress = await app.inject({
       method: 'POST',

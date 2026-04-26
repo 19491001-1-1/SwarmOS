@@ -234,6 +234,14 @@ describe('agent internal API', () => {
     });
     expect(claimed.status).toBe(200);
     expect(await claimed.json()).toMatchObject({ assigneeId: agent.id, context: expect.objectContaining({ claimedByAgentId: agent.id }) });
+    const messages = await SELF.fetch('https://hub.test/api/channels/general/messages', { headers: authHeaders() });
+    expect(messages.status).toBe(200);
+    expect(await messages.json()).toContainEqual(expect.objectContaining({
+      senderName: agent.displayName ?? agent.name,
+      agentId: agent.id,
+      content: expect.stringContaining(`I have claimed task #${claimable.id}`),
+      mentions: [{ type: 'user', id: 'user', label: 'user' }],
+    }));
 
     const progress = await SELF.fetch(`https://hub.test/internal/agent/${agent.id}/tasks/${claimable.id}/progress`, {
       method: 'POST',
