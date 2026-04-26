@@ -11,8 +11,6 @@ jobs:
     env:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-      DAEMON_API_KEY: ${{ secrets.DAEMON_API_KEY }}
-      WEB_AUTH_TOKEN: ${{ secrets.WEB_AUTH_TOKEN }}
       CREWDEN_VERSION: ${{ github.sha }}
       CREWDEN_COMMIT_SHA: ${{ github.sha }}
       CREWDEN_BUILD_ID: ${{ github.run_id }}
@@ -35,6 +33,9 @@ jobs:
         run: pnpm verify
 
       - name: Check required secrets
+        env:
+          DAEMON_API_KEY: ${{ secrets.DAEMON_API_KEY }}
+          WEB_AUTH_TOKEN: ${{ secrets.WEB_AUTH_TOKEN }}
         run: |
           if [ -z "$CLOUDFLARE_API_TOKEN" ]; then
             echo "::error::CLOUDFLARE_API_TOKEN secret is not set."
@@ -54,6 +55,9 @@ jobs:
           fi
 
       - name: Upload Worker secrets
+        env:
+          DAEMON_API_KEY: ${{ secrets.DAEMON_API_KEY }}
+          WEB_AUTH_TOKEN: ${{ secrets.WEB_AUTH_TOKEN }}
         run: |
           printf '%s' "$DAEMON_API_KEY" | pnpm --filter @crewden/cloudflare exec wrangler secret put DAEMON_API_KEY
           printf '%s' "$WEB_AUTH_TOKEN" | pnpm --filter @crewden/cloudflare exec wrangler secret put WEB_AUTH_TOKEN
