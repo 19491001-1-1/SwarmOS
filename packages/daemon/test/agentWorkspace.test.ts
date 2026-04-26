@@ -10,7 +10,7 @@ import {
 } from '../src/workspace/agentWorkspace.js';
 
 async function tempRoot(): Promise<string> {
-  return mkdtemp(join(tmpdir(), 'xoxiang-workspace-test-'));
+  return mkdtemp(join(tmpdir(), 'crewden-workspace-test-'));
 }
 
 describe('agent workspace', () => {
@@ -28,14 +28,14 @@ describe('agent workspace', () => {
     expect(await readFile(join(info.root, 'MEMORY.md'), 'utf8')).toBe('custom memory');
   });
 
-  it('respects XOXIANG_AGENTS_DIR when no base dir is supplied', () => {
-    const previous = process.env.XOXIANG_AGENTS_DIR;
-    process.env.XOXIANG_AGENTS_DIR = '/tmp/custom-xoxiang-agents';
+  it('respects CREWDEN_AGENTS_DIR when no base dir is supplied', () => {
+    const previous = process.env.CREWDEN_AGENTS_DIR;
+    process.env.CREWDEN_AGENTS_DIR = '/tmp/custom-crewden-agents';
     try {
-      expect(getAgentWorkspaceRoot('agent-1')).toBe('/tmp/custom-xoxiang-agents/agent-1');
+      expect(getAgentWorkspaceRoot('agent-1')).toBe('/tmp/custom-crewden-agents/agent-1');
     } finally {
-      if (previous === undefined) delete process.env.XOXIANG_AGENTS_DIR;
-      else process.env.XOXIANG_AGENTS_DIR = previous;
+      if (previous === undefined) delete process.env.CREWDEN_AGENTS_DIR;
+      else process.env.CREWDEN_AGENTS_DIR = previous;
     }
   });
 

@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 env:
-  TEST_API_BASE: https://xoxiang-hub-test.xingke0.workers.dev
+  TEST_API_BASE: https://crewden-hub-test.xingke0.workers.dev
   VITE_APP_VERSION: ${{ github.sha }}
   VITE_COMMIT_SHA: ${{ github.sha }}
 
@@ -20,9 +20,9 @@ jobs:
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       TEST_DAEMON_API_KEY: ${{ secrets.TEST_DAEMON_API_KEY }}
       TEST_WEB_AUTH_TOKEN: ${{ secrets.TEST_WEB_AUTH_TOKEN }}
-      XOXIANG_VERSION: test-${{ github.sha }}
-      XOXIANG_COMMIT_SHA: ${{ github.sha }}
-      XOXIANG_BUILD_ID: ${{ github.run_id }}
+      CREWDEN_VERSION: test-${{ github.sha }}
+      CREWDEN_COMMIT_SHA: ${{ github.sha }}
+      CREWDEN_BUILD_ID: ${{ github.run_id }}
     steps:
       - uses: actions/checkout@v4
 
@@ -62,14 +62,14 @@ jobs:
 
       - name: Upload test Worker secrets
         run: |
-          printf '%s' "$TEST_DAEMON_API_KEY" | pnpm --filter @mini-slock/cloudflare exec wrangler secret put DAEMON_API_KEY --config wrangler.test.jsonc
-          printf '%s' "$TEST_WEB_AUTH_TOKEN" | pnpm --filter @mini-slock/cloudflare exec wrangler secret put WEB_AUTH_TOKEN --config wrangler.test.jsonc
+          printf '%s' "$TEST_DAEMON_API_KEY" | pnpm --filter @crewden/cloudflare exec wrangler secret put DAEMON_API_KEY --config wrangler.test.jsonc
+          printf '%s' "$TEST_WEB_AUTH_TOKEN" | pnpm --filter @crewden/cloudflare exec wrangler secret put WEB_AUTH_TOKEN --config wrangler.test.jsonc
 
       - name: Deploy test Worker
-        run: pnpm --filter @mini-slock/cloudflare run deploy:test
+        run: pnpm --filter @crewden/cloudflare run deploy:test
 
       - name: Build test web UI
-        run: pnpm --filter @mini-slock/web build
+        run: pnpm --filter @crewden/web build
         env:
           VITE_API_BASE: ${{ env.TEST_API_BASE }}
           VITE_WEB_AUTH_TOKEN: ${{ secrets.TEST_WEB_AUTH_TOKEN }}
@@ -80,16 +80,16 @@ jobs:
         id: pages_deploy
         run: |
           set +e
-          pnpm --filter @mini-slock/cloudflare exec wrangler pages deploy "$GITHUB_WORKSPACE/packages/web/dist" \
-            --project-name xoxiang-web-test \
+          pnpm --filter @crewden/cloudflare exec wrangler pages deploy "$GITHUB_WORKSPACE/packages/web/dist" \
+            --project-name crewden-web-test \
             --branch main \
             --commit-dirty=true 2>&1 | tee /tmp/wrangler-pages-test-deploy.log
           status=${PIPESTATUS[0]}
           set -e
           if [ "$status" -ne 0 ] && grep -q 'Project not found' /tmp/wrangler-pages-test-deploy.log; then
-            pnpm --filter @mini-slock/cloudflare exec wrangler pages project create xoxiang-web-test --production-branch main
-            pnpm --filter @mini-slock/cloudflare exec wrangler pages deploy "$GITHUB_WORKSPACE/packages/web/dist" \
-              --project-name xoxiang-web-test \
+            pnpm --filter @crewden/cloudflare exec wrangler pages project create crewden-web-test --production-branch main
+            pnpm --filter @crewden/cloudflare exec wrangler pages deploy "$GITHUB_WORKSPACE/packages/web/dist" \
+              --project-name crewden-web-test \
               --branch main \
               --commit-dirty=true 2>&1 | tee /tmp/wrangler-pages-test-deploy.log
             status=${PIPESTATUS[0]}

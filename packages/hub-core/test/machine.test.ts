@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { Machine } from '@mini-slock/shared';
+import type { Machine } from '@crewden/shared';
 import { findDuplicateMachineIds, findExistingMachineId } from '../src/machine.js';
 
 const machines: Machine[] = [

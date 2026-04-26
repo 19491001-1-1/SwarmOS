@@ -1,20 +1,20 @@
 {
-  "name": "@mini-slock/daemon",
+  "name": "@crewden/daemon",
   "version": "0.6.0",
   "type": "module",
   "main": "./dist/index.js",
   "bin": {
-    "mini-slock-daemon": "./dist/cli.js",
-    "xoxiang": "./dist/agentCli.js"
+    "crewden-daemon": "./dist/cli.js",
+    "crewden": "./dist/agentCli.js"
   },
   "scripts": {
     "start": "tsx src/cli.ts",
     "build": "tsc",
-    "typecheck": "pnpm --filter @mini-slock/shared build && tsc --noEmit",
+    "typecheck": "pnpm --filter @crewden/shared build && tsc --noEmit",
     "test": "vitest run"
   },
   "dependencies": {
-    "@mini-slock/shared": "workspace:*",
+    "@crewden/shared": "workspace:*",
     "ws": "^8.17.0",
     "zod": "^3.23.0",
     "execa": "^9.2.0",

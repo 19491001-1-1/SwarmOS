@@ -71,7 +71,7 @@ export function WorkspaceBrowser({ agentId }: Props) {
       <div style={{ border: '2px solid #000', background: '#fff' }}>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', borderBottom: '2px solid #000' }}>
           <div style={{ padding: 8, minWidth: 0, fontSize: 10, fontWeight: 700, overflowWrap: 'anywhere' }}>
-            ~/.xoxiang/agents/{agentId}/{currentPath}
+            ~/.crewden/agents/{agentId}/{currentPath}
           </div>
           <button onClick={() => load(currentPath)} disabled={loading} style={buttonStyle('#FFD700', '#000')}>
             {loading ? '...' : 'REFRESH'}

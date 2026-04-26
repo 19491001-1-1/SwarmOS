@@ -1,6 +1,6 @@
 {
   "$schema": "../../node_modules/wrangler/config-schema.json",
-  "name": "xoxiang-hub-test",
+  "name": "crewden-hub-test",
   "main": "src/index.ts",
   "compatibility_date": "2026-04-24",
   "compatibility_flags": ["nodejs_compat"],
@@ -9,21 +9,21 @@
     "head_sampling_rate": 1
   },
   "vars": {
-    "XOXIANG_ENV": "test",
-    "XOXIANG_VERSION": "0.6.0-test"
+    "CREWDEN_ENV": "test",
+    "CREWDEN_VERSION": "0.6.0-test"
   },
   "durable_objects": {
     "bindings": [
       {
         "name": "HUB",
-        "class_name": "XoxiangHub"
+        "class_name": "CrewdenHub"
       }
     ]
   },
   "migrations": [
     {
       "tag": "v1",
-      "new_sqlite_classes": ["XoxiangHub"]
+      "new_sqlite_classes": ["CrewdenHub"]
     }
   ]
 }

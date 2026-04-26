@@ -115,17 +115,17 @@ describe('AgentProcessManager', () => {
     await manager.startAgent('agent-1', { runtime: 'claude', name: 'bot', agentToken: 'agent-token-1' }, 'general');
 
     expect(vi.mocked(writeFile)).toHaveBeenCalledWith(
-      expect.stringContaining('/tmp/test-workspaces/agent-1/.xoxiang/agent-token'),
+      expect.stringContaining('/tmp/test-workspaces/agent-1/.crewden/agent-token'),
       'agent-token-1\n',
       { mode: 0o600 }
     );
     expect(vi.mocked(writeFile)).toHaveBeenCalledWith(
-      expect.stringContaining('/tmp/test-workspaces/agent-1/.xoxiang/xoxiang'),
+      expect.stringContaining('/tmp/test-workspaces/agent-1/.crewden/crewden'),
       expect.stringContaining('dist/agentCli.js'),
       { mode: 0o755 }
     );
     expect(vi.mocked(writeFile)).toHaveBeenCalledWith(
-      expect.stringContaining('/tmp/test-workspaces/agent-1/.xoxiang/xoxiang'),
+      expect.stringContaining('/tmp/test-workspaces/agent-1/.crewden/crewden'),
       expect.not.stringContaining('tsx'),
       { mode: 0o755 }
     );
@@ -196,20 +196,20 @@ describe('AgentProcessManager', () => {
       expect.any(Array),
       expect.objectContaining({
         env: expect.objectContaining({
-          XOXIANG_AGENT_ID: 'agent-1',
-          XOXIANG_SERVER_URL: 'http://localhost:3000',
-          XOXIANG_AGENT_TOKEN_FILE: expect.stringContaining('agent-token'),
+          CREWDEN_AGENT_ID: 'agent-1',
+          CREWDEN_SERVER_URL: 'http://localhost:3000',
+          CREWDEN_AGENT_TOKEN_FILE: expect.stringContaining('agent-token'),
         }),
       })
     );
     const spawnOptions = mockSpawn.mock.calls[0]?.[2] as { env?: Record<string, string> };
     expect(spawnOptions).toMatchObject({ cwd: '/tmp/test-workspaces/agent-1' });
-    expect(spawnOptions.env?.XOXIANG_AGENT_TOKEN).toBeUndefined();
-    expect(spawnOptions.env?.PATH?.startsWith(`/tmp/test-workspaces/agent-1/.xoxiang${delimiter}`)).toBe(true);
+    expect(spawnOptions.env?.CREWDEN_AGENT_TOKEN).toBeUndefined();
+    expect(spawnOptions.env?.PATH?.startsWith(`/tmp/test-workspaces/agent-1/.crewden${delimiter}`)).toBe(true);
     expect(activities.some((a) => a.agentId === 'agent-1' && a.type === 'working' && a.detail === 'Message received')).toBe(true);
     expect(activities.some((a) => a.agentId === 'agent-1' && a.type === 'thinking')).toBe(true);
     expect(fakeProc.stdin.write).toHaveBeenCalledWith(expect.stringContaining('You have 1 queued message'));
-    expect(fakeProc.stdin.write).toHaveBeenCalledWith(expect.stringContaining('xoxiang message check'));
+    expect(fakeProc.stdin.write).toHaveBeenCalledWith(expect.stringContaining('crewden message check'));
   });
 
   it('deliverMessage auto-registers an unknown agent when config is provided', async () => {
@@ -401,7 +401,7 @@ describe('AgentProcessManager', () => {
   });
 
   it('stdout DM marker is reported as agent dm', async () => {
-    const fakeProc = createFakeProc(['[[MINI_SLOCK_SEND_DM]] {"to":"agent-2","content":"secret"}']);
+    const fakeProc = createFakeProc(['[[CREWDEN_SEND_DM]] {"to":"agent-2","content":"secret"}']);
     mockSpawn.mockReturnValue(fakeProc);
 
     await manager.startAgent('agent-1', { runtime: 'claude', name: 'bot' }, 'general');
@@ -425,7 +425,7 @@ describe('AgentProcessManager', () => {
   });
 
   it('stdout delegation marker is reported as agent delegation', async () => {
-    const fakeProc = createFakeProc(['[[MINI_SLOCK_DELEGATE_AGENT]] {"to":"agent-2","content":"please work","startIfInactive":true}']);
+    const fakeProc = createFakeProc(['[[CREWDEN_DELEGATE_AGENT]] {"to":"agent-2","content":"please work","startIfInactive":true}']);
     mockSpawn.mockReturnValue(fakeProc);
 
     await manager.startAgent('agent-1', { runtime: 'claude', name: 'bot' }, 'general');

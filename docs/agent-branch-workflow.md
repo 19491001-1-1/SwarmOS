@@ -43,14 +43,14 @@ pnpm verify
 For Cloudflare Worker changes:
 
 ```bash
-pnpm --filter @mini-slock/cloudflare exec wrangler deploy --dry-run
-pnpm --filter @mini-slock/cloudflare exec wrangler deploy --config wrangler.test.jsonc --dry-run
+pnpm --filter @crewden/cloudflare exec wrangler deploy --dry-run
+pnpm --filter @crewden/cloudflare exec wrangler deploy --config wrangler.test.jsonc --dry-run
 ```
 
 For Cloudflare Pages/static web deployment changes:
 
 ```bash
-VITE_API_BASE=https://xoxiang-hub-test.xingke0.workers.dev pnpm --filter @mini-slock/web build
+VITE_API_BASE=https://crewden-hub-test.xingke0.workers.dev pnpm --filter @crewden/web build
 ```
 
 ## Cloudflare Promotion Policy
@@ -58,17 +58,17 @@ VITE_API_BASE=https://xoxiang-hub-test.xingke0.workers.dev pnpm --filter @mini-s
 Use the test environment as the default remote deployment target:
 
 ```text
-Worker: xoxiang-hub-test
-Worker URL: https://xoxiang-hub-test.xingke0.workers.dev
-Pages project: xoxiang-web-test
+Worker: crewden-hub-test
+Worker URL: https://crewden-hub-test.xingke0.workers.dev
+Pages project: crewden-web-test
 ```
 
 Production is:
 
 ```text
-Worker: xoxiang-hub
-Worker URL: https://xoxiang-hub.xingke0.workers.dev
-Pages project: xoxiang-web
+Worker: crewden-hub
+Worker URL: https://crewden-hub.xingke0.workers.dev
+Pages project: crewden-web
 ```
 
 The production GitHub Actions workflows are manual only. Trigger them only after the user approves

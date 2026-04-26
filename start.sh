@@ -31,11 +31,11 @@ trap cleanup INT TERM
 log() { echo -e "${CYAN}[start]${NC} $*"; }
 
 log "Starting server..."
-pnpm --filter @mini-slock/server dev > "$LOG_DIR/server.log" 2>&1 &
+pnpm --filter @crewden/server dev > "$LOG_DIR/server.log" 2>&1 &
 pids+=($!)
 
 log "Starting web UI..."
-pnpm --filter @mini-slock/web dev > "$LOG_DIR/web.log" 2>&1 &
+pnpm --filter @crewden/web dev > "$LOG_DIR/web.log" 2>&1 &
 pids+=($!)
 
 # Wait for server to be ready
@@ -53,7 +53,7 @@ pkill -f "tsx.*daemon" 2>/dev/null || true
 sleep 0.5
 
 log "Starting daemon..."
-pnpm --filter @mini-slock/daemon start -- \
+pnpm --filter @crewden/daemon start -- \
   --server-url "$SERVER_URL" \
   --api-key "$API_KEY" \
   > "$LOG_DIR/daemon.log" 2>&1 &

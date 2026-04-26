@@ -76,8 +76,8 @@ Search result and thread target scrolling should run after the destination messa
 Run:
 
 ```bash
-pnpm --filter @mini-slock/web typecheck
-pnpm --filter @mini-slock/web test
+pnpm --filter @crewden/web typecheck
+pnpm --filter @crewden/web test
 pnpm verify
 ```
 

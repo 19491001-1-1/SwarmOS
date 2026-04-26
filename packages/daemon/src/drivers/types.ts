@@ -1,4 +1,4 @@
-import type { RuntimeId, AgentRuntimeConfig, TaskStatus } from '@mini-slock/shared';
+import type { RuntimeId, AgentRuntimeConfig, TaskStatus } from '@crewden/shared';
 
 export type RuntimeTransport = 'oneshot' | 'stream-json' | 'app-server' | 'mcp';
 

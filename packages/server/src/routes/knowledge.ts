@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { nanoid } from 'nanoid';
-import { CreateKnowledgeEntryRequestSchema, PatchKnowledgeEntryRequestSchema, SearchKnowledgeRequestSchema, type KnowledgeEntry } from '@mini-slock/shared';
+import { CreateKnowledgeEntryRequestSchema, PatchKnowledgeEntryRequestSchema, SearchKnowledgeRequestSchema, type KnowledgeEntry } from '@crewden/shared';
 import { getStore } from '../db.js';
 import { eventBus } from '../events.js';
 

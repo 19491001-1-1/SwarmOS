@@ -2,7 +2,7 @@ import { constants } from 'fs';
 import { access, mkdir, readFile, realpath, readdir, stat, writeFile } from 'fs/promises';
 import { homedir } from 'os';
 import { isAbsolute, join, normalize, resolve, sep } from 'path';
-import type { AgentRuntimeConfig, WorkspaceEntry, WorkspaceError } from '@mini-slock/shared';
+import type { AgentRuntimeConfig, WorkspaceEntry, WorkspaceError } from '@crewden/shared';
 
 export const MAX_WORKSPACE_TEXT_BYTES = 1024 * 1024;
 
@@ -19,7 +19,7 @@ export type AgentWorkspaceInfo = {
 };
 
 export function getAgentWorkspaceRoot(agentId: string, baseDir?: string): string {
-  const root = baseDir ?? process.env.XOXIANG_AGENTS_DIR ?? join(homedir(), '.xoxiang', 'agents');
+  const root = baseDir ?? process.env.CREWDEN_AGENTS_DIR ?? join(homedir(), '.crewden', 'agents');
   return join(root, agentId);
 }
 
@@ -35,7 +35,7 @@ export async function ensureMemoryFile(agentId: string, config: AgentRuntimeConf
   const memoryPath = join(root, 'MEMORY.md');
   if (await exists(memoryPath)) return memoryPath;
   const displayName = config.displayName ?? config.name ?? agentId;
-  const role = config.description ?? config.systemPrompt ?? 'General-purpose xoxiang agent.';
+  const role = config.description ?? config.systemPrompt ?? 'General-purpose crewden agent.';
   await writeFile(memoryPath, [
     `# ${displayName}`,
     '',
@@ -49,7 +49,7 @@ export async function ensureMemoryFile(agentId: string, config: AgentRuntimeConf
     '- First startup.',
     '',
     '## Collaboration',
-    '- Use `xoxiang` CLI for channel messages, DMs, tasks, and delegation when available.',
+    '- Use `crewden` CLI for channel messages, DMs, tasks, and delegation when available.',
     '- Keep durable notes in `notes/`.',
     '',
   ].join('\n'));

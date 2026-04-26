@@ -5,9 +5,9 @@ import { runMcpBridgeFromCli } from './mcp/bridge.js';
 import { callInternalApi, type ParsedCommand } from './internalAgentApi.js';
 
 type CliEnv = {
-  XOXIANG_AGENT_ID?: string;
-  XOXIANG_SERVER_URL?: string;
-  XOXIANG_AGENT_TOKEN_FILE?: string;
+  CREWDEN_AGENT_ID?: string;
+  CREWDEN_SERVER_URL?: string;
+  CREWDEN_AGENT_TOKEN_FILE?: string;
 };
 
 type CliIo = {
@@ -26,11 +26,11 @@ export async function runAgentCli(argv: string[], env: CliEnv = process.env, io:
     });
   }
 
-  const agentId = env.XOXIANG_AGENT_ID;
-  const serverUrl = env.XOXIANG_SERVER_URL;
-  const tokenFile = env.XOXIANG_AGENT_TOKEN_FILE;
+  const agentId = env.CREWDEN_AGENT_ID;
+  const serverUrl = env.CREWDEN_SERVER_URL;
+  const tokenFile = env.CREWDEN_AGENT_TOKEN_FILE;
   if (!agentId || !serverUrl || !tokenFile) {
-    io.stderr.write('missing XOXIANG_AGENT_ID, XOXIANG_SERVER_URL, or XOXIANG_AGENT_TOKEN_FILE\n');
+    io.stderr.write('missing CREWDEN_AGENT_ID, CREWDEN_SERVER_URL, or CREWDEN_AGENT_TOKEN_FILE\n');
     return 2;
   }
 

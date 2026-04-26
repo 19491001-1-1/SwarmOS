@@ -1,5 +1,5 @@
 {
-  "name": "@mini-slock/hub-core",
+  "name": "@crewden/hub-core",
   "version": "0.6.0",
   "type": "module",
   "main": "./dist/index.js",
@@ -11,12 +11,12 @@
     }
   },
   "scripts": {
-    "build": "pnpm --filter @mini-slock/shared build && tsc",
-    "typecheck": "pnpm --filter @mini-slock/shared build && tsc --noEmit",
+    "build": "pnpm --filter @crewden/shared build && tsc",
+    "typecheck": "pnpm --filter @crewden/shared build && tsc --noEmit",
     "test": "vitest run"
   },
   "dependencies": {
-    "@mini-slock/shared": "workspace:*"
+    "@crewden/shared": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^20.12.0",

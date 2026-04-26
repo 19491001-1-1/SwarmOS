@@ -19,7 +19,7 @@ describe('agent MCP bridge', () => {
     });
 
     const responses = stdout.lines().map((line) => JSON.parse(line));
-    expect(responses[0].result.serverInfo.name).toBe('xoxiang-agent-tools');
+    expect(responses[0].result.serverInfo.name).toBe('crewden-agent-tools');
     expect(responses[1].result.tools.map((tool: any) => tool.name)).toEqual(expect.arrayContaining([
       'send_message',
       'check_messages',

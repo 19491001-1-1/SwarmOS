@@ -1,6 +1,6 @@
 import { nanoid } from 'nanoid';
-import type { Agent, AgentDelegation, DirectMessage } from '@mini-slock/shared';
-import { resolveStartMachineId, toRuntimeConfig } from '@mini-slock/hub-core';
+import type { Agent, AgentDelegation, DirectMessage } from '@crewden/shared';
+import { resolveStartMachineId, toRuntimeConfig } from '@crewden/hub-core';
 import { getStore } from './db.js';
 import { daemonRegistry } from './daemonRegistry.js';
 import { eventBus } from './events.js';

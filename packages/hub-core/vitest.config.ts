@@ -7,7 +7,7 @@ export default defineConfig({
   },
   resolve: {
     alias: {
-      '@mini-slock/shared': resolve(__dirname, '../shared/src/index.ts'),
+      '@crewden/shared': resolve(__dirname, '../shared/src/index.ts'),
     },
   },
 });

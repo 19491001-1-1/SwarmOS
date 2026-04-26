@@ -67,14 +67,14 @@ pnpm verify
 If the change touches Cloudflare Worker code, also run:
 
 ```bash
-pnpm --filter @mini-slock/cloudflare exec wrangler deploy --dry-run
-pnpm --filter @mini-slock/cloudflare exec wrangler deploy --config wrangler.test.jsonc --dry-run
+pnpm --filter @crewden/cloudflare exec wrangler deploy --dry-run
+pnpm --filter @crewden/cloudflare exec wrangler deploy --config wrangler.test.jsonc --dry-run
 ```
 
 If the change touches Cloudflare Pages deployment, also run:
 
 ```bash
-VITE_API_BASE=https://xoxiang-hub-test.xingke0.workers.dev pnpm --filter @mini-slock/web build
+VITE_API_BASE=https://crewden-hub-test.xingke0.workers.dev pnpm --filter @crewden/web build
 ```
 
 If a test or command fails, fix it on the task branch and rerun the failing command. Do not merge a failing branch.
@@ -84,7 +84,7 @@ If a test or command fails, fix it on the task branch and rerun the failing comm
 Every deployable iteration must carry a version across components.
 
 - Keep the default source version in `packages/shared/src/version.ts` aligned with the project version when doing a named release.
-- CI/CD should inject the current commit SHA through `XOXIANG_VERSION` for hub/server/daemon-style runtimes and `VITE_APP_VERSION` for the web build.
+- CI/CD should inject the current commit SHA through `CREWDEN_VERSION` for hub/server/daemon-style runtimes and `VITE_APP_VERSION` for the web build.
 - Do not hardcode a new component-local version if it can use the shared version helper or the build-time environment variable.
 
 ## Knowledge And Handoff Discipline
@@ -133,14 +133,14 @@ Do not use `git reset --hard`, `git checkout --`, or destructive cleanup unless 
 
 Cloudflare test is the default remote deployment target for deployable work.
 
-- Test Worker: `xoxiang-hub-test`
-- Test Worker URL: `https://xoxiang-hub-test.xingke0.workers.dev`
-- Test Pages project: `xoxiang-web-test`
-- Production Worker: `xoxiang-hub`
-- Production Worker URL: `https://xoxiang-hub.xingke0.workers.dev`
-- Production Pages project: `xoxiang-web`
+- Test Worker: `crewden-hub-test`
+- Test Worker URL: `https://crewden-hub-test.xingke0.workers.dev`
+- Test Pages project: `crewden-web-test`
+- Production Worker: `crewden-hub`
+- Production Worker URL: `https://crewden-hub.xingke0.workers.dev`
+- Production Pages project: `crewden-web`
 
-Production is the current live environment. Do not trigger production workflows, run `deploy:prod`, or deploy the `xoxiang-web` Pages project unless the user has explicitly approved promotion after test validation.
+Production is the current live environment. Do not trigger production workflows, run `deploy:prod`, or deploy the `crewden-web` Pages project unless the user has explicitly approved promotion after test validation.
 
 Expected flow:
 

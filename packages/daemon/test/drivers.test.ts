@@ -16,7 +16,7 @@ const baseCtx: AgentSpawnContext = {
   userMessage: 'hello',
   formattedMessage: 'You have 1 queued message.\n\nhello',
   serverUrl: 'http://localhost:3000',
-  agentTokenFile: '/tmp/workspace/.xoxiang/agent-token',
+  agentTokenFile: '/tmp/workspace/.crewden/agent-token',
   contextBlocks: [],
 };
 
@@ -69,17 +69,17 @@ describe('Claude driver', () => {
   });
 
   it('writes and references Claude MCP config', async () => {
-    const workspaceDir = await mkdtemp(join(tmpdir(), 'xoxiang-claude-mcp-'));
-    const ctx = { ...baseCtx, workspaceDir, agentTokenFile: join(workspaceDir, '.xoxiang', 'agent-token') };
+    const workspaceDir = await mkdtemp(join(tmpdir(), 'crewden-claude-mcp-'));
+    const ctx = { ...baseCtx, workspaceDir, agentTokenFile: join(workspaceDir, '.crewden', 'agent-token') };
 
     await claudeDriver.prepareWorkspace?.(ctx);
-    const config = await readFile(join(workspaceDir, '.claude', 'xoxiang-mcp.json'), 'utf8');
+    const config = await readFile(join(workspaceDir, '.claude', 'crewden-mcp.json'), 'utf8');
     const cmd = claudeDriver.buildCommand(ctx);
 
     expect(config).toContain('"mcpServers"');
     expect(config).toContain('"mcp-bridge"');
     expect(cmd.args).toContain('--mcp-config');
-    expect(cmd.args).toContain(join(workspaceDir, '.claude', 'xoxiang-mcp.json'));
+    expect(cmd.args).toContain(join(workspaceDir, '.claude', 'crewden-mcp.json'));
   });
 
   it('parseOutput extracts bridge message', () => {

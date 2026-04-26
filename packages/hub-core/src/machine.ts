@@ -1,4 +1,4 @@
-import type { Machine } from '@mini-slock/shared';
+import type { Machine } from '@crewden/shared';
 
 export function findExistingMachineId(input: {
   machines: Machine[];

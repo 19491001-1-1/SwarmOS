@@ -3,8 +3,8 @@ import { nanoid } from 'nanoid';
 import { getStore } from '../db.js';
 import { daemonRegistry } from '../daemonRegistry.js';
 import { eventBus } from '../events.js';
-import { CreateMessageRequestSchema, type Agent, type Mention } from '@mini-slock/shared';
-import { toAgentDelivery, toRuntimeConfig } from '@mini-slock/hub-core';
+import { CreateMessageRequestSchema, type Agent, type Mention } from '@crewden/shared';
+import { toAgentDelivery, toRuntimeConfig } from '@crewden/hub-core';
 
 export async function messageRoutes(app: FastifyInstance) {
   app.post<{ Params: { id: string } }>('/api/channels/:id/messages', async (req, reply) => {

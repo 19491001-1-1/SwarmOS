@@ -1,8 +1,8 @@
-# Minimal Slock-like Agent Workspace Implementation Plan
+# Minimal Crewden Implementation Plan
 
 > **For Claude Code:** Implement this plan end-to-end. Work autonomously in a loop: inspect, implement with TDD, run tests, fix failures, repeat until all acceptance tests pass. Do not stop after scaffolding. Deliver a runnable MVP.
 
-**Goal:** Build a minimal self-hosted Slock-like system: web chat + server + local daemon + long-running CLI agents, supporting Claude Code, Codex CLI, and Gemini CLI.
+**Goal:** Build a minimal self-hosted Crewden-like system: web chat + server + local daemon + long-running CLI agents, supporting Claude Code, Codex CLI, and Gemini CLI.
 
 **Architecture:** Use a single TypeScript monorepo with a Node.js backend, a React web UI, and a Node.js daemon. The server owns workspaces/channels/messages/agents/machines and talks to daemons over WebSocket. The daemon detects local runtimes and spawns CLI agents. Agents communicate with the server via a lightweight MCP-style stdio bridge or simplified JSON tool bridge.
 
@@ -155,7 +155,7 @@ type AgentDelivery = {
 Create this monorepo:
 
 ```text
-agent-workspace/
+crewden/
   package.json
   pnpm-workspace.yaml
   tsconfig.base.json
@@ -247,8 +247,8 @@ agent-workspace/
 3. Add scripts:
    ```json
    {
-     "dev": "pnpm --parallel --filter @mini-slock/server --filter @mini-slock/web dev",
-     "daemon": "pnpm --filter @mini-slock/daemon start",
+     "dev": "pnpm --parallel --filter @crewden/server --filter @crewden/web dev",
+     "daemon": "pnpm --filter @crewden/daemon start",
      "test": "pnpm -r test",
      "typecheck": "pnpm -r typecheck",
      "verify": "pnpm typecheck && pnpm test"
@@ -422,7 +422,7 @@ type BrowserEvent =
 **CLI:**
 
 ```bash
-mini-slock-daemon --server-url http://localhost:3000 --api-key dev-machine-key
+crewden-daemon --server-url http://localhost:3000 --api-key dev-machine-key
 ```
 
 **Behavior:**
@@ -475,7 +475,7 @@ export interface RuntimeDriver {
 
 ```text
 When you want to send a chat reply, output exactly one line:
-[[MINI_SLOCK_SEND_MESSAGE]] {"content":"..."}
+[[CREWDEN_SEND_MESSAGE]] {"content":"..."}
 ```
 
 Daemon parses this line and sends `agent:message` to server.
@@ -587,7 +587,7 @@ If bidirectional streaming is unreliable, implement per-message one-shot fallbac
 - Reads stdin or args.
 - Outputs:
   ```text
-  [[MINI_SLOCK_SEND_MESSAGE]] {"content":"Echo: <user message>"}
+  [[CREWDEN_SEND_MESSAGE]] {"content":"Echo: <user message>"}
   ```
 
 **Test:**
@@ -663,9 +663,9 @@ Claude Code must not stop until all are true:
 - [ ] `pnpm typecheck` succeeds.
 - [ ] `pnpm test` succeeds.
 - [ ] `pnpm verify` succeeds.
-- [ ] Server starts with `pnpm --filter @mini-slock/server dev`.
-- [ ] Web starts with `pnpm --filter @mini-slock/web dev`.
-- [ ] Daemon starts with `pnpm --filter @mini-slock/daemon start -- --server-url http://localhost:3000 --api-key dev-machine-key`.
+- [ ] Server starts with `pnpm --filter @crewden/server dev`.
+- [ ] Web starts with `pnpm --filter @crewden/web dev`.
+- [ ] Daemon starts with `pnpm --filter @crewden/daemon start -- --server-url http://localhost:3000 --api-key dev-machine-key`.
 - [ ] Machine appears in UI after daemon connects.
 - [ ] UI can create an agent with runtime `claude`.
 - [ ] UI can create an agent with runtime `codex`.
@@ -697,4 +697,3 @@ Work loop:
    - next recommended improvements
 
 If real CLI behavior differs from assumptions, inspect `claude --help`, `codex --help`, and `gemini --help`, then adapt drivers while keeping tests and README updated.
-

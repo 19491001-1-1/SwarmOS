@@ -1,4 +1,4 @@
-# Xoxiang Agent Workspace — Spec Doc
+# Crewden — Spec Doc
 
 > 本文档是项目的长期规格说明，记录系统设计、协议约定、开发规范和迭代路线图。所有重大变更应同步更新此文档。
 
@@ -6,7 +6,7 @@
 
 ## 1. 项目概述
 
-**Xoxiang** 是一个自托管的 AI Agent 协作工作台，类似 Slock（Slack + AI agents）。用户可以在 Web 界面创建和管理 AI Agent，通过聊天频道与 Agent 交互。Agent 在本地机器上以 CLI 进程方式运行，支持 Claude Code、Codex CLI、Gemini CLI 三种 runtime。
+**Crewden** 是一个自托管的 AI Agent 协作工作台，类似 Slack + AI agents 的协作产品。用户可以在 Web 界面创建和管理 AI Agent，通过聊天频道与 Agent 交互。Agent 在本地机器上以 CLI 进程方式运行，支持 Claude Code、Codex CLI、Gemini CLI 三种 runtime。
 
 **核心价值：**
 - 完全自托管，数据不出本地
@@ -54,7 +54,7 @@ v1.x 阶段的产品目标是从“Agent 协作工作台”升级为围绕目标
 │  - Runtime 探测: claude / codex / gemini            │
 │  - AgentProcessManager: 每条消息 spawn 一个 CLI 进程  │
 │  - 驱动层: claude.ts / codex.ts / gemini.ts         │
-│  - Bridge 解析: [[MINI_SLOCK_SEND_MESSAGE]] 协议     │
+│  - Bridge 解析: [[CREWDEN_SEND_MESSAGE]] 协议     │
 │  - Fallback: 无 bridge marker 时发送完整 stdout       │
 └──────────────┬──────────────────────────────────────┘
                │ spawn child_process
@@ -72,7 +72,7 @@ v1.x 阶段的产品目标是从“Agent 协作工作台”升级为围绕目标
 ## 3. Monorepo 结构
 
 ```
-agent-workspace/
+crewden/
 ├── package.json              # root scripts: dev, daemon, test, verify
 ├── pnpm-workspace.yaml
 ├── tsconfig.base.json
@@ -83,11 +83,11 @@ agent-workspace/
 ├── scripts/
 │   └── verify.ts
 └── packages/
-    ├── shared/               # @mini-slock/shared
+    ├── shared/               # @crewden/shared
     │   └── src/
     │       ├── protocol.ts   # TypeScript 类型定义
     │       └── validation.ts # Zod schema
-    ├── server/               # @mini-slock/server
+    ├── server/               # @crewden/server
     │   └── src/
     │       ├── app.ts
     │       ├── db.ts         # 内存 Store
@@ -95,7 +95,7 @@ agent-workspace/
     │       ├── daemonRegistry.ts
     │       ├── routes/       # agents, channels, messages, machines
     │       └── ws/           # daemonSocket, browserSocket
-    ├── daemon/               # @mini-slock/daemon
+    ├── daemon/               # @crewden/daemon
     │   └── src/
     │       ├── cli.ts
     │       ├── daemonClient.ts
@@ -108,7 +108,7 @@ agent-workspace/
     │           ├── claude.ts
     │           ├── codex.ts
     │           └── gemini.ts
-    └── web/                  # @mini-slock/web
+    └── web/                  # @crewden/web
         └── src/
             ├── App.tsx
             ├── api.ts
@@ -171,7 +171,7 @@ type BrowserEvent =
 Agent 进程通过 stdout 输出以下格式发送消息：
 
 ```
-[[MINI_SLOCK_SEND_MESSAGE]] {"content":"回复内容"}
+[[CREWDEN_SEND_MESSAGE]] {"content":"回复内容"}
 ```
 
 **Fallback 机制：** 若 agent 进程退出时未输出任何 bridge marker（如 codex 输出纯文本），daemon 将完整 stdout 作为回复发送。

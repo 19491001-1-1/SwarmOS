@@ -1,4 +1,4 @@
-# Xoxiang 迭代路线图
+# Crewden 迭代路线图
 
 > 本文档是长期迭代规划总览。每个版本有独立的实现计划文档，可直接发给 Claude Code 自主执行。
 
@@ -13,7 +13,7 @@
 | v0.4 | Agent Profile + DM | Agent 详情页，Agent 之间私信通道 | v0.3 |
 | v0.4.1 | Agent 恢复与 daemon 自动启动 | 修复冷启动误停 agent，daemon 连接后自动恢复应运行的 agent | v0.4 |
 | v0.4.2 | Agent 委派与按需唤醒 | Agent 可主动委派并拉起另一个 agent 处理任务 | v0.4.1 |
-| v0.4.3 | Agent-facing CLI + Internal API | 给 agent 注入 `xoxiang` CLI 和 per-agent token，支持查询/发送/委派 | v0.4.2 |
+| v0.4.3 | Agent-facing CLI + Internal API | 给 agent 注入 `crewden` CLI 和 per-agent token，支持查询/发送/委派 | v0.4.2 |
 | v0.4.4 | Reliable Delivery + Daemon Inbox | 可靠投递与恢复调度层，支持 idleConfig、inbox、wake summary 和 Claude best-effort resume | v0.4.3 |
 | v0.4.5 | Agent Memory + Workspace Foundation | 每个 agent 有持久 workspace、MEMORY.md 和 notes | v0.4.4 |
 | v0.4.6 | Agent MCP Bridge | MCP tools 复用 internal API，补齐结构化协作工具通道 | v0.4.3 |

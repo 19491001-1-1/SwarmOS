@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { Agent } from '@mini-slock/shared';
+import type { Agent } from '@crewden/shared';
 import { buildClarifyingQuestions, classifyMessageIntent, inferGoalRiskLevel, recommendAgentsForGoal } from '../src/goalAlignment.js';
 
 const baseAgent: Agent = {

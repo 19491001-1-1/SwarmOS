@@ -6,7 +6,7 @@ import {
   GoalBriefStatusSchema,
   MessageToGoalBriefRequestSchema,
   PatchGoalBriefRequestSchema,
-} from '@mini-slock/shared';
+} from '@crewden/shared';
 import { getStore } from '../db.js';
 import { eventBus } from '../events.js';
 import { notifyTaskAssignee } from '../taskDelivery.js';

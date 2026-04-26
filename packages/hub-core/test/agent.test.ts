@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { Agent, Machine } from '@mini-slock/shared';
+import type { Agent, Machine } from '@crewden/shared';
 import { resetAgentStatusForRestart, resolveStartMachineId, toRuntimeConfig } from '../src/agent.js';
 import { resolveAgentReference } from '../src/agentResolve.js';
 

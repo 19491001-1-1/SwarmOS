@@ -1,4 +1,4 @@
-import type { KnowledgeEntry } from '@mini-slock/shared';
+import type { KnowledgeEntry } from '@crewden/shared';
 
 export function knowledgeEntryToMarkdown(entry: KnowledgeEntry): string {
   return [

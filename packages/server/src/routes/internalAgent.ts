@@ -35,8 +35,8 @@ import {
   type Task,
   type TaskProgressEventType,
   type TaskReview,
-} from '@mini-slock/shared';
-import { buildClarifyingQuestions, inferGoalRiskLevel, recommendAgentsForGoal, toRuntimeConfig } from '@mini-slock/hub-core';
+} from '@crewden/shared';
+import { buildClarifyingQuestions, inferGoalRiskLevel, recommendAgentsForGoal, toRuntimeConfig } from '@crewden/hub-core';
 import { getStore } from '../db.js';
 import { eventBus } from '../events.js';
 import { daemonRegistry } from '../daemonRegistry.js';
@@ -73,9 +73,9 @@ export async function internalAgentRoutes(app: FastifyInstance) {
       channels: await store.listChannels(),
       agents: await store.listAgents(),
       version: createVersionInfo('server', {
-        version: process.env.XOXIANG_VERSION,
-        commit: process.env.XOXIANG_COMMIT_SHA ?? process.env.GITHUB_SHA,
-        build: process.env.XOXIANG_BUILD_ID ?? process.env.GITHUB_RUN_ID,
+        version: process.env.CREWDEN_VERSION,
+        commit: process.env.CREWDEN_COMMIT_SHA ?? process.env.GITHUB_SHA,
+        build: process.env.CREWDEN_BUILD_ID ?? process.env.GITHUB_RUN_ID,
       }),
     };
   });

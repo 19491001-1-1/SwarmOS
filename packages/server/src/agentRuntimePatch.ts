@@ -1,4 +1,4 @@
-import type { Agent, Machine, PatchAgentRequest } from '@mini-slock/shared';
+import type { Agent, Machine, PatchAgentRequest } from '@crewden/shared';
 
 const BUSY_STATUSES = new Set<Agent['status']>(['starting', 'running', 'working']);
 

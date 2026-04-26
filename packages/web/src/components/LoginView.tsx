@@ -23,7 +23,7 @@ export function LoginView({ error, onSignIn }: Props) {
   return (
     <main className="login-shell">
       <form className="login-card" onSubmit={submit}>
-        <div className="login-brand">Xoxiang</div>
+        <div className="login-brand">Crewden</div>
         <label className="login-label" htmlFor="web-auth-token">Access token</label>
         <input
           id="web-auth-token"

@@ -1,5 +1,5 @@
 import { execa } from 'execa';
-import type { RuntimeId } from '@mini-slock/shared';
+import type { RuntimeId } from '@crewden/shared';
 
 export type DetectedRuntime = {
   id: RuntimeId;

@@ -1,4 +1,4 @@
-import type { Agent, GoalAlignmentRiskLevel, Message } from '@mini-slock/shared';
+import type { Agent, GoalAlignmentRiskLevel, Message } from '@crewden/shared';
 
 export type MessageIntent = 'chat' | 'task' | 'goal';
 
