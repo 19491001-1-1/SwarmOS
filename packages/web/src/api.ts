@@ -1,7 +1,7 @@
 import { getEffectiveAuthToken } from './auth.js';
 
 export const API_BASE = (import.meta.env.VITE_API_BASE ?? '').replace(/\/$/, '');
-export const WEB_VERSION = (import.meta.env.VITE_APP_VERSION ?? '0.6.0').trim();
+export const WEB_VERSION = (import.meta.env.VITE_APP_VERSION ?? '1.5.1').trim();
 export const WEB_COMMIT_SHA = (import.meta.env.VITE_COMMIT_SHA ?? '').trim();
 
 export type Channel = { id: string; name: string; createdAt: string };

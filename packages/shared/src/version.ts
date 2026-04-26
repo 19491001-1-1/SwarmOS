@@ -1,4 +1,4 @@
-export const APP_VERSION = '0.6.0';
+export const APP_VERSION = '1.5.1';
 
 export type ComponentName = 'shared' | 'hub-core' | 'server' | 'cloudflare-hub' | 'web' | 'daemon';
 
