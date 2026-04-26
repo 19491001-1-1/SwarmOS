@@ -1,5 +1,5 @@
-import type { AgentRuntimeConfig, Agent } from '@mini-slock/shared';
-import { toRuntimeConfig } from '@mini-slock/hub-core';
+import type { AgentRuntimeConfig, Agent } from '@crewden/shared';
+import { toRuntimeConfig } from '@crewden/hub-core';
 import { getStore } from './db.js';
 
 export async function toAgentRuntimeConfig(agent: Agent): Promise<AgentRuntimeConfig> {

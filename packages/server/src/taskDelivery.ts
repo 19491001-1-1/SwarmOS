@@ -1,5 +1,5 @@
-import type { Agent, Task } from '@mini-slock/shared';
-import { resolveStartMachineId, toRuntimeConfig } from '@mini-slock/hub-core';
+import type { Agent, Task } from '@crewden/shared';
+import { resolveStartMachineId, toRuntimeConfig } from '@crewden/hub-core';
 import { nanoid } from 'nanoid';
 import { daemonRegistry } from './daemonRegistry.js';
 import { getStore } from './db.js';
@@ -59,7 +59,7 @@ export async function buildOpenTaskSummary(agent: Agent): Promise<string | undef
       return `- ${task.id} [${task.status}] #${task.channelId}: ${task.title}${goal}`;
     }),
     '',
-    'Use `xoxiang task read <taskId> --context`, `xoxiang task update <taskId> --status in_progress|in_review|done`, and `xoxiang task handoff <taskId> --to agentName --notes "..."` to manage them.',
+    'Use `crewden task read <taskId> --context`, `crewden task update <taskId> --status in_progress|in_review|done`, and `crewden task handoff <taskId> --to agentName --notes "..."` to manage them.',
   ].join('\n');
 }
 
@@ -78,7 +78,7 @@ export function toTaskDelivery(task: Task) {
       task.context?.background ? `Background: ${task.context.background}` : undefined,
       task.context?.handoffNotes?.length ? `Latest handoff: ${task.context.handoffNotes.at(-1)}` : undefined,
       '',
-      'Use `xoxiang task read <taskId> --context` for details and `xoxiang task update <taskId> --status in_progress|in_review|done` when you make progress.',
+      'Use `crewden task read <taskId> --context` for details and `crewden task update <taskId> --status in_progress|in_review|done` when you make progress.',
     ].filter(Boolean).join('\n'),
     createdAt: task.updatedAt,
   };

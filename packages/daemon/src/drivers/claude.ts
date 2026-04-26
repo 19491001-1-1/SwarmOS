@@ -16,10 +16,10 @@ export const claudeDriver: RuntimeDriver = {
   async prepareWorkspace(ctx: AgentSpawnContext): Promise<void> {
     const claudeDir = join(ctx.workspaceDir, '.claude');
     await mkdir(claudeDir, { recursive: true });
-    await writeFile(join(claudeDir, 'xoxiang-mcp.json'), JSON.stringify({
+    await writeFile(join(claudeDir, 'crewden-mcp.json'), JSON.stringify({
       mcpServers: {
-        xoxiang: {
-          command: join(ctx.workspaceDir, '.xoxiang', 'xoxiang'),
+        crewden: {
+          command: join(ctx.workspaceDir, '.crewden', 'crewden'),
           args: [
             'mcp-bridge',
             '--agent-id', ctx.agentId,
@@ -49,7 +49,7 @@ export const claudeDriver: RuntimeDriver = {
       '--verbose',
       '--output-format', 'stream-json',
       '--input-format', 'stream-json',
-      '--mcp-config', join(ctx.workspaceDir, '.claude', 'xoxiang-mcp.json'),
+      '--mcp-config', join(ctx.workspaceDir, '.claude', 'crewden-mcp.json'),
       '--append-system-prompt', systemPrompt,
     ];
     if (ctx.config.model) {

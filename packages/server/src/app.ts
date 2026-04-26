@@ -13,7 +13,7 @@ import { knowledgeRoutes } from './routes/knowledge.js';
 import { daemonSocketHandler } from './ws/daemonSocket.js';
 import { browserSocketHandler } from './ws/browserSocket.js';
 import { initDb } from './db.js';
-import { createVersionInfo } from '@mini-slock/shared';
+import { createVersionInfo } from '@crewden/shared';
 import { startReminderScheduler } from './reminders.js';
 import { browserAuthConfigured, requireBrowserAuth } from './browserAuth.js';
 
@@ -38,9 +38,9 @@ export async function buildApp(opts: { logger?: boolean } = {}) {
 
   app.get('/api/version', async () => {
     return createVersionInfo('server', {
-      version: process.env.XOXIANG_VERSION,
-      commit: process.env.XOXIANG_COMMIT_SHA ?? process.env.GITHUB_SHA,
-      build: process.env.XOXIANG_BUILD_ID ?? process.env.GITHUB_RUN_ID,
+      version: process.env.CREWDEN_VERSION,
+      commit: process.env.CREWDEN_COMMIT_SHA ?? process.env.GITHUB_SHA,
+      build: process.env.CREWDEN_BUILD_ID ?? process.env.GITHUB_RUN_ID,
     });
   });
 

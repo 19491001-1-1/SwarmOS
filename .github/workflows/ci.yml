@@ -27,4 +27,4 @@ jobs:
         run: pnpm verify
 
       - name: Cloudflare Worker dry-run
-        run: pnpm --filter @mini-slock/cloudflare exec wrangler deploy --dry-run
+        run: pnpm --filter @crewden/cloudflare exec wrangler deploy --dry-run

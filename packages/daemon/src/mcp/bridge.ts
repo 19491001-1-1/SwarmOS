@@ -4,9 +4,9 @@ import type { Readable, Writable } from 'stream';
 import { callInternalApi, type ParsedCommand } from '../internalAgentApi.js';
 
 type BridgeEnv = {
-  XOXIANG_AGENT_ID?: string;
-  XOXIANG_SERVER_URL?: string;
-  XOXIANG_AGENT_TOKEN_FILE?: string;
+  CREWDEN_AGENT_ID?: string;
+  CREWDEN_SERVER_URL?: string;
+  CREWDEN_AGENT_TOKEN_FILE?: string;
 };
 
 type BridgeIo = {
@@ -47,11 +47,11 @@ const TOOL_NAMES: ToolName[] = [
 
 export async function runMcpBridgeFromCli(argv: string[], env: BridgeEnv = process.env, io: BridgeIo): Promise<number> {
   const opts = parseFlags(argv);
-  const agentId = stringArg(opts['agent-id']) ?? env.XOXIANG_AGENT_ID;
-  const serverUrl = stringArg(opts['server-url']) ?? env.XOXIANG_SERVER_URL;
-  const tokenFile = stringArg(opts['auth-token-file']) ?? env.XOXIANG_AGENT_TOKEN_FILE;
+  const agentId = stringArg(opts['agent-id']) ?? env.CREWDEN_AGENT_ID;
+  const serverUrl = stringArg(opts['server-url']) ?? env.CREWDEN_SERVER_URL;
+  const tokenFile = stringArg(opts['auth-token-file']) ?? env.CREWDEN_AGENT_TOKEN_FILE;
   if (!agentId || !serverUrl || !tokenFile) {
-    io.stderr.write('missing XOXIANG_AGENT_ID, XOXIANG_SERVER_URL, or XOXIANG_AGENT_TOKEN_FILE\n');
+    io.stderr.write('missing CREWDEN_AGENT_ID, CREWDEN_SERVER_URL, or CREWDEN_AGENT_TOKEN_FILE\n');
     return 2;
   }
 
@@ -101,7 +101,7 @@ async function handleJsonRpcLine(line: string, ctx: { agentId: string; serverUrl
       return jsonRpcResult(request.id, {
         protocolVersion: '2024-11-05',
         capabilities: { tools: {} },
-        serverInfo: { name: 'xoxiang-agent-tools', version: '0.4.6' },
+        serverInfo: { name: 'crewden-agent-tools', version: '0.4.6' },
       });
     }
     if (request.method === 'tools/list') {
@@ -198,7 +198,7 @@ function toolToCommand(name: ToolName, args: Record<string, unknown>): ParsedCom
 function toolDefinition(name: ToolName) {
   return {
     name,
-    description: `xoxiang collaboration tool: ${name}`,
+    description: `crewden collaboration tool: ${name}`,
     inputSchema: {
       type: 'object',
       properties: toolProperties(name),

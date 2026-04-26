@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { nanoid } from 'nanoid';
-import { CreateChannelRequestSchema, SearchRequestSchema } from '@mini-slock/shared';
+import { CreateChannelRequestSchema, SearchRequestSchema } from '@crewden/shared';
 import { getStore } from '../db.js';
 import { eventBus } from '../events.js';
 

@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { nanoid } from 'nanoid';
-import { CreateTaskRequestSchema, CreateTaskReviewRequestSchema, MessageToTaskRequestSchema, PatchTaskRequestSchema, ReviewDecisionRequestSchema, TaskStatusSchema, type TaskReview } from '@mini-slock/shared';
+import { CreateTaskRequestSchema, CreateTaskReviewRequestSchema, MessageToTaskRequestSchema, PatchTaskRequestSchema, ReviewDecisionRequestSchema, TaskStatusSchema, type TaskReview } from '@crewden/shared';
 import { getStore } from '../db.js';
 import { eventBus } from '../events.js';
 import { notifyTaskAssignee } from '../taskDelivery.js';

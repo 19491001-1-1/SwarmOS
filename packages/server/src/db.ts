@@ -4,8 +4,8 @@ import { homedir } from 'node:os';
 import { drizzle, type LibSQLDatabase } from 'drizzle-orm/libsql';
 import { createClient, type Client } from '@libsql/client';
 import { asc, desc, eq, inArray, or } from 'drizzle-orm';
-import type { Channel, Message, MessageThread, Machine, Agent, RuntimeId, AgentStatus, AgentActivity, DirectMessage, DirectMessageThread, AgentDelegation, AgentTokenInfo, Task, TaskStatus, GoalBrief, GoalBriefStatus, GoalAlignment, GoalAlignmentStatus, Reminder, ReminderStatus, SearchMessageResult, KnowledgeEntry, KnowledgeKind, KnowledgeSearchResult, KnowledgeStatus } from '@mini-slock/shared';
-import { resolveAgentReference } from '@mini-slock/hub-core';
+import type { Channel, Message, MessageThread, Machine, Agent, RuntimeId, AgentStatus, AgentActivity, DirectMessage, DirectMessageThread, AgentDelegation, AgentTokenInfo, Task, TaskStatus, GoalBrief, GoalBriefStatus, GoalAlignment, GoalAlignmentStatus, Reminder, ReminderStatus, SearchMessageResult, KnowledgeEntry, KnowledgeKind, KnowledgeSearchResult, KnowledgeStatus } from '@crewden/shared';
+import { resolveAgentReference } from '@crewden/hub-core';
 import { activities, agentDelegations, agentTokens, agents, channels, directMessages, goalAlignments, goals, knowledgeEntries, machines, messages, reminders, tasks } from './schema.js';
 
 type Database = LibSQLDatabase<typeof import('./schema.js')>;
@@ -17,7 +17,7 @@ let initialized = false;
 let initialization: Promise<void> | null = null;
 
 function getDbPath(): string {
-  return process.env.XOXIANG_DB_PATH || join(homedir(), '.xoxiang', 'data.db');
+  return process.env.CREWDEN_DB_PATH || join(homedir(), '.crewden', 'data.db');
 }
 
 function getDbUrl(path: string): string {

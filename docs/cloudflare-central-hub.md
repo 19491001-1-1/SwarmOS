@@ -1,6 +1,6 @@
 # Cloudflare Central Hub
 
-Xoxiang can run in two modes:
+Crewden can run in two modes:
 
 - Local mode: web, server, and daemon all run on one machine through `start.sh`.
 - Cloudflare hub mode: a centralized Worker is deployed publicly; every daemon connects to that Worker.
@@ -27,7 +27,7 @@ This document captures the bypass/centralized deployment work that was added aft
 
 ### Goal
 
-Make a public centralized Xoxiang service on Cloudflare so multiple machines can connect their local daemons to one shared hub.
+Make a public centralized Crewden service on Cloudflare so multiple machines can connect their local daemons to one shared hub.
 
 The local mode remains unchanged:
 
@@ -69,7 +69,7 @@ Cloudflare Workers do not run a long-lived Node server and cannot use local SQLi
 - `packages/web/src/vite-env.d.ts`
   - Adds Vite env typings for `import.meta.env`.
 - `.env.example`
-  - Documents `VITE_API_BASE` and `XOXIANG_MACHINE_ID`.
+  - Documents `VITE_API_BASE` and `CREWDEN_MACHINE_ID`.
 - `README.md`
   - Adds a short Cloudflare hub section.
 
@@ -80,8 +80,8 @@ validation; production is promoted manually only after explicit user approval.
 
 | Environment | Worker | Worker URL | Pages project | Purpose |
 |-------------|--------|------------|---------------|---------|
-| Test | `xoxiang-hub-test` | `https://xoxiang-hub-test.xingke0.workers.dev` | `xoxiang-web-test` | Validate deployable changes before release |
-| Production | `xoxiang-hub` | `https://xoxiang-hub.xingke0.workers.dev` | `xoxiang-web` | Current live environment |
+| Test | `crewden-hub-test` | `https://crewden-hub-test.xingke0.workers.dev` | `crewden-web-test` | Validate deployable changes before release |
+| Production | `crewden-hub` | `https://crewden-hub.xingke0.workers.dev` | `crewden-web` | Current live environment |
 
 Promotion rule:
 
@@ -96,25 +96,25 @@ Promotion rule:
 Current Worker URL:
 
 ```text
-https://xoxiang-hub.xingke0.workers.dev
+https://crewden-hub.xingke0.workers.dev
 ```
 
 Current Worker name:
 
 ```text
-xoxiang-hub
+crewden-hub
 ```
 
 Current deployment command:
 
 ```bash
-pnpm --filter @mini-slock/cloudflare run deploy:prod
+pnpm --filter @crewden/cloudflare run deploy:prod
 ```
 
 Health check:
 
 ```bash
-curl -sf https://xoxiang-hub.xingke0.workers.dev/api/channels
+curl -sf https://crewden-hub.xingke0.workers.dev/api/channels
 ```
 
 Expected result includes the default `general` channel.
@@ -147,8 +147,8 @@ Rotation commands used:
 
 ```bash
 openssl rand -hex 32
-pnpm --filter @mini-slock/cloudflare run deploy
-printf '%s' '<new-key>' | pnpm --filter @mini-slock/cloudflare exec wrangler secret put DAEMON_API_KEY
+pnpm --filter @crewden/cloudflare run deploy
+printf '%s' '<new-key>' | pnpm --filter @crewden/cloudflare exec wrangler secret put DAEMON_API_KEY
 ```
 
 Important operational note: Cloudflare will reject `wrangler secret put DAEMON_API_KEY` if `DAEMON_API_KEY` is still present as a plain `vars` binding in `wrangler.jsonc`. Remove the plain var and deploy once before creating the same-name secret.
@@ -158,43 +158,43 @@ Important operational note: Cloudflare will reject `wrangler secret put DAEMON_A
 Authenticate once:
 
 ```bash
-pnpm --filter @mini-slock/cloudflare exec wrangler login
+pnpm --filter @crewden/cloudflare exec wrangler login
 ```
 
 Deploy test Worker:
 
 ```bash
-pnpm --filter @mini-slock/cloudflare run deploy:test
+pnpm --filter @crewden/cloudflare run deploy:test
 ```
 
 Deploy production Worker after approval:
 
 ```bash
-pnpm --filter @mini-slock/cloudflare run deploy:prod
+pnpm --filter @crewden/cloudflare run deploy:prod
 ```
 
 Set or rotate the daemon API key as a Cloudflare secret:
 
 ```bash
-printf '%s' '<new-key>' | pnpm --filter @mini-slock/cloudflare exec wrangler secret put DAEMON_API_KEY
+printf '%s' '<new-key>' | pnpm --filter @crewden/cloudflare exec wrangler secret put DAEMON_API_KEY
 ```
 
 For the test Worker, pass the test config:
 
 ```bash
-printf '%s' '<test-key>' | pnpm --filter @mini-slock/cloudflare exec wrangler secret put DAEMON_API_KEY --config wrangler.test.jsonc
+printf '%s' '<test-key>' | pnpm --filter @crewden/cloudflare exec wrangler secret put DAEMON_API_KEY --config wrangler.test.jsonc
 ```
 
 Set or rotate the browser auth token (required by `/api/*` and `/ws`):
 
 ```bash
-printf '%s' '<new-web-token>' | pnpm --filter @mini-slock/cloudflare exec wrangler secret put WEB_AUTH_TOKEN
+printf '%s' '<new-web-token>' | pnpm --filter @crewden/cloudflare exec wrangler secret put WEB_AUTH_TOKEN
 ```
 
 For the test Worker:
 
 ```bash
-printf '%s' '<test-web-token>' | pnpm --filter @mini-slock/cloudflare exec wrangler secret put WEB_AUTH_TOKEN --config wrangler.test.jsonc
+printf '%s' '<test-web-token>' | pnpm --filter @crewden/cloudflare exec wrangler secret put WEB_AUTH_TOKEN --config wrangler.test.jsonc
 ```
 
 Generate a fresh token with `openssl rand -hex 32`. Browser clients must send this token as
@@ -205,20 +205,20 @@ Worker integration tests live in `packages/cloudflare/test/hub.test.ts` and cove
 and daemon-machine flow. Run them with:
 
 ```bash
-pnpm --filter @mini-slock/cloudflare test
+pnpm --filter @crewden/cloudflare test
 ```
 
 Dry-run packaging validation:
 
 ```bash
-pnpm --filter @mini-slock/cloudflare exec wrangler deploy --dry-run
-pnpm --filter @mini-slock/cloudflare exec wrangler deploy --config wrangler.test.jsonc --dry-run
+pnpm --filter @crewden/cloudflare exec wrangler deploy --dry-run
+pnpm --filter @crewden/cloudflare exec wrangler deploy --config wrangler.test.jsonc --dry-run
 ```
 
 Typecheck:
 
 ```bash
-pnpm --filter @mini-slock/cloudflare typecheck
+pnpm --filter @crewden/cloudflare typecheck
 ```
 
 Full repo verification:
@@ -256,7 +256,7 @@ Configure in repo **Settings → Secrets and variables → Actions**:
 
 The deploy workflows inject the current Git commit SHA as the runtime/build version:
 
-- Worker hub: `XOXIANG_VERSION`, `XOXIANG_COMMIT_SHA`, `XOXIANG_BUILD_ID`
+- Worker hub: `CREWDEN_VERSION`, `CREWDEN_COMMIT_SHA`, `CREWDEN_BUILD_ID`
 - Web UI: `VITE_APP_VERSION`, `VITE_COMMIT_SHA`
 
 The web sidebar displays the web and hub versions. The hub exposes its value at `GET /api/version`.
@@ -290,7 +290,7 @@ gh workflow run deploy-cloudflare-pages.yml
 Run the production workflows only after the test environment has been validated and the user has
 approved production promotion.
 
-The test Pages workflow creates `xoxiang-web-test` automatically if it does not already exist. A
+The test Pages workflow creates `crewden-web-test` automatically if it does not already exist. A
 fresh Cloudflare Pages project can take a short time before its `*.pages.dev` TLS certificate is
 ready; retry the Pages URL after the workflow succeeds if the first request reports a TLS handshake
 failure.
@@ -311,10 +311,10 @@ Successful deploy signs:
 
 ```bash
 # Deploy Worker
-pnpm --filter @mini-slock/cloudflare run deploy:test
+pnpm --filter @crewden/cloudflare run deploy:test
 
 # Deploy production Worker after approval
-pnpm --filter @mini-slock/cloudflare run deploy:prod
+pnpm --filter @crewden/cloudflare run deploy:prod
 
 # Deploy Pages
 pnpm deploy:web:pages
@@ -325,12 +325,12 @@ pnpm deploy:web:pages
 After deployment, start each machine's daemon against the Worker URL:
 
 ```bash
-pnpm --filter @mini-slock/daemon start -- \
-  --server-url https://xoxiang-hub.xingke0.workers.dev \
+pnpm --filter @crewden/daemon start -- \
+  --server-url https://crewden-hub.xingke0.workers.dev \
   --api-key 63da594e0ad55bf22a52068a61b54942337ec5137703f9e5658ecb93a7905f2f
 ```
 
-Each daemon persists a local machine identity at `~/.xoxiang/machine-id`, so one physical machine remains one machine record across restarts.
+Each daemon persists a local machine identity at `~/.crewden/machine-id`, so one physical machine remains one machine record across restarts.
 
 ## Web UI
 
@@ -339,17 +339,17 @@ The Cloudflare hub requires `WEB_AUTH_TOKEN` for all browser traffic. Local web 
 For local web development pointed at the Cloudflare hub:
 
 ```bash
-VITE_API_BASE=https://xoxiang-hub.xingke0.workers.dev \
+VITE_API_BASE=https://crewden-hub.xingke0.workers.dev \
 VITE_WEB_AUTH_TOKEN=<web-token> \
-pnpm --filter @mini-slock/web dev
+pnpm --filter @crewden/web dev
 ```
 
 For a static production web build:
 
 ```bash
-VITE_API_BASE=https://xoxiang-hub.xingke0.workers.dev \
+VITE_API_BASE=https://crewden-hub.xingke0.workers.dev \
 VITE_WEB_AUTH_TOKEN=<web-token> \
-pnpm --filter @mini-slock/web build
+pnpm --filter @crewden/web build
 ```
 
 The web app will use:
@@ -372,7 +372,7 @@ The script runs:
 
 1. `wrangler whoami` to verify Cloudflare authentication.
 2. Validates that `VITE_WEB_AUTH_TOKEN` is set when targeting the public hub, and fails fast if not.
-3. `VITE_API_BASE=<hub-url> VITE_WEB_AUTH_TOKEN=<token> pnpm --filter @mini-slock/web build`.
+3. `VITE_API_BASE=<hub-url> VITE_WEB_AUTH_TOKEN=<token> pnpm --filter @crewden/web build`.
 4. `wrangler pages deploy packages/web/dist`.
 5. If the Pages project does not exist yet, `wrangler pages project create` creates it and the deploy is retried.
 
@@ -388,17 +388,17 @@ The script does not echo the full token to stdout; only the configured length is
 Defaults:
 
 ```text
-CLOUDFLARE_PAGES_PROJECT=xoxiang-web
+CLOUDFLARE_PAGES_PROJECT=crewden-web
 CLOUDFLARE_PAGES_BRANCH=main
-VITE_API_BASE=https://xoxiang-hub.xingke0.workers.dev
+VITE_API_BASE=https://crewden-hub.xingke0.workers.dev
 ```
 
 Override when needed:
 
 ```bash
-CLOUDFLARE_PAGES_PROJECT=my-xoxiang-web \
+CLOUDFLARE_PAGES_PROJECT=my-crewden-web \
 CLOUDFLARE_PAGES_BRANCH=production \
-VITE_API_BASE=https://xoxiang-hub.xingke0.workers.dev \
+VITE_API_BASE=https://crewden-hub.xingke0.workers.dev \
 pnpm deploy:web:pages
 ```
 
@@ -443,8 +443,8 @@ Daemon machine identity is handled on the daemon side, not the Worker side.
 Implementation:
 
 - file: `packages/daemon/src/machineIdentity.ts`
-- default identity path: `~/.xoxiang/machine-id`
-- override env var: `XOXIANG_MACHINE_ID`
+- default identity path: `~/.crewden/machine-id`
+- override env var: `CREWDEN_MACHINE_ID`
 
 This avoids creating a new machine record on every daemon restart.
 
@@ -470,12 +470,12 @@ and workspace identity/auth should be added to every API and WebSocket route.
 
 ## Troubleshooting
 
-### `pnpm --filter @mini-slock/cloudflare deploy` fails
+### `pnpm --filter @crewden/cloudflare deploy` fails
 
 Use:
 
 ```bash
-pnpm --filter @mini-slock/cloudflare run deploy
+pnpm --filter @crewden/cloudflare run deploy
 ```
 
 `pnpm deploy` is a reserved pnpm command and expects a deploy target parameter.
@@ -487,14 +487,14 @@ Cause: `DAEMON_API_KEY` still exists in `wrangler.jsonc` under `vars`.
 Fix:
 
 1. Remove `DAEMON_API_KEY` from `vars`.
-2. Deploy once with `pnpm --filter @mini-slock/cloudflare run deploy`.
+2. Deploy once with `pnpm --filter @crewden/cloudflare run deploy`.
 3. Run `wrangler secret put DAEMON_API_KEY`.
 
 ### Worker health check works but daemon cannot connect
 
 Check:
 
-- daemon `--server-url` must be `https://xoxiang-hub.xingke0.workers.dev`
+- daemon `--server-url` must be `https://crewden-hub.xingke0.workers.dev`
 - daemon `--api-key` must match the Cloudflare `DAEMON_API_KEY` secret
 - Worker `/daemon/connect` expects a WebSocket upgrade, so plain `curl` is not a daemon-connect test
 
@@ -503,7 +503,7 @@ Check:
 Set `VITE_API_BASE` before starting or building the web app:
 
 ```bash
-VITE_API_BASE=https://xoxiang-hub.xingke0.workers.dev pnpm --filter @mini-slock/web dev
+VITE_API_BASE=https://crewden-hub.xingke0.workers.dev pnpm --filter @crewden/web dev
 ```
 
 ## Current Scope

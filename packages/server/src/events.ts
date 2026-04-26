@@ -1,4 +1,4 @@
-import type { BrowserEvent } from '@mini-slock/shared';
+import type { BrowserEvent } from '@crewden/shared';
 
 type Listener = (event: BrowserEvent) => void;
 

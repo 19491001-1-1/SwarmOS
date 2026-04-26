@@ -1,4 +1,4 @@
-import type { Agent, AgentRuntimeConfig, Machine } from '@mini-slock/shared';
+import type { Agent, AgentRuntimeConfig, Machine } from '@crewden/shared';
 
 export function toRuntimeConfig(agent: Agent): AgentRuntimeConfig {
   return {

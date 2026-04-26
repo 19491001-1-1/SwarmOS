@@ -30,7 +30,7 @@ import type {
   TaskStatus,
   WorkspaceEntry,
   WorkspaceError,
-} from '@mini-slock/shared';
+} from '@crewden/shared';
 import {
   createVersionInfo,
   CreateChannelRequestSchema,
@@ -78,8 +78,8 @@ import {
   SearchKnowledgeRequestSchema,
   StartGoalAlignmentRequestSchema,
   TaskStatusSchema,
-} from '@mini-slock/shared';
-import { buildClarifyingQuestions, findDuplicateMachineIds, inferGoalRiskLevel, recommendAgentsForGoal, resolveAgentReference, resolveStartMachineId, toAgentDelivery, toRuntimeConfig } from '@mini-slock/hub-core';
+} from '@crewden/shared';
+import { buildClarifyingQuestions, findDuplicateMachineIds, inferGoalRiskLevel, recommendAgentsForGoal, resolveAgentReference, resolveStartMachineId, toAgentDelivery, toRuntimeConfig } from '@crewden/hub-core';
 
 type SocketAttachment =
   | { kind: 'browser' }
@@ -102,7 +102,7 @@ export default {
   },
 };
 
-export class XoxiangHub extends DurableObject<Env> {
+export class CrewdenHub extends DurableObject<Env> {
   private workspaceReads = new Map<string, {
     resolve: (result: WorkspaceEntry | WorkspaceError) => void;
     timeout: ReturnType<typeof setTimeout>;
@@ -122,9 +122,9 @@ export class XoxiangHub extends DurableObject<Env> {
     const url = new URL(request.url);
     if (request.method === 'GET' && url.pathname === '/api/version') {
       return json(createVersionInfo('cloudflare-hub', {
-        version: this.env.XOXIANG_VERSION,
-        commit: this.env.XOXIANG_COMMIT_SHA,
-        build: this.env.XOXIANG_BUILD_ID,
+        version: this.env.CREWDEN_VERSION,
+        commit: this.env.CREWDEN_COMMIT_SHA,
+        build: this.env.CREWDEN_BUILD_ID,
       }));
     }
 
@@ -1360,9 +1360,9 @@ export class XoxiangHub extends DurableObject<Env> {
         channels: this.listChannels(),
         agents: this.listAgents(),
         version: createVersionInfo('cloudflare-hub', {
-          version: this.env.XOXIANG_VERSION,
-          commit: this.env.XOXIANG_COMMIT_SHA,
-          build: this.env.XOXIANG_BUILD_ID,
+          version: this.env.CREWDEN_VERSION,
+          commit: this.env.CREWDEN_COMMIT_SHA,
+          build: this.env.CREWDEN_BUILD_ID,
         }),
       });
     }
@@ -2793,7 +2793,7 @@ export class XoxiangHub extends DurableObject<Env> {
           return `- ${task.id} [${task.status}] #${task.channelId}: ${task.title}${goal}`;
         }),
         '',
-        'Use `xoxiang task read <taskId> --context`, `xoxiang task update <taskId> --status in_progress|in_review|done`, and `xoxiang task handoff <taskId> --to agentName --notes "..."` to manage them.',
+        'Use `crewden task read <taskId> --context`, `crewden task update <taskId> --status in_progress|in_review|done`, and `crewden task handoff <taskId> --to agentName --notes "..."` to manage them.',
       ].join('\n'),
       createdAt: new Date().toISOString(),
     };
@@ -3274,7 +3274,7 @@ function toTaskDelivery(task: Task) {
       task.context?.background ? `Background: ${task.context.background}` : undefined,
       task.context?.handoffNotes?.length ? `Latest handoff: ${task.context.handoffNotes.at(-1)}` : undefined,
       '',
-      'Use `xoxiang task read <taskId> --context` for details and `xoxiang task update <taskId> --status in_progress|in_review|done` when you make progress.',
+      'Use `crewden task read <taskId> --context` for details and `crewden task update <taskId> --status in_progress|in_review|done` when you make progress.',
     ].filter(Boolean).join('\n'),
     createdAt: task.updatedAt,
   };

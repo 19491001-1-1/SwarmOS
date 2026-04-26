@@ -1,5 +1,5 @@
 {
-  "name": "@mini-slock/shared",
+  "name": "@crewden/shared",
   "version": "0.6.0",
   "type": "module",
   "main": "./dist/index.js",

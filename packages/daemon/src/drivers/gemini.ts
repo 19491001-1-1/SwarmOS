@@ -19,7 +19,7 @@ export const geminiDriver: RuntimeDriver = {
     await writeFile(join(geminiDir, 'settings.json'), JSON.stringify({
       mcpServers: {
         chat: {
-          command: join(ctx.workspaceDir, '.xoxiang', 'xoxiang'),
+          command: join(ctx.workspaceDir, '.crewden', 'crewden'),
           args: [
             'mcp-bridge',
             '--agent-id', ctx.agentId,

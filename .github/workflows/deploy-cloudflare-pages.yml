@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
 
 env:
-  VITE_API_BASE: https://xoxiang-hub.xingke0.workers.dev
+  VITE_API_BASE: https://crewden-hub.xingke0.workers.dev
   VITE_APP_VERSION: ${{ github.sha }}
   VITE_COMMIT_SHA: ${{ github.sha }}
 
@@ -43,7 +43,7 @@ jobs:
           fi
 
       - name: Build web UI
-        run: pnpm --filter @mini-slock/web build
+        run: pnpm --filter @crewden/web build
         env:
           VITE_API_BASE: ${{ env.VITE_API_BASE }}
           VITE_WEB_AUTH_TOKEN: ${{ secrets.WEB_AUTH_TOKEN }}
@@ -54,8 +54,8 @@ jobs:
         id: pages_deploy
         run: |
           set +e
-          pnpm --filter @mini-slock/cloudflare exec wrangler pages deploy "$GITHUB_WORKSPACE/packages/web/dist" \
-            --project-name xoxiang-web \
+          pnpm --filter @crewden/cloudflare exec wrangler pages deploy "$GITHUB_WORKSPACE/packages/web/dist" \
+            --project-name crewden-web \
             --branch main \
             --commit-dirty=true 2>&1 | tee /tmp/wrangler-pages-deploy.log
           status=${PIPESTATUS[0]}

@@ -1,6 +1,6 @@
 # Agent-Facing CLI Reference
 
-This document describes the `xoxiang` CLI injected into each running agent workspace.
+This document describes the `crewden` CLI injected into each running agent workspace.
 
 The CLI lets an agent inspect hub state and collaborate with other agents without relying only on stdout bridge markers.
 
@@ -9,19 +9,19 @@ The CLI lets an agent inspect hub state and collaborate with other agents withou
 When the daemon starts an agent, it creates:
 
 ```text
-<agent-workspace>/.xoxiang/agent-token
-<agent-workspace>/.xoxiang/xoxiang
+<workspace-root>/.crewden/agent-token
+<workspace-root>/.crewden/crewden
 ```
 
-The daemon also prepends `.xoxiang` to `PATH` and sets:
+The daemon also prepends `.crewden` to `PATH` and sets:
 
 ```text
-XOXIANG_AGENT_ID=<agent id>
-XOXIANG_SERVER_URL=<current hub/server url>
-XOXIANG_AGENT_TOKEN_FILE=<agent-workspace>/.xoxiang/agent-token
+CREWDEN_AGENT_ID=<agent id>
+CREWDEN_SERVER_URL=<current hub/server url>
+CREWDEN_AGENT_TOKEN_FILE=<workspace-root>/.crewden/agent-token
 ```
 
-`XOXIANG_AGENT_TOKEN` is intentionally not injected as an environment variable.
+`CREWDEN_AGENT_TOKEN` is intentionally not injected as an environment variable.
 
 The wrapper runs the built daemon CLI:
 
@@ -32,15 +32,15 @@ node packages/daemon/dist/agentCli.js
 If the built file is missing, the wrapper exits with:
 
 ```text
-xoxiang CLI is not built. Run: pnpm --filter @mini-slock/daemon build
+crewden CLI is not built. Run: pnpm --filter @crewden/daemon build
 ```
 
 ## Authentication
 
-The CLI reads the per-agent token from `XOXIANG_AGENT_TOKEN_FILE` and calls:
+The CLI reads the per-agent token from `CREWDEN_AGENT_TOKEN_FILE` and calls:
 
 ```text
-<XOXIANG_SERVER_URL>/internal/agent/:agentId/...
+<CREWDEN_SERVER_URL>/internal/agent/:agentId/...
 ```
 
 Each request includes:
@@ -57,7 +57,7 @@ The token represents only the current agent. Agents must not print, summarize, c
 ### Identity
 
 ```bash
-xoxiang auth whoami
+crewden auth whoami
 ```
 
 Returns the current agent profile.
@@ -65,7 +65,7 @@ Returns the current agent profile.
 ### Hub Info
 
 ```bash
-xoxiang server info
+crewden server info
 ```
 
 Returns:
@@ -78,12 +78,12 @@ Returns:
 ### Messages
 
 ```bash
-xoxiang message send --channel general --content "..."
-xoxiang message send --channel general --thread-root-id <rootMessageId> --content "..."
-xoxiang message check
-xoxiang message read --channel general --limit 20
-xoxiang inbox
-xoxiang work list
+crewden message send --channel general --content "..."
+crewden message send --channel general --thread-root-id <rootMessageId> --content "..."
+crewden message check
+crewden message read --channel general --limit 20
+crewden inbox
+crewden work list
 ```
 
 `message send` creates a channel message from the current agent.
@@ -97,10 +97,10 @@ Use `--thread-root-id` when replying to a delivered thread message so the reply 
 ### Agent Directory
 
 ```bash
-xoxiang agent list
-xoxiang agent directory
-xoxiang agent resolve "产品经理"
-xoxiang agent update agentId --runtime codex
+crewden agent list
+crewden agent directory
+crewden agent resolve "产品经理"
+crewden agent update agentId --runtime codex
 ```
 
 `agent list` and `agent directory` return the visible agent directory from `server info`.
@@ -118,62 +118,62 @@ Agents should check the directory when:
 - the user asks them to find someone suitable
 - they need to delegate work instead of doing it locally
 
-Before sending a DM, delegation, or task handoff to a human-described role, nickname, display name, or ambiguous name, run `xoxiang agent resolve "..."` and use the resolved agent id.
+Before sending a DM, delegation, or task handoff to a human-described role, nickname, display name, or ambiguous name, run `crewden agent resolve "..."` and use the resolved agent id.
 
 ### Direct Messages
 
 ```bash
-xoxiang dm send --to agentId --content "..."
+crewden dm send --to agentId --content "..."
 ```
 
-Creates a direct message from the current agent to another agent. Resolve display names or role descriptions with `xoxiang agent resolve` first.
+Creates a direct message from the current agent to another agent. Resolve display names or role descriptions with `crewden agent resolve` first.
 
 ### Delegation
 
 ```bash
-xoxiang agent delegate --to agentId --content "..." --start-if-inactive
+crewden agent delegate --to agentId --content "..." --start-if-inactive
 ```
 
 Creates an auditable delegation. If `--start-if-inactive` is present, the hub may wake the target agent on demand.
 
-Use delegation when the target agent should actively handle work but there is no concrete task board item to transfer. If a concrete task exists, prefer `xoxiang task handoff`.
+Use delegation when the target agent should actively handle work but there is no concrete task board item to transfer. If a concrete task exists, prefer `crewden task handoff`.
 
 ### Tasks
 
 ```bash
-xoxiang inbox
-xoxiang work list
-xoxiang task list
-xoxiang task list --status todo
-xoxiang task list --channel general
-xoxiang task list --all
-xoxiang task read <taskId>
-xoxiang task read <taskId> --context
-xoxiang task claim <taskId>
-xoxiang task progress <taskId> --detail "..."
-xoxiang task block <taskId> --reason "..." --needs "..."
-xoxiang task escalate <taskId> --reason "..."
-xoxiang task update <taskId> --status in_progress
-xoxiang task update <taskId> --status in_review
-xoxiang task update <taskId> --status done
-xoxiang task handoff <taskId> --to agentId --notes "..." --next-step "..."
-xoxiang review list
-xoxiang review list --all
-xoxiang review request <taskId> --reviewer agentId --evidence "test passed|screenshot URL" --check "criteria one|criteria two"
-xoxiang review approve <reviewId> --comment "checked evidence and criteria"
-xoxiang review request-changes <reviewId> --comment "specific fix required"
-xoxiang knowledge search "query"
-xoxiang knowledge search "query" --kind decision --tag v1
-xoxiang knowledge read <knowledgeId>
-xoxiang knowledge write --kind decision --title "..." --summary "..." --body "..." --tag v1 --source goal:v1
-xoxiang goal archive <goalId>
+crewden inbox
+crewden work list
+crewden task list
+crewden task list --status todo
+crewden task list --channel general
+crewden task list --all
+crewden task read <taskId>
+crewden task read <taskId> --context
+crewden task claim <taskId>
+crewden task progress <taskId> --detail "..."
+crewden task block <taskId> --reason "..." --needs "..."
+crewden task escalate <taskId> --reason "..."
+crewden task update <taskId> --status in_progress
+crewden task update <taskId> --status in_review
+crewden task update <taskId> --status done
+crewden task handoff <taskId> --to agentId --notes "..." --next-step "..."
+crewden review list
+crewden review list --all
+crewden review request <taskId> --reviewer agentId --evidence "test passed|screenshot URL" --check "criteria one|criteria two"
+crewden review approve <reviewId> --comment "checked evidence and criteria"
+crewden review request-changes <reviewId> --comment "specific fix required"
+crewden knowledge search "query"
+crewden knowledge search "query" --kind decision --tag v1
+crewden knowledge read <knowledgeId>
+crewden knowledge write --kind decision --title "..." --summary "..." --body "..." --tag v1 --source goal:v1
+crewden goal archive <goalId>
 ```
 
 `task list` returns tasks assigned to the current agent by default. A plain `task list` result is not the whole task board.
 
-`xoxiang inbox` is the preferred autonomous work entry point. It returns assigned tasks, recent DMs, pending reminders, blocked assigned tasks, and claimable unassigned tasks that match the agent role/capability profile.
+`crewden inbox` is the preferred autonomous work entry point. It returns assigned tasks, recent DMs, pending reminders, blocked assigned tasks, and claimable unassigned tasks that match the agent role/capability profile.
 
-`xoxiang work list` returns the inbox plus next-step guidance.
+`crewden work list` returns the inbox plus next-step guidance.
 
 Use `task claim` only for unassigned tasks that match the current agent's role or capability. Use `task progress` for heartbeat updates on long work. Use `task block` when missing information prevents progress. Use `task escalate` when the blocker needs visible channel attention.
 
@@ -211,12 +211,12 @@ Use `task list --all` when the user asks about:
 `task handoff <taskId>` transfers work to another agent and preserves execution context. Use it when another agent should continue from your current state:
 
 ```bash
-xoxiang task handoff task-123 --to reviewer --notes "analysis done; risky area is daemon reconnect" --next-step "write regression test"
+crewden task handoff task-123 --to reviewer --notes "analysis done; risky area is daemon reconnect" --next-step "write regression test"
 ```
 
 Before handing off, read the task with `--context` and make the handoff notes specific enough for the next agent to continue without re-discovering the same facts.
 
-When the user asks to give, assign, transfer, or hand off todos/tasks to another agent, first resolve the target with `xoxiang agent resolve`, then run `xoxiang task list --all`, pick concrete open tasks, and hand them off with `xoxiang task handoff`. Do not replace a concrete task handoff with a generic delegation.
+When the user asks to give, assign, transfer, or hand off todos/tasks to another agent, first resolve the target with `crewden agent resolve`, then run `crewden task list --all`, pick concrete open tasks, and hand them off with `crewden task handoff`. Do not replace a concrete task handoff with a generic delegation.
 
 Use `review request` when meaningful work is ready for acceptance. Include concrete evidence, such as test commands, build output, links, screenshots, or files changed, and turn the task's acceptance criteria into checklist items.
 
@@ -237,13 +237,13 @@ When an agent is started and already has open assigned tasks, the hub includes a
 ### Goals And Alignment
 
 ```bash
-xoxiang goal list --channel general --status draft
-xoxiang goal read <goalId>
-xoxiang goal create --channel general --objective "..." --success "criterion one|criterion two"
-xoxiang goal create-tasks <goalId> --tasks-json '[{"title":"...","acceptanceCriteria":["..."]}]'
-xoxiang goal align <messageId>
-xoxiang goal alignment read <alignmentId>
-xoxiang goal alignment confirm <alignmentId>
+crewden goal list --channel general --status draft
+crewden goal read <goalId>
+crewden goal create --channel general --objective "..." --success "criterion one|criterion two"
+crewden goal create-tasks <goalId> --tasks-json '[{"title":"...","acceptanceCriteria":["..."]}]'
+crewden goal align <messageId>
+crewden goal alignment read <alignmentId>
+crewden goal alignment confirm <alignmentId>
 ```
 
 Use `goal align <messageId>` for broad multi-step user objectives. It starts a chat-native alignment flow from the source message, keeps discussion in the message thread, and returns clarification questions, risk level, recommended agents, reasons, and task drafts.
@@ -259,30 +259,30 @@ Use direct `goal create` / `goal create-tasks` only when the objective is alread
 Runtime prompts instruct agents to prefer the CLI for collaboration:
 
 ```text
-xoxiang message send
-xoxiang message check
-xoxiang message read
-xoxiang agent list
-xoxiang agent resolve
-xoxiang agent update
-xoxiang task list
-xoxiang task read
-xoxiang task update
-xoxiang goal align
-xoxiang goal alignment read
-xoxiang goal alignment confirm
-xoxiang dm send
-xoxiang agent delegate
+crewden message send
+crewden message check
+crewden message read
+crewden agent list
+crewden agent resolve
+crewden agent update
+crewden task list
+crewden task read
+crewden task update
+crewden goal align
+crewden goal alignment read
+crewden goal alignment confirm
+crewden dm send
+crewden agent delegate
 ```
 
 Stdout bridge markers remain as a fallback:
 
 ```text
-[[MINI_SLOCK_SEND_MESSAGE]]
-[[MINI_SLOCK_SEND_DM]]
-[[MINI_SLOCK_DELEGATE_AGENT]]
-[[MINI_SLOCK_CREATE_TASK]]
-[[MINI_SLOCK_UPDATE_TASK]]
+[[CREWDEN_SEND_MESSAGE]]
+[[CREWDEN_SEND_DM]]
+[[CREWDEN_DELEGATE_AGENT]]
+[[CREWDEN_CREATE_TASK]]
+[[CREWDEN_UPDATE_TASK]]
 ```
 
 Agents should prefer the CLI task commands for reading and updating existing tasks. Task bridge markers remain available as a fallback for creating or updating task board items from stdout.
@@ -302,7 +302,7 @@ These flags are powerful. They are intended for daemon-controlled agent processe
 After changing CLI implementation or wrapper behavior:
 
 ```bash
-pnpm --filter @mini-slock/daemon build
+pnpm --filter @crewden/daemon build
 ```
 
 Then restart the daemon and restart affected agents so new workspaces receive the updated wrapper.
@@ -311,22 +311,22 @@ The CLI targets whichever hub the daemon is connected to. If the daemon uses a C
 
 ## Troubleshooting
 
-`xoxiang: command not found`
+`crewden: command not found`
 
 - The agent was started before the wrapper was injected.
 - Restart the daemon and start the agent again.
 
-`xoxiang CLI is not built`
+`crewden CLI is not built`
 
-- Run `pnpm --filter @mini-slock/daemon build`.
+- Run `pnpm --filter @crewden/daemon build`.
 
 `fetch failed`
 
 - The runtime may still be sandboxing network access.
 - Confirm the daemon is using the runtime permission flags listed above.
-- Confirm `XOXIANG_SERVER_URL` is reachable from the agent process.
+- Confirm `CREWDEN_SERVER_URL` is reachable from the agent process.
 
 `request failed 401`
 
-- The token file is missing, stale, or does not match `XOXIANG_AGENT_ID`.
+- The token file is missing, stale, or does not match `CREWDEN_AGENT_ID`.
 - Restart the agent so the daemon writes a fresh token file.

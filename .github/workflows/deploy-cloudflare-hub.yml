@@ -12,9 +12,9 @@ jobs:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       DAEMON_API_KEY: ${{ secrets.DAEMON_API_KEY }}
-      XOXIANG_VERSION: ${{ github.sha }}
-      XOXIANG_COMMIT_SHA: ${{ github.sha }}
-      XOXIANG_BUILD_ID: ${{ github.run_id }}
+      CREWDEN_VERSION: ${{ github.sha }}
+      CREWDEN_COMMIT_SHA: ${{ github.sha }}
+      CREWDEN_BUILD_ID: ${{ github.run_id }}
     steps:
       - uses: actions/checkout@v4
 
@@ -45,7 +45,7 @@ jobs:
           fi
 
       - name: Upload DAEMON_API_KEY to Cloudflare Worker
-        run: printf '%s' "$DAEMON_API_KEY" | pnpm --filter @mini-slock/cloudflare exec wrangler secret put DAEMON_API_KEY
+        run: printf '%s' "$DAEMON_API_KEY" | pnpm --filter @crewden/cloudflare exec wrangler secret put DAEMON_API_KEY
 
       - name: Deploy Cloudflare Worker
-        run: pnpm --filter @mini-slock/cloudflare run deploy
+        run: pnpm --filter @crewden/cloudflare run deploy

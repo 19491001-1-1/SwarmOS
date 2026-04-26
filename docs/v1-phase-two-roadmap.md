@@ -143,8 +143,8 @@ v1.0 继续复用当前 Agent profile，不引入复杂组织架构。
 ### 验收条件
 
 - Agent profile 可编辑上述字段。
-- `xoxiang agent list` 能看到角色能力信息。
-- `xoxiang agent resolve` 能按职责/能力找到候选 Agent。
+- `crewden agent list` 能看到角色能力信息。
+- `crewden agent resolve` 能按职责/能力找到候选 Agent。
 - 委派时可以复用 resolve，不只依赖名字。
 
 ## v1.1 — Goal Brief & Work Breakdown

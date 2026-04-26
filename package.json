@@ -1,11 +1,11 @@
 {
-  "name": "agent-workspace",
+  "name": "crewden",
   "private": true,
   "version": "0.6.0",
   "scripts": {
     "start": "bash start.sh",
-    "dev": "pnpm --parallel --filter @mini-slock/server --filter @mini-slock/web dev",
-    "daemon": "pnpm --filter @mini-slock/daemon start",
+    "dev": "pnpm --parallel --filter @crewden/server --filter @crewden/web dev",
+    "daemon": "pnpm --filter @crewden/daemon start",
     "deploy:web:pages": "bash scripts/deploy-cloudflare-pages.sh",
     "test": "pnpm -r test",
     "typecheck": "pnpm -r typecheck",

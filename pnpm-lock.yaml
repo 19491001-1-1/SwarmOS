@@ -23,10 +23,10 @@ importers:
 
   packages/cloudflare:
     dependencies:
-      '@mini-slock/hub-core':
+      '@crewden/hub-core':
         specifier: workspace:*
         version: link:../hub-core
-      '@mini-slock/shared':
+      '@crewden/shared':
         specifier: workspace:*
         version: link:../shared
     devDependencies:
@@ -54,7 +54,7 @@ importers:
 
   packages/daemon:
     dependencies:
-      '@mini-slock/shared':
+      '@crewden/shared':
         specifier: workspace:*
         version: link:../shared
       execa:
@@ -88,7 +88,7 @@ importers:
 
   packages/hub-core:
     dependencies:
-      '@mini-slock/shared':
+      '@crewden/shared':
         specifier: workspace:*
         version: link:../shared
     devDependencies:
@@ -113,10 +113,10 @@ importers:
       '@libsql/client':
         specifier: ^0.17.3
         version: 0.17.3
-      '@mini-slock/hub-core':
+      '@crewden/hub-core':
         specifier: workspace:*
         version: link:../hub-core
-      '@mini-slock/shared':
+      '@crewden/shared':
         specifier: workspace:*
         version: link:../shared
       drizzle-orm:

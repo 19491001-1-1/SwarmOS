@@ -1,5 +1,5 @@
 import type { WebSocket } from 'ws';
-import type { ServerToDaemon, WorkspaceEntry, WorkspaceError } from '@mini-slock/shared';
+import type { ServerToDaemon, WorkspaceEntry, WorkspaceError } from '@crewden/shared';
 
 interface DaemonEntry {
   machineId: string;

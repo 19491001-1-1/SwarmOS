@@ -15,5 +15,5 @@ for (let i = lines.length - 1; i >= 0; i--) {
   }
 }
 
-process.stdout.write(`[[MINI_SLOCK_SEND_MESSAGE]] {"content":"Echo: ${userMessage}"}\n`);
+process.stdout.write(`[[CREWDEN_SEND_MESSAGE]] {"content":"Echo: ${userMessage}"}\n`);
 process.exit(0);

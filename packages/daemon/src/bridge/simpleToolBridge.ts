@@ -1,10 +1,10 @@
-export const BRIDGE_MARKER = '[[MINI_SLOCK_SEND_MESSAGE]]';
-export const DM_BRIDGE_MARKER = '[[MINI_SLOCK_SEND_DM]]';
-export const DELEGATE_BRIDGE_MARKER = '[[MINI_SLOCK_DELEGATE_AGENT]]';
-export const CREATE_TASK_BRIDGE_MARKER = '[[MINI_SLOCK_CREATE_TASK]]';
-export const UPDATE_TASK_BRIDGE_MARKER = '[[MINI_SLOCK_UPDATE_TASK]]';
-export const SET_REMINDER_BRIDGE_MARKER = '[[MINI_SLOCK_SET_REMINDER]]';
-export const CANCEL_REMINDER_BRIDGE_MARKER = '[[MINI_SLOCK_CANCEL_REMINDER]]';
+export const BRIDGE_MARKER = '[[CREWDEN_SEND_MESSAGE]]';
+export const DM_BRIDGE_MARKER = '[[CREWDEN_SEND_DM]]';
+export const DELEGATE_BRIDGE_MARKER = '[[CREWDEN_DELEGATE_AGENT]]';
+export const CREATE_TASK_BRIDGE_MARKER = '[[CREWDEN_CREATE_TASK]]';
+export const UPDATE_TASK_BRIDGE_MARKER = '[[CREWDEN_UPDATE_TASK]]';
+export const SET_REMINDER_BRIDGE_MARKER = '[[CREWDEN_SET_REMINDER]]';
+export const CANCEL_REMINDER_BRIDGE_MARKER = '[[CREWDEN_CANCEL_REMINDER]]';
 
 export type ParsedBridgeMessage = {
   content: string;
@@ -169,57 +169,57 @@ export function parseCancelReminderLine(line: string): ParsedBridgeCancelReminde
 
 export function buildBridgeInstruction(): string {
   return [
-    'Use xoxiang collaboration tools in this order: MCP tools when available, then the injected `xoxiang` CLI, then stdout marker fallback.',
+    'Use crewden collaboration tools in this order: MCP tools when available, then the injected `crewden` CLI, then stdout marker fallback.',
     'Prefer MCP tools for structured reads, message sending, DMs, delegation, and server info because their results are machine-readable.',
     'If you use a tool or CLI command, base your answer on the real returned result; do not invent tool results.',
-    'Injected `xoxiang` CLI commands:',
-    '- `xoxiang message send --channel general --content "..."`',
-    '- `xoxiang message send --channel general --thread-root-id <rootMessageId> --content "..."` to reply inside a thread',
-    '- `xoxiang message check`',
-    '- `xoxiang message read --channel general --limit 20`',
-    '- `xoxiang inbox` as the first autonomous work entry point; it includes assigned tasks, DMs, reminders, and claimable tasks',
-    '- `xoxiang work list` for an inbox plus next-step guidance',
-    '- `xoxiang agent list` to view the agent directory with names, roles, runtimes, and statuses',
-    '- `xoxiang agent resolve "nickname or role"` to resolve user-facing names, display names, or role descriptions to a concrete agent id',
-    '- `xoxiang task list` to view tasks assigned to you',
-    '- `xoxiang task list --all` to view the whole task board, including unassigned tasks and tasks assigned to other agents',
-    '- `xoxiang task read <taskId>` to inspect one task',
-    '- `xoxiang task read <taskId> --context` to inspect the full agent handoff context for a task',
-    '- `xoxiang task claim <taskId>` to claim a matching unassigned task',
-    '- `xoxiang task progress <taskId> --detail "..."` to leave a heartbeat/progress event',
-    '- `xoxiang task block <taskId> --reason "..." --needs "..."` when missing information blocks progress',
-    '- `xoxiang task escalate <taskId> --reason "..."` when the user or channel needs visible escalation',
-    '- `xoxiang task update <taskId> --status in_progress|in_review|done` to report progress',
-    '- `xoxiang task handoff <taskId> --to agentId --notes "..." --next-step "..."` to transfer a task with execution context',
-    '- `xoxiang review list` to view reviews assigned to you',
-    '- `xoxiang review request <taskId> --reviewer agentId --evidence "test passed|screenshot URL" --check "criteria one|criteria two"` to submit evidence and request acceptance',
-    '- `xoxiang review approve <reviewId> --comment "checked evidence and criteria"` after verifying evidence and checklist',
-    '- `xoxiang review request-changes <reviewId> --comment "specific change required"` when evidence or behavior is not acceptable',
-    '- `xoxiang knowledge search "query"` before context-dependent work',
-    '- `xoxiang knowledge read <id>` to inspect a reusable decision, runbook, preference, learning, artifact, or archive',
-    '- `xoxiang knowledge write --kind decision|runbook|learning|user_preference|artifact --title "..." --summary "..." --body "..." --tag v1 --source task:id` to preserve reusable knowledge',
-    '- `xoxiang goal archive <goalId>` to create a project archive after meaningful goal completion',
-    '- `xoxiang goal list --channel general --status draft|confirmed` to inspect goal briefs',
-    '- `xoxiang goal read <goalId>` to inspect one goal and its linked tasks',
-    '- `xoxiang goal align <messageId>` to start chat-native goal alignment from a source message',
-    '- `xoxiang goal alignment read <alignmentId>` to inspect clarification questions, plan preview, recommended agents, and risk',
-    '- `xoxiang goal alignment confirm <alignmentId>` to confirm the aligned plan and create goal tasks',
-    '- `xoxiang goal create --channel general --objective "..." --success "criterion one|criterion two"` to draft a structured goal brief',
-    '- `xoxiang goal create-tasks <goalId> --tasks-json \'[{"title":"...","acceptanceCriteria":["..."]}]\'` to create contextual tasks from a confirmed goal',
-    '- `xoxiang dm send --to agentId --content "..."`',
-    '- `xoxiang agent delegate --to agentId --content "..." --start-if-inactive`',
-    'Before delegating, DMing, or handing off to a human-described role, nickname, display name, or ambiguous name, resolve it with `xoxiang agent resolve "..."` and use the resolved agent id.',
-    'When the user asks about unassigned tasks, all tasks, the whole task board, or another agent\'s tasks, use `xoxiang task list --all`; do not infer global task state from plain `xoxiang task list`.',
+    'Injected `crewden` CLI commands:',
+    '- `crewden message send --channel general --content "..."`',
+    '- `crewden message send --channel general --thread-root-id <rootMessageId> --content "..."` to reply inside a thread',
+    '- `crewden message check`',
+    '- `crewden message read --channel general --limit 20`',
+    '- `crewden inbox` as the first autonomous work entry point; it includes assigned tasks, DMs, reminders, and claimable tasks',
+    '- `crewden work list` for an inbox plus next-step guidance',
+    '- `crewden agent list` to view the agent directory with names, roles, runtimes, and statuses',
+    '- `crewden agent resolve "nickname or role"` to resolve user-facing names, display names, or role descriptions to a concrete agent id',
+    '- `crewden task list` to view tasks assigned to you',
+    '- `crewden task list --all` to view the whole task board, including unassigned tasks and tasks assigned to other agents',
+    '- `crewden task read <taskId>` to inspect one task',
+    '- `crewden task read <taskId> --context` to inspect the full agent handoff context for a task',
+    '- `crewden task claim <taskId>` to claim a matching unassigned task',
+    '- `crewden task progress <taskId> --detail "..."` to leave a heartbeat/progress event',
+    '- `crewden task block <taskId> --reason "..." --needs "..."` when missing information blocks progress',
+    '- `crewden task escalate <taskId> --reason "..."` when the user or channel needs visible escalation',
+    '- `crewden task update <taskId> --status in_progress|in_review|done` to report progress',
+    '- `crewden task handoff <taskId> --to agentId --notes "..." --next-step "..."` to transfer a task with execution context',
+    '- `crewden review list` to view reviews assigned to you',
+    '- `crewden review request <taskId> --reviewer agentId --evidence "test passed|screenshot URL" --check "criteria one|criteria two"` to submit evidence and request acceptance',
+    '- `crewden review approve <reviewId> --comment "checked evidence and criteria"` after verifying evidence and checklist',
+    '- `crewden review request-changes <reviewId> --comment "specific change required"` when evidence or behavior is not acceptable',
+    '- `crewden knowledge search "query"` before context-dependent work',
+    '- `crewden knowledge read <id>` to inspect a reusable decision, runbook, preference, learning, artifact, or archive',
+    '- `crewden knowledge write --kind decision|runbook|learning|user_preference|artifact --title "..." --summary "..." --body "..." --tag v1 --source task:id` to preserve reusable knowledge',
+    '- `crewden goal archive <goalId>` to create a project archive after meaningful goal completion',
+    '- `crewden goal list --channel general --status draft|confirmed` to inspect goal briefs',
+    '- `crewden goal read <goalId>` to inspect one goal and its linked tasks',
+    '- `crewden goal align <messageId>` to start chat-native goal alignment from a source message',
+    '- `crewden goal alignment read <alignmentId>` to inspect clarification questions, plan preview, recommended agents, and risk',
+    '- `crewden goal alignment confirm <alignmentId>` to confirm the aligned plan and create goal tasks',
+    '- `crewden goal create --channel general --objective "..." --success "criterion one|criterion two"` to draft a structured goal brief',
+    '- `crewden goal create-tasks <goalId> --tasks-json \'[{"title":"...","acceptanceCriteria":["..."]}]\'` to create contextual tasks from a confirmed goal',
+    '- `crewden dm send --to agentId --content "..."`',
+    '- `crewden agent delegate --to agentId --content "..." --start-if-inactive`',
+    'Before delegating, DMing, or handing off to a human-described role, nickname, display name, or ambiguous name, resolve it with `crewden agent resolve "..."` and use the resolved agent id.',
+    'When the user asks about unassigned tasks, all tasks, the whole task board, or another agent\'s tasks, use `crewden task list --all`; do not infer global task state from plain `crewden task list`.',
     'When taking over or handing off a task, read it with `--context` and preserve useful goal, background, acceptance criteria, artifacts, and next-step notes.',
     'Before marking meaningful work done, submit concrete evidence and request review. Reviewers must inspect evidence and checklist items before approving; request changes must say exactly what to fix.',
     'Before context-dependent work, search knowledge for relevant decisions, user preferences, runbooks, prior learnings, artifacts, and project archives.',
     'Write knowledge for new durable decisions, user preferences, failure lessons, reusable runbooks, and useful artifacts. Do not store short-term chat, noise, secrets, or credentials as knowledge.',
     'If retrieved knowledge conflicts with the task or other knowledge, mark the stale entry as conflict when appropriate or escalate the conflict to the user.',
-    'On startup or after a long idle period, read `xoxiang inbox` before deciding what to do. Prioritize assigned tasks, claim only tasks that match your role/capability, and use progress/block/escalate instead of pretending work is done.',
+    'On startup or after a long idle period, read `crewden inbox` before deciding what to do. Prioritize assigned tasks, claim only tasks that match your role/capability, and use progress/block/escalate instead of pretending work is done.',
     'When a user gives a broad multi-step objective, start goal alignment from the message before creating many tasks; clarify missing success criteria, explain why each agent is recommended, and wait for confirmation on medium/high-risk work.',
     'Only create a goal brief directly when the objective is already explicit enough or the user has confirmed the plan.',
-    'When the user asks to give, assign, transfer, or hand off todos/tasks, resolve the target agent, run `xoxiang task list --all`, pick concrete open tasks, and use `xoxiang task handoff`; do not use generic delegation when a concrete task exists.',
-    'When you are unsure how to do a task, need help, or need a specialist role, check `xoxiang agent list` first, then DM or delegate to the best matching agent.',
+    'When the user asks to give, assign, transfer, or hand off todos/tasks, resolve the target agent, run `crewden task list --all`, pick concrete open tasks, and use `crewden task handoff`; do not use generic delegation when a concrete task exists.',
+    'When you are unsure how to do a task, need help, or need a specialist role, check `crewden agent list` first, then DM or delegate to the best matching agent.',
     'Never print or reveal the agent token file content.',
     `If the CLI is unavailable, send a chat reply by outputting exactly one line:\n${BRIDGE_MARKER} {"content":"your message here"}`,
   ].join('\n');
@@ -231,8 +231,8 @@ export function buildDmInstruction(): string {
 
 export function buildDelegateInstruction(): string {
   return [
-    'When the user asks you to ask, call, wake, delegate to, hand off to, or assign work to another xoxiang agent, do not do the task yourself.',
-    'If the injected `xoxiang` CLI is available, resolve human display names or roles first and prefer task handoff for concrete tasks.',
+    'When the user asks you to ask, call, wake, delegate to, hand off to, or assign work to another crewden agent, do not do the task yourself.',
+    'If the injected `crewden` CLI is available, resolve human display names or roles first and prefer task handoff for concrete tasks.',
     'Output exactly one delegation line and no extra prose:',
     `${DELEGATE_BRIDGE_MARKER} {"to":"agentId or agentName","content":"task details","startIfInactive":true}`,
     'Use a concrete agent id when known; otherwise preserve the user-facing target so the hub can resolve it by name, display name, or role hint.',

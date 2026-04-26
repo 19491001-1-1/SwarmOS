@@ -2,7 +2,7 @@ import { appendFile, chmod, mkdir, writeFile } from 'fs/promises';
 import { delimiter, dirname, join, sep } from 'path';
 import { fileURLToPath } from 'url';
 import { spawn, type ChildProcess } from 'child_process';
-import type { AgentRuntimeConfig, AgentDelivery, AgentActivity, WorkspaceEntry, WorkspaceError, TaskStatus } from '@mini-slock/shared';
+import type { AgentRuntimeConfig, AgentDelivery, AgentActivity, WorkspaceEntry, WorkspaceError, TaskStatus } from '@crewden/shared';
 import type { AgentSpawnContext, RuntimeDriver } from './drivers/types.js';
 import { claudeDriver } from './drivers/claude.js';
 import { codexDriver } from './drivers/codex.js';
@@ -25,7 +25,7 @@ function buildAgentCliWrapper(): string {
     '#!/usr/bin/env sh',
     `CLI=${shQuote(distCli)}`,
     'if [ ! -f "$CLI" ]; then',
-    '  echo "xoxiang CLI is not built. Run: pnpm --filter @mini-slock/daemon build" >&2',
+    '  echo "crewden CLI is not built. Run: pnpm --filter @crewden/daemon build" >&2',
     '  exit 127',
     'fi',
     'exec node "$CLI" "$@"',
@@ -208,10 +208,10 @@ export class AgentProcessManager {
         ...process.env,
         ...cmd.env,
         ...config.envVars,
-        PATH: `${join(entry.workspaceDir, '.xoxiang')}${process.env.PATH ? `${delimiter}${process.env.PATH}` : ''}`,
-        XOXIANG_AGENT_ID: entry.agentId,
-        XOXIANG_SERVER_URL: this.serverUrl,
-        XOXIANG_AGENT_TOKEN_FILE: this.agentTokenFile(entry),
+        PATH: `${join(entry.workspaceDir, '.crewden')}${process.env.PATH ? `${delimiter}${process.env.PATH}` : ''}`,
+        CREWDEN_AGENT_ID: entry.agentId,
+        CREWDEN_SERVER_URL: this.serverUrl,
+        CREWDEN_AGENT_TOKEN_FILE: this.agentTokenFile(entry),
       },
       stdio: [cmd.stdin ? 'pipe' : 'ignore', 'pipe', 'pipe'],
     });
@@ -338,7 +338,7 @@ export class AgentProcessManager {
       this.formatDelivery(delivery),
     ];
     if (delivery.threadRootId) {
-      parts.push(`This delivery is inside thread ${delivery.threadRootId}. Keep your reply in that thread. If using the xoxiang CLI, include \`--thread-root-id ${delivery.threadRootId}\`.`);
+      parts.push(`This delivery is inside thread ${delivery.threadRootId}. Keep your reply in that thread. If using the crewden CLI, include \`--thread-root-id ${delivery.threadRootId}\`.`);
     }
     return parts.join('\n\n');
   }
@@ -347,7 +347,7 @@ export class AgentProcessManager {
     const channel = entry.inbox[0]?.channelName ?? entry.channelId;
     return [
       `You have ${queuedCount} queued message${queuedCount === 1 ? '' : 's'}.`,
-      `Use \`xoxiang message check\` or \`xoxiang message read --channel ${channel} --limit ${Math.max(queuedCount, 1)}\` if needed.`,
+      `Use \`crewden message check\` or \`crewden message read --channel ${channel} --limit ${Math.max(queuedCount, 1)}\` if needed.`,
     ].join('\n');
   }
 
@@ -453,7 +453,7 @@ export class AgentProcessManager {
   }
 
   private agentTokenFile(entry: AgentEntry): string {
-    return join(entry.workspaceDir, '.xoxiang', 'agent-token');
+    return join(entry.workspaceDir, '.crewden', 'agent-token');
   }
 
   private async prepareRuntimeWorkspace(entry: AgentEntry, config: AgentRuntimeConfig): Promise<void> {
@@ -470,12 +470,12 @@ export class AgentProcessManager {
 
   private async ensureAgentTools(config: AgentRuntimeConfig, workspaceDir: string): Promise<void> {
     await mkdir(workspaceDir, { recursive: true });
-    const toolsDir = join(workspaceDir, '.xoxiang');
+    const toolsDir = join(workspaceDir, '.crewden');
     await mkdir(toolsDir, { recursive: true });
     if (config.agentToken !== undefined) {
       await writeFile(join(toolsDir, 'agent-token'), `${config.agentToken}\n`, { mode: 0o600 });
     }
-    const wrapperPath = join(toolsDir, 'xoxiang');
+    const wrapperPath = join(toolsDir, 'crewden');
     await writeFile(wrapperPath, buildAgentCliWrapper(), { mode: 0o755 });
     await chmod(wrapperPath, 0o755);
   }

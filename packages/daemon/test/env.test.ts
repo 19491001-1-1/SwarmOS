@@ -6,7 +6,7 @@ import { loadNearestDotenv } from '../src/env.js';
 
 describe('loadNearestDotenv', () => {
   it('loads nearest ancestor .env without overriding existing values', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'xoxiang-env-'));
+    const root = await mkdtemp(join(tmpdir(), 'crewden-env-'));
     const child = join(root, 'packages', 'daemon');
     await mkdir(child, { recursive: true });
     await writeFile(join(root, '.env'), [

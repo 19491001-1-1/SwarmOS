@@ -1,4 +1,4 @@
-import type { AgentDelivery, Channel, Message } from '@mini-slock/shared';
+import type { AgentDelivery, Channel, Message } from '@crewden/shared';
 
 export function toAgentDelivery(message: Message, channel: Channel): AgentDelivery {
   return {

@@ -4,9 +4,9 @@ import { tmpdir } from 'os';
 import { describe, expect, it, vi } from 'vitest';
 import { runAgentCli } from '../src/agentCli.js';
 
-describe('agent-facing xoxiang CLI', () => {
+describe('agent-facing crewden CLI', () => {
   async function run(argv: string[], fetchImpl: typeof fetch = okFetch({ ok: true })) {
-    const dir = await mkdtemp(join(tmpdir(), 'xoxiang-agent-cli-'));
+    const dir = await mkdtemp(join(tmpdir(), 'crewden-agent-cli-'));
     const tokenFile = join(dir, 'agent-token');
     await writeFile(tokenFile, 'token-1\n');
     let stdout = '';
@@ -14,9 +14,9 @@ describe('agent-facing xoxiang CLI', () => {
     const code = await runAgentCli(
       argv,
       {
-        XOXIANG_AGENT_ID: 'agent-1',
-        XOXIANG_SERVER_URL: 'http://hub.test',
-        XOXIANG_AGENT_TOKEN_FILE: tokenFile,
+        CREWDEN_AGENT_ID: 'agent-1',
+        CREWDEN_SERVER_URL: 'http://hub.test',
+        CREWDEN_AGENT_TOKEN_FILE: tokenFile,
       },
       {
         stdout: { write: (chunk: string | Uint8Array) => { stdout += String(chunk); return true; } },

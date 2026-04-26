@@ -1,5 +1,5 @@
-const STORAGE_KEY = 'xoxiang.webAuthToken';
-const SIGNED_OUT_KEY = 'xoxiang.webAuthSignedOut';
+const STORAGE_KEY = 'crewden.webAuthToken';
+const SIGNED_OUT_KEY = 'crewden.webAuthSignedOut';
 
 export const BUILT_IN_WEB_AUTH_TOKEN = (import.meta.env.VITE_WEB_AUTH_TOKEN ?? '').trim();
 

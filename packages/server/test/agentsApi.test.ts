@@ -25,7 +25,7 @@ describe('GET /api/version', () => {
     expect(res.statusCode).toBe(200);
     const body = res.json();
     expect(body.component).toBe('server');
-    expect(body.version).toBe(process.env.XOXIANG_VERSION || '0.6.0');
+    expect(body.version).toBe(process.env.CREWDEN_VERSION || '0.6.0');
     expect(body.version).toBeTruthy();
     await app.close();
   });
@@ -748,7 +748,7 @@ describe('agent internal API', () => {
         kind: 'runbook',
         title: 'Run web verification',
         summary: 'Use web tests before acceptance.',
-        body: 'Run pnpm --filter @mini-slock/web test for UI-impacting changes.',
+        body: 'Run pnpm --filter @crewden/web test for UI-impacting changes.',
         tags: ['web', 'test'],
         sourceRefs: ['task:test'],
       },

@@ -1,8 +1,8 @@
 interface Env {
-  HUB: DurableObjectNamespace<import("./src/index").XoxiangHub>;
+  HUB: DurableObjectNamespace<import("./src/index").CrewdenHub>;
   DAEMON_API_KEY: string;
   WEB_AUTH_TOKEN: string;
-  XOXIANG_VERSION?: string;
-  XOXIANG_COMMIT_SHA?: string;
-  XOXIANG_BUILD_ID?: string;
+  CREWDEN_VERSION?: string;
+  CREWDEN_COMMIT_SHA?: string;
+  CREWDEN_BUILD_ID?: string;
 }

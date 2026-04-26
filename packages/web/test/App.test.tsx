@@ -335,7 +335,7 @@ describe('App', () => {
       kind: 'runbook',
       title: 'Run browser checks',
       summary: 'Use web tests for UI changes.',
-      body: 'Run pnpm --filter @mini-slock/web test.',
+      body: 'Run pnpm --filter @crewden/web test.',
       tags: ['web'],
       sourceRefs: ['task:web'],
       status: 'active',
@@ -354,7 +354,7 @@ describe('App', () => {
 
     fireEvent.change(screen.getByPlaceholderText('Title'), { target: { value: 'Run browser checks' } });
     fireEvent.change(screen.getByPlaceholderText('Summary'), { target: { value: 'Use web tests for UI changes.' } });
-    fireEvent.change(screen.getByPlaceholderText('Body'), { target: { value: 'Run pnpm --filter @mini-slock/web test.' } });
+    fireEvent.change(screen.getByPlaceholderText('Body'), { target: { value: 'Run pnpm --filter @crewden/web test.' } });
     fireEvent.change(screen.getByPlaceholderText('tags, comma separated'), { target: { value: 'web' } });
     fireEvent.change(screen.getByPlaceholderText('source refs, comma separated'), { target: { value: 'task:web' } });
     fireEvent.click(screen.getByText('CREATE'));

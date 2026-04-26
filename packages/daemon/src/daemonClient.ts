@@ -1,13 +1,13 @@
 import WebSocket from 'ws';
 import os from 'os';
 import { join } from 'path';
-import type { AgentActivity, DaemonToServer, ServerToDaemon } from '@mini-slock/shared';
-import { APP_VERSION, ServerToDaemonSchema } from '@mini-slock/shared';
+import type { AgentActivity, DaemonToServer, ServerToDaemon } from '@crewden/shared';
+import { APP_VERSION, ServerToDaemonSchema } from '@crewden/shared';
 import { detectRuntimes } from './runtimeDetector.js';
 import { AgentProcessManager } from './agentProcessManager.js';
 import { getMachineId } from './machineIdentity.js';
 
-export const DAEMON_VERSION = process.env.XOXIANG_VERSION?.trim() || APP_VERSION;
+export const DAEMON_VERSION = process.env.CREWDEN_VERSION?.trim() || APP_VERSION;
 
 export type DaemonClientOptions = {
   serverUrl: string;
@@ -25,7 +25,7 @@ export class DaemonClient {
 
   constructor(options: DaemonClientOptions) {
     this.options = options;
-    const workspaceBase = options.workspaceBase ?? process.env.XOXIANG_AGENTS_DIR ?? join(os.homedir(), '.xoxiang', 'agents');
+    const workspaceBase = options.workspaceBase ?? process.env.CREWDEN_AGENTS_DIR ?? join(os.homedir(), '.crewden', 'agents');
     this.processManager = new AgentProcessManager(
       workspaceBase,
       (agentId, channelId, content, inReplyToMessageId) => this.sendMessage({ type: 'agent:message', agentId, channelId, content, inReplyToMessageId }),

@@ -1,4 +1,4 @@
-# Agent Workspace
+# Crewden
 
 A minimal self-hosted agent workspace: web chat + server + local daemon + long-running CLI agents. Supports Claude Code, Codex CLI, and Gemini CLI.
 
@@ -45,32 +45,32 @@ pnpm daemon --server-url http://localhost:3000 --api-key dev-machine-key
 Or directly:
 
 ```bash
-pnpm --filter @mini-slock/daemon start -- --server-url http://localhost:3000 --api-key dev-machine-key
+pnpm --filter @crewden/daemon start -- --server-url http://localhost:3000 --api-key dev-machine-key
 ```
 
 ### Cloudflare central hub
 
-To run Xoxiang with a public centralized server, deploy `packages/cloudflare`:
+To run Crewden with a public centralized server, deploy `packages/cloudflare`:
 
 ```bash
-pnpm --filter @mini-slock/cloudflare exec wrangler login
-pnpm --filter @mini-slock/cloudflare run deploy
+pnpm --filter @crewden/cloudflare exec wrangler login
+pnpm --filter @crewden/cloudflare run deploy
 ```
 
 Set the daemon and browser auth secrets on the Worker once:
 
 ```bash
-printf '%s' '<daemon-key>' | pnpm --filter @mini-slock/cloudflare exec wrangler secret put DAEMON_API_KEY
-printf '%s' '<web-token>'  | pnpm --filter @mini-slock/cloudflare exec wrangler secret put WEB_AUTH_TOKEN
+printf '%s' '<daemon-key>' | pnpm --filter @crewden/cloudflare exec wrangler secret put DAEMON_API_KEY
+printf '%s' '<web-token>'  | pnpm --filter @crewden/cloudflare exec wrangler secret put WEB_AUTH_TOKEN
 ```
 
 Then point daemons and the web UI at the Worker URL:
 
 ```bash
-pnpm --filter @mini-slock/daemon start -- --server-url https://xoxiang-hub.<account>.workers.dev --api-key <daemon-key>
-VITE_API_BASE=https://xoxiang-hub.<account>.workers.dev \
+pnpm --filter @crewden/daemon start -- --server-url https://crewden-hub.<account>.workers.dev --api-key <daemon-key>
+VITE_API_BASE=https://crewden-hub.<account>.workers.dev \
 VITE_WEB_AUTH_TOKEN=<web-token> \
-pnpm --filter @mini-slock/web dev
+pnpm --filter @crewden/web dev
 ```
 
 #### CI/CD (recommended)
@@ -101,7 +101,7 @@ All components expose or carry a version:
 - Server and Cloudflare hub: `GET /api/version`.
 - Daemon: `--version`, and the same value is sent as `daemonVersion` in the ready handshake.
 
-Local defaults use the package version. CI/CD injects the Git commit SHA into `XOXIANG_VERSION` and `VITE_APP_VERSION` so every deployed iteration is identifiable.
+Local defaults use the package version. CI/CD injects the Git commit SHA into `CREWDEN_VERSION` and `VITE_APP_VERSION` so every deployed iteration is identifiable.
 
 ## Verify (typecheck + tests)
 
@@ -131,7 +131,7 @@ Only installed runtimes are reported by the daemon. You can use any subset.
 Agents output replies using a single-line format:
 
 ```
-[[MINI_SLOCK_SEND_MESSAGE]] {"content":"your reply here"}
+[[CREWDEN_SEND_MESSAGE]] {"content":"your reply here"}
 ```
 
 The daemon parses this line and sends the message to the server. This works uniformly across all three runtimes without requiring MCP.

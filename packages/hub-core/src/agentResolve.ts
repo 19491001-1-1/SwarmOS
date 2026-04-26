@@ -1,4 +1,4 @@
-import type { Agent, AgentResolveResult } from '@mini-slock/shared';
+import type { Agent, AgentResolveResult } from '@crewden/shared';
 
 export function resolveAgentReference(query: string, agents: Agent[]): AgentResolveResult {
   const value = query.trim();

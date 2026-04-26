@@ -55,41 +55,41 @@ describe('parseBridgeLine', () => {
     const instruction = buildBridgeInstruction();
     expect(instruction).toContain('MCP tools when available');
     expect(instruction).toContain('do not invent tool results');
-    expect(instruction).toContain('xoxiang agent list');
-    expect(instruction).toContain('xoxiang agent resolve');
+    expect(instruction).toContain('crewden agent list');
+    expect(instruction).toContain('crewden agent resolve');
     expect(instruction).toContain('need a specialist role');
     expect(instruction).toContain('human-described role');
   });
 
   it('instructs agents to use all tasks for unassigned or global task questions', () => {
     const instruction = buildBridgeInstruction();
-    expect(instruction).toContain('xoxiang task list --all');
-    expect(instruction).toContain('xoxiang task handoff');
+    expect(instruction).toContain('crewden task list --all');
+    expect(instruction).toContain('crewden task handoff');
     expect(instruction).toContain('unassigned tasks');
-    expect(instruction).toContain('do not infer global task state from plain `xoxiang task list`');
+    expect(instruction).toContain('do not infer global task state from plain `crewden task list`');
   });
 
   it('instructs agents to use goal briefs for broad multi-step objectives', () => {
     const instruction = buildBridgeInstruction();
-    expect(instruction).toContain('xoxiang goal list');
-    expect(instruction).toContain('xoxiang goal align');
-    expect(instruction).toContain('xoxiang goal alignment confirm');
-    expect(instruction).toContain('xoxiang goal create');
-    expect(instruction).toContain('xoxiang goal create-tasks');
+    expect(instruction).toContain('crewden goal list');
+    expect(instruction).toContain('crewden goal align');
+    expect(instruction).toContain('crewden goal alignment confirm');
+    expect(instruction).toContain('crewden goal create');
+    expect(instruction).toContain('crewden goal create-tasks');
     expect(instruction).toContain('broad multi-step objective');
     expect(instruction).toContain('success criteria');
   });
 
   it('instructs agents to use inbox and task progress commands', () => {
     const instruction = buildBridgeInstruction();
-    expect(instruction).toContain('xoxiang inbox');
-    expect(instruction).toContain('xoxiang work list');
-    expect(instruction).toContain('xoxiang task claim');
-    expect(instruction).toContain('xoxiang task progress');
-    expect(instruction).toContain('xoxiang task block');
-    expect(instruction).toContain('xoxiang task escalate');
-    expect(instruction).toContain('xoxiang knowledge search');
-    expect(instruction).toContain('xoxiang goal archive');
+    expect(instruction).toContain('crewden inbox');
+    expect(instruction).toContain('crewden work list');
+    expect(instruction).toContain('crewden task claim');
+    expect(instruction).toContain('crewden task progress');
+    expect(instruction).toContain('crewden task block');
+    expect(instruction).toContain('crewden task escalate');
+    expect(instruction).toContain('crewden knowledge search');
+    expect(instruction).toContain('crewden goal archive');
   });
 });
 

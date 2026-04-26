@@ -6,8 +6,8 @@ import {
   PatchGoalAlignmentRequestSchema,
   StartGoalAlignmentRequestSchema,
   type GoalAlignment,
-} from '@mini-slock/shared';
-import { buildClarifyingQuestions, inferGoalRiskLevel, recommendAgentsForGoal } from '@mini-slock/hub-core';
+} from '@crewden/shared';
+import { buildClarifyingQuestions, inferGoalRiskLevel, recommendAgentsForGoal } from '@crewden/hub-core';
 import { getStore } from '../db.js';
 import { eventBus } from '../events.js';
 import { notifyTaskAssignee } from '../taskDelivery.js';
