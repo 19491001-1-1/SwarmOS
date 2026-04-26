@@ -16,8 +16,14 @@ describe('E2E: fake runtime agent loop', () => {
   let daemonWs: WebSocket;
   let machineId: string;
   let agentId: string;
+  let originalWebAuthToken: string | undefined;
 
   beforeAll(async () => {
+    // The E2E test exercises anonymous browser API calls. Production deploy
+    // workflows expose WEB_AUTH_TOKEN while uploading Worker secrets, so keep
+    // this test isolated from ambient auth configuration.
+    originalWebAuthToken = process.env.WEB_AUTH_TOKEN;
+    delete process.env.WEB_AUTH_TOKEN;
     // Dynamically import server modules
     const { buildApp } = await import('../../server/src/app.js');
     const { resetStore, getStore } = await import('../../server/src/db.js');
@@ -72,6 +78,11 @@ describe('E2E: fake runtime agent loop', () => {
   afterAll(async () => {
     daemonWs?.close();
     await serverApp?.close();
+    if (originalWebAuthToken === undefined) {
+      delete process.env.WEB_AUTH_TOKEN;
+    } else {
+      process.env.WEB_AUTH_TOKEN = originalWebAuthToken;
+    }
   });
 
   it('server sends agent:start to daemon when agent is started', async () => {
