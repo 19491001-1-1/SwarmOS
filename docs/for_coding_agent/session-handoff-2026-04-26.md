@@ -1,14 +1,14 @@
 # Coding Agent Handoff - 2026-04-26
 
-This document preserves the current project context, operational rules, and recent lessons for future coding agents working on Xoxiang.
+This document preserves current project context, operational rules, and recent lessons for future coding agents working on Xoxiang.
 
 ## Project Intent
 
-Xoxiang is aiming to become an agent-first company organization.
+Xoxiang is moving toward an agent-first company organization.
 
-The user acts like the boss: they give goals, priorities, and approvals. Agents should behave like a coordinated company: clarify intent, split work, claim ownership, pass context, request review, produce evidence, and close the loop.
+The user acts like the boss: they give goals, priorities, and approvals. Agents should behave like a coordinated company: clarify intent, split work, claim ownership, pass context, request review, produce evidence, preserve knowledge, and close the loop.
 
-High-quality work in this repo should improve at least one of these outcomes:
+High-quality work should improve at least one of these outcomes:
 
 - Less user micromanagement.
 - Better agent-to-agent context transfer.
@@ -17,9 +17,25 @@ High-quality work in this repo should improve at least one of these outcomes:
 - Evidence-based review and acceptance.
 - Durable knowledge reuse across future tasks.
 
-## Current Branch And Release Discipline
+## Current Repository State
 
-Follow `AGENTS.md` first. The short version:
+- Recent main-line context includes `533cae2 merge: v1.5.1 editable agent runtime`.
+- A later main update added Cloudflare test environment and task-claim acknowledgement work before this handoff merge.
+- Recent implementation branches were merged with non-fast-forward merge commits, preserving branch history.
+- The project uses a pnpm monorepo under `agent-workspace`.
+
+Core packages:
+
+- `packages/shared`: protocol, validation, shared version helpers.
+- `packages/hub-core`: pure business logic shared between Node server and Cloudflare hub.
+- `packages/server`: local Fastify hub with SQLite.
+- `packages/cloudflare`: public Worker hub backed by a Durable Object with SQLite storage.
+- `packages/daemon`: local daemon, runtime launchers, agent-facing CLI, MCP bridge.
+- `packages/web`: Vite/React web UI.
+
+## Branch And Release Discipline
+
+Follow `AGENTS.md` first. Short version:
 
 1. Do not edit directly on `main`.
 2. Start from a clean `main`.
@@ -52,26 +68,16 @@ Production Worker URL: https://xoxiang-hub.xingke0.workers.dev
 Production Pages project: xoxiang-web
 ```
 
-The production workflows are manual only:
+Production workflows are manual only:
 
 - `.github/workflows/deploy-cloudflare-hub.yml`
 - `.github/workflows/deploy-cloudflare-pages.yml`
 
-The test workflow runs on push to `main`:
+Test workflow runs on push to `main`:
 
 - `.github/workflows/deploy-cloudflare-test.yml`
 
-## Test Daemon
-
-Use the test hub when validating remote agent behavior:
-
-```bash
-pnpm --filter @mini-slock/daemon start -- \
-  --server-url https://xoxiang-hub-test.xingke0.workers.dev \
-  --api-key ea412ba008597bf2809462ad1ae139f8a6b952896633d2ccc3faa1849b74b2f1
-```
-
-If this key stops working, rotate `TEST_DAEMON_API_KEY` in GitHub Secrets and the Cloudflare test Worker secret `DAEMON_API_KEY`.
+Do not put daemon API keys or auth tokens in docs. If a test daemon key is needed, read it from the approved local environment, GitHub Secrets, or Cloudflare Worker secret records.
 
 ## Verification Commands
 
@@ -92,6 +98,26 @@ For web builds against the test hub:
 
 ```bash
 VITE_API_BASE=https://xoxiang-hub-test.xingke0.workers.dev pnpm --filter @mini-slock/web build
+```
+
+Targeted tests:
+
+```bash
+pnpm --filter @mini-slock/shared test
+pnpm --filter @mini-slock/server test
+pnpm --filter @mini-slock/cloudflare test
+pnpm --filter @mini-slock/daemon test
+pnpm --filter @mini-slock/web test
+```
+
+If Corepack fails with `Cannot find matching keyid`, update or bypass Corepack:
+
+```bash
+npm install -g corepack@latest
+corepack enable
+corepack prepare pnpm@9.15.4 --activate
+hash -r
+pnpm install
 ```
 
 ## Recent Important Changes
@@ -122,34 +148,76 @@ Now, when an agent successfully claims an unassigned task through:
 xoxiang task claim <taskId>
 ```
 
-the hub immediately posts a short channel/thread acknowledgement:
+the hub should immediately post a short channel/thread acknowledgement before the slow work continues.
 
-```text
-@user I have claimed task #... "..." and I am starting now. I will post progress or blockers here.
-```
-
-This exists in both:
+Relevant surfaces:
 
 - `packages/server/src/routes/internalAgent.ts`
 - `packages/cloudflare/src/index.ts`
 
 Keep this pattern: when the system starts a long-running agent action, create fast visible feedback before doing slow work.
 
-### v1.5.1 Editable Agent Runtime
+### v1.5 - Knowledge & Memory Layer
 
-The latest `main` includes v1.5.1 work for editing agent runtime. Relevant files include:
+Implemented a project knowledge layer:
+
+- Knowledge entries for decision, project archive, user preference, runbook, learning, and artifact.
+- Public and internal APIs for search/read/write/update.
+- Agent-facing CLI commands:
+  - `xoxiang knowledge search`
+  - `xoxiang knowledge read`
+  - `xoxiang knowledge write`
+  - `xoxiang goal archive`
+- Web Knowledge panel.
+- Server and Cloudflare parity.
+
+Important source files:
+
+- `packages/shared/src/validation.ts`
+- `packages/server/src/routes/knowledge.ts`
+- `packages/server/src/routes/internalAgent.ts`
+- `packages/cloudflare/src/index.ts`
+- `packages/daemon/src/agentCli.ts`
+- `packages/web/src/components/KnowledgePanel.tsx`
+
+### v1.5.1 - Editable Agent Runtime
+
+Implemented runtime editing for existing Agents:
+
+- `PatchAgentRequestSchema` accepts `runtime`.
+- `PATCH /api/agents/:id` can modify runtime.
+- Runtime changes are rejected with `409` while an agent is `starting`, `running`, or `working`.
+- If an agent is bound to a machine, the target machine must support the target runtime.
+- Internal agent API supports:
+
+```http
+PATCH /internal/agent/:agentId/agents/:targetAgentId
+```
+
+- Agent-facing CLI supports:
+
+```bash
+xoxiang agent update <agentId> --runtime codex
+```
+
+- Web Agent profile panel has a runtime selector.
+
+Important source files:
 
 - `docs/v1.5.1-agent-runtime-edit.md`
 - `packages/server/src/agentRuntimePatch.ts`
-- `packages/web/src/components/AgentDetailPanel.tsx`
+- `packages/server/src/routes/agents.ts`
+- `packages/server/src/routes/internalAgent.ts`
+- `packages/cloudflare/src/index.ts`
 - `packages/daemon/src/agentCli.ts`
-- Cloudflare hub equivalents in `packages/cloudflare/src/index.ts`
+- `packages/daemon/src/internalAgentApi.ts`
+- `packages/web/src/components/AgentDetailPanel.tsx`
 
 When changing agent profile/runtime behavior, verify local server, Cloudflare hub, daemon CLI, and web panel all stay aligned.
 
 ## Product Roadmap Context
 
-Implemented v1.x foundations:
+Implemented or planned v1.x foundations:
 
 - v1.0: Lightweight agent roles and capabilities.
 - v1.1: Goal Brief and work breakdown.
@@ -172,11 +240,7 @@ Important docs:
 
 ## User-Visible Testing Scenarios
 
-The user asked for test cases that reveal product feel from a boss/user perspective. A Chinese testing checklist is saved at:
-
-```text
-~/Downloads/xoxiang-v1-user-testing-cases.md
-```
+The user wants product testing from a boss/user perspective, not only developer tests.
 
 Core scenarios to preserve:
 
@@ -203,10 +267,111 @@ Can the user say less while the agent organization does more correct coordinatio
 - Before context-dependent work, agents should search Knowledge.
 - Write Knowledge for durable decisions, user preferences, runbooks, failures, and reusable project facts. Do not store secrets or short-lived chat noise.
 
-## Known Operational Notes
+## Agent Runtime Notes
 
-- Cloudflare Workers tests may print a workerd warning about compatibility-date fallback or request stream after response. Existing tests can still pass with that warning.
+Supported runtime ids are currently:
+
+- `claude`
+- `codex`
+- `gemini`
+
+When changing an agent runtime:
+
+- Do not modify runtime while the target agent is `starting`, `running`, or `working`.
+- Stop the agent first.
+- If `machineId` is set, the machine's `runtimes` must include the target runtime.
+- A runtime change does not migrate runtime-specific sessions or model names.
+
+Gemini CLI notes:
+
+- Gemini rejects using both `--yolo` and `--approval-mode`; use `--approval-mode=yolo`.
+- Gemini CLI may require `GEMINI_API_KEY` when using Gemini API.
+
+## Agent-Facing CLI Notes
+
+The CLI targets whichever hub the daemon is configured to use:
+
+- Local mode: usually `http://localhost:3000`.
+- Cloudflare test mode: usually `https://xoxiang-hub-test.xingke0.workers.dev`.
+- Cloudflare production mode: usually `https://xoxiang-hub.xingke0.workers.dev`.
+
+Useful commands:
+
+```bash
+xoxiang auth whoami
+xoxiang server info
+xoxiang agent list
+xoxiang agent resolve "产品经理"
+xoxiang agent update <agentId> --runtime codex
+xoxiang message check
+xoxiang message read --channel general --limit 20
+xoxiang message send --channel general --content "..."
+xoxiang task list --all
+xoxiang task read <taskId> --context
+xoxiang task update <taskId> --status done
+xoxiang task handoff <taskId> --to <agentId> --notes "..."
+xoxiang knowledge search "query"
+xoxiang knowledge write --kind runbook --title "..." --summary "..." --body "..." --source doc:...
+```
+
+Some runtimes sandbox subprocesses. Recent daemon prompt work encourages starting CLI-backed runtimes with enough permission for `xoxiang` to reach the hub.
+
+## Knowledge And Memory Guidance
+
+There are three levels of memory:
+
+1. `transcript.txt` in an agent workspace: chronological runtime record.
+2. `MEMORY.md` and `notes/`: per-agent durable memory and working notes.
+3. Knowledge layer: project-level reusable knowledge, decisions, runbooks, lessons, and archives.
+
+Do not rely on raw transcript alone. Future agents need concise, structured summaries:
+
+- Common tool commands and invocation patterns.
+- Project-specific implementation lessons.
+- Business/domain knowledge.
+- Why an approach worked.
+- When to reuse it.
+- Caveats and failure modes.
+
+Do not write secrets, auth tokens, API keys, or sensitive private data into memory, notes, docs, or knowledge entries.
+
+## UI Notes
+
+The Web UI intentionally uses a bold/brutalist visual language. Existing constraints from recent work:
+
+- Keep controls compact and operational.
+- Avoid turning the product into a marketing-style page.
+- Right rail should not become permanently noisy unless the user explicitly asks.
+- Agent status/presence must remain visible and accurate in compact surfaces.
+- Markdown, mentions, threads, and mobile responsiveness are part of the v0.9 line.
+
+When changing Web UI:
+
+- Add focused tests in `packages/web/test`.
+- Build with `VITE_API_BASE` pointed at the test hub if deployable.
+- Be careful with text overflow in sidebars and cards.
+
+## Known Operational Notes And Pitfalls
+
+- Do not deploy production Cloudflare resources without explicit user approval.
+- Do not use `git reset --hard` or discard unrelated changes.
+- If a user says "pull latest", run `git status` first, then `git pull --ff-only`.
+- Cloudflare Worker and local Server must stay behaviorally aligned.
+- If a feature touches both public API and internal agent API, update CLI docs and tests together.
+- Cloudflare Workers tests may print workerd warnings about compatibility-date fallback or request streams; if tests pass, these have been observed as non-blocking.
 - Cloudflare Pages project creation can briefly return TLS handshake failures until the `*.pages.dev` certificate is ready.
 - Production deployments must stay manual.
-- If a deployable change is merged, inspect the `Deploy Cloudflare Test` workflow before claiming the work is remotely validated.
+- If a deployable change is merged, inspect the `Deploy Cloudflare Test` workflow before claiming remote validation.
+- Cloudflare Durable Object data cannot be reset with a normal local SQLite command. A temporary reset endpoint was used once and immediately removed; prefer building an explicit safe admin/reset story if this becomes recurring.
 
+## Good Next Steps For Future Agents
+
+- Keep v1.x roadmap current as implementation lands.
+- For any new agent capability, update all relevant surfaces:
+  - shared schemas
+  - local server
+  - Cloudflare hub
+  - agent-facing CLI
+  - Web UI
+- Add reusable lessons to Knowledge entries, not just docs.
+- Keep `docs/for_coding_agent` updated after major sessions.
