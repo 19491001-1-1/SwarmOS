@@ -253,6 +253,94 @@ describe('PATCH /api/agents/:id', () => {
     expect(res.json().organization.roles).toEqual(['PM']);
     await app.close();
   });
+
+  it('updates runtime for an inactive agent', async () => {
+    const app = await buildApp();
+    const created = await app.inject({ method: 'POST', url: '/api/agents', payload: { name: 'a', runtime: 'claude' } });
+    const res = await app.inject({
+      method: 'PATCH',
+      url: `/api/agents/${created.json().id}`,
+      payload: { runtime: 'codex' },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().runtime).toBe('codex');
+    await app.close();
+  });
+
+  it('rejects runtime changes while an agent is busy', async () => {
+    const app = await buildApp();
+    const store = getStore();
+    await store.createAgent({
+      id: 'agent-busy',
+      name: 'busy',
+      runtime: 'claude',
+      status: 'working',
+      createdAt: new Date().toISOString(),
+    });
+    const res = await app.inject({
+      method: 'PATCH',
+      url: '/api/agents/agent-busy',
+      payload: { runtime: 'codex' },
+    });
+    expect(res.statusCode).toBe(409);
+    expect(res.json().error).toContain('Stop the agent first');
+    await app.close();
+  });
+
+  it('rejects runtime changes when the bound machine does not support the target runtime', async () => {
+    const app = await buildApp();
+    const store = getStore();
+    await store.upsertMachine({
+      id: 'machine-1',
+      hostname: 'host',
+      os: 'darwin',
+      daemonVersion: '0.6.0',
+      runtimes: ['claude'],
+      runtimeVersions: { claude: '1.0.0' },
+      status: 'online',
+      connectedAt: new Date().toISOString(),
+    });
+    await store.createAgent({
+      id: 'agent-bound',
+      name: 'bound',
+      runtime: 'claude',
+      machineId: 'machine-1',
+      status: 'inactive',
+      createdAt: new Date().toISOString(),
+    });
+    const res = await app.inject({
+      method: 'PATCH',
+      url: '/api/agents/agent-bound',
+      payload: { runtime: 'codex' },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error).toContain('Machine does not support runtime codex');
+    await app.close();
+  });
+
+  it('validates patched machine and runtime together', async () => {
+    const app = await buildApp();
+    const store = getStore();
+    await store.upsertMachine({
+      id: 'machine-codex',
+      hostname: 'host',
+      os: 'darwin',
+      daemonVersion: '0.6.0',
+      runtimes: ['codex'],
+      runtimeVersions: { codex: '1.0.0' },
+      status: 'online',
+      connectedAt: new Date().toISOString(),
+    });
+    const created = await app.inject({ method: 'POST', url: '/api/agents', payload: { name: 'a', runtime: 'claude' } });
+    const res = await app.inject({
+      method: 'PATCH',
+      url: `/api/agents/${created.json().id}`,
+      payload: { machineId: 'machine-codex', runtime: 'codex' },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({ machineId: 'machine-codex', runtime: 'codex' });
+    await app.close();
+  });
 });
 
 describe('agent direct messages API', () => {

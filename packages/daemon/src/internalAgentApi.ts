@@ -1,6 +1,6 @@
 export type ParsedCommand =
   | { method: 'GET'; path: string; select?: 'agents' | 'task-summary' }
-  | { method: 'POST'; path: string; body: unknown };
+  | { method: 'POST' | 'PATCH'; path: string; body: unknown };
 
 export async function callInternalApi(input: { command: ParsedCommand; agentId: string; serverUrl: string; token: string; fetchImpl: typeof fetch }): Promise<unknown> {
   const url = `${input.serverUrl.replace(/\/$/, '')}/internal/agent/${encodeURIComponent(input.agentId)}${input.command.path}`;
@@ -9,9 +9,9 @@ export async function callInternalApi(input: { command: ParsedCommand; agentId: 
     headers: {
       Authorization: `Bearer ${input.token}`,
       'X-Agent-Id': input.agentId,
-      ...(input.command.method === 'POST' ? { 'Content-Type': 'application/json' } : {}),
+      ...(input.command.method === 'POST' || input.command.method === 'PATCH' ? { 'Content-Type': 'application/json' } : {}),
     },
-    body: input.command.method === 'POST' ? JSON.stringify(input.command.body) : undefined,
+    body: input.command.method === 'POST' || input.command.method === 'PATCH' ? JSON.stringify(input.command.body) : undefined,
   });
   const text = await res.text();
   const body = text ? JSON.parse(text) : undefined;

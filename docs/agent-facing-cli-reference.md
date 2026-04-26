@@ -100,6 +100,7 @@ Use `--thread-root-id` when replying to a delivered thread message so the reply 
 xoxiang agent list
 xoxiang agent directory
 xoxiang agent resolve "产品经理"
+xoxiang agent update agentId --runtime codex
 ```
 
 `agent list` and `agent directory` return the visible agent directory from `server info`.
@@ -107,6 +108,8 @@ xoxiang agent resolve "产品经理"
 `agent resolve` maps a user-facing reference to a concrete agent id. It checks id, name, display name, case-insensitive variants, and role/description hints, then returns a best match plus any candidates.
 
 Use this as a collaboration address book. The output includes agent names, display names, descriptions, runtimes, status, and other profile fields that are available from the hub.
+
+`agent update` changes editable profile fields for a concrete agent id. v1.5.1 supports `--runtime`, plus small profile fields such as `--model`, `--display-name`, `--description`, and `--machine`. Runtime changes are rejected while the target agent is starting/running/working; stop the agent first.
 
 Agents should check the directory when:
 
@@ -261,6 +264,7 @@ xoxiang message check
 xoxiang message read
 xoxiang agent list
 xoxiang agent resolve
+xoxiang agent update
 xoxiang task list
 xoxiang task read
 xoxiang task update

@@ -241,6 +241,14 @@ describe('Internal agent API schemas', () => {
   });
 });
 
+describe('Agent patch schemas', () => {
+  it('accepts runtime updates and still rejects empty or invalid runtime patches', () => {
+    expect(PatchAgentRequestSchema.safeParse({ runtime: 'codex' }).success).toBe(true);
+    expect(PatchAgentRequestSchema.safeParse({ runtime: 'gpt4' }).success).toBe(false);
+    expect(PatchAgentRequestSchema.safeParse({}).success).toBe(false);
+  });
+});
+
 describe('RuntimeId validation', () => {
   it('accepts valid runtimes', () => {
     expect(RuntimeIdSchema.safeParse('claude').success).toBe(true);

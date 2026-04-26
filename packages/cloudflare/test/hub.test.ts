@@ -340,6 +340,86 @@ describe('input validation', () => {
     expect(res.status).toBe(400);
   });
 
+  it('updates runtime for an inactive agent', async () => {
+    const created = await SELF.fetch('https://hub.test/api/agents', {
+      method: 'POST',
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ name: `runtime-edit-${crypto.randomUUID()}`, runtime: 'claude' }),
+    });
+    const agent = (await created.json()) as { id: string };
+    const patched = await SELF.fetch(`https://hub.test/api/agents/${agent.id}`, {
+      method: 'PATCH',
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ runtime: 'codex' }),
+    });
+    expect(patched.status).toBe(200);
+    expect(await patched.json()).toMatchObject({ runtime: 'codex' });
+  });
+
+  it('rejects runtime changes while an agent is busy', async () => {
+    const machineId = `runtime-busy-${crypto.randomUUID()}`;
+    const daemon = await connectDaemon();
+    daemon.send(JSON.stringify({
+      type: 'ready',
+      machineId,
+      hostname: 'host-runtime-busy',
+      os: 'darwin',
+      daemonVersion: '0.6.0',
+      runtimes: ['claude'],
+      runtimeVersions: { claude: '1.0.0' },
+      runningAgents: [],
+      capabilities: [],
+    }));
+    await new Promise((r) => setTimeout(r, 80));
+    const created = await SELF.fetch('https://hub.test/api/agents', {
+      method: 'POST',
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ name: `busy-runtime-${crypto.randomUUID()}`, runtime: 'claude', machineId }),
+    });
+    const agent = (await created.json()) as { id: string };
+    const started = await SELF.fetch(`https://hub.test/api/agents/${agent.id}/start`, { method: 'POST', headers: authHeaders() });
+    expect(started.status).toBe(200);
+    const patched = await SELF.fetch(`https://hub.test/api/agents/${agent.id}`, {
+      method: 'PATCH',
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ runtime: 'codex' }),
+    });
+    expect(patched.status).toBe(409);
+    expect((await patched.json()) as { error: string }).toMatchObject({ error: expect.stringContaining('Stop the agent first') });
+    daemon.close();
+  });
+
+  it('validates machine support when patching runtime', async () => {
+    const machineId = `runtime-machine-${crypto.randomUUID()}`;
+    const daemon = await connectDaemon();
+    daemon.send(JSON.stringify({
+      type: 'ready',
+      machineId,
+      hostname: 'host-runtime-machine',
+      os: 'darwin',
+      daemonVersion: '0.6.0',
+      runtimes: ['claude'],
+      runtimeVersions: { claude: '1.0.0' },
+      runningAgents: [],
+      capabilities: [],
+    }));
+    await new Promise((r) => setTimeout(r, 80));
+    const created = await SELF.fetch('https://hub.test/api/agents', {
+      method: 'POST',
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ name: `bound-runtime-${crypto.randomUUID()}`, runtime: 'claude', machineId }),
+    });
+    const agent = (await created.json()) as { id: string };
+    const patched = await SELF.fetch(`https://hub.test/api/agents/${agent.id}`, {
+      method: 'PATCH',
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ runtime: 'codex' }),
+    });
+    expect(patched.status).toBe(400);
+    expect((await patched.json()) as { error: string }).toMatchObject({ error: expect.stringContaining('Machine does not support runtime codex') });
+    daemon.close();
+  });
+
   it('persists thread replies separately from channel messages', async () => {
     const agentCreated = await SELF.fetch('https://hub.test/api/agents', {
       method: 'POST',

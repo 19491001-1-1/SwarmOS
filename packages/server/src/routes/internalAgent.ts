@@ -24,6 +24,7 @@ import {
   InternalTaskProgressRequestSchema,
   InternalTaskUpdateRequestSchema,
   InternalReviewListRequestSchema,
+  PatchAgentRequestSchema,
   PatchReminderRequestSchema,
   ReviewDecisionRequestSchema,
   SearchKnowledgeRequestSchema,
@@ -42,6 +43,7 @@ import { daemonRegistry } from '../daemonRegistry.js';
 import { delegateAgent } from '../delegation.js';
 import { notifyTaskAssignee } from '../taskDelivery.js';
 import { archiveGoal } from './knowledge.js';
+import { validateAgentRuntimePatch } from '../agentRuntimePatch.js';
 
 export async function internalAgentRoutes(app: FastifyInstance) {
   app.addHook('preHandler', async (req, reply) => {
@@ -84,6 +86,23 @@ export async function internalAgentRoutes(app: FastifyInstance) {
     const parsed = InternalAgentResolveRequestSchema.safeParse(req.query);
     if (!parsed.success) return reply.status(400).send({ error: 'Invalid query', issues: parsed.error.issues });
     return getStore().resolveAgent(parsed.data.query);
+  });
+
+  app.patch<{ Params: { agentId: string; targetAgentId: string } }>('/internal/agent/:agentId/agents/:targetAgentId', async (req, reply) => {
+    const store = getStore();
+    if (!(await store.getAgent(req.params.agentId))) return reply.status(404).send({ error: 'Agent not found' });
+    const target = await store.getAgent(req.params.targetAgentId);
+    if (!target) return reply.status(404).send({ error: 'Target agent not found' });
+    const parsed = PatchAgentRequestSchema.safeParse(req.body);
+    if (!parsed.success) return reply.status(400).send({ error: 'Invalid request body', issues: parsed.error.issues });
+    const runtimeError = await validateAgentRuntimePatch(target, parsed.data, (machineId) => store.getMachine(machineId));
+    if (runtimeError) return reply.status(runtimeError.statusCode).send({ error: runtimeError.error });
+    const updated = await store.updateAgent(target.id, parsed.data);
+    if (updated) {
+      eventBus.emit({ type: 'agent:update', agent: updated });
+      eventBus.emit({ type: 'agent:updated', agent: updated });
+    }
+    return updated;
   });
 
   app.post<{ Params: { agentId: string } }>('/internal/agent/:agentId/messages/send', async (req, reply) => {

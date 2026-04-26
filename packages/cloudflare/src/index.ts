@@ -1373,6 +1373,11 @@ export class XoxiangHub extends DurableObject<Env> {
       return json(resolveAgentReference(parsed.data.query, this.listAgents()));
     }
 
+    const internalAgentPatchMatch = path.match(/^\/agents\/([^/]+)$/);
+    if (internalAgentPatchMatch && request.method === 'PATCH') {
+      return this.patchAgent(decodeURIComponent(internalAgentPatchMatch[1]), await request.json());
+    }
+
     if (request.method === 'GET' && path === '/messages/check') {
       return json({
         channels: this.listChannels().map((channel) => {
@@ -1883,12 +1888,28 @@ export class XoxiangHub extends DurableObject<Env> {
     if (!parsed.success) {
       return json({ error: 'Invalid request body', issues: parsed.error.issues }, 400);
     }
+    const runtimeError = this.validateAgentRuntimePatch(agent, parsed.data);
+    if (runtimeError) return json({ error: runtimeError.error }, runtimeError.status);
     const updated = this.updateAgent(agentId, parsed.data);
     if (updated) {
       this.broadcast({ type: 'agent:update', agent: updated });
       this.broadcast({ type: 'agent:updated', agent: updated });
     }
     return json(updated);
+  }
+
+  private validateAgentRuntimePatch(agent: Agent, patch: Partial<Agent>): { status: 400 | 409; error: string } | undefined {
+    if (!patch.runtime && !patch.machineId) return undefined;
+    if (patch.runtime && patch.runtime !== agent.runtime && ['starting', 'running', 'working'].includes(agent.status)) {
+      return { status: 409, error: `Cannot change runtime while agent is ${agent.status}. Stop the agent first.` };
+    }
+    const runtime = patch.runtime ?? agent.runtime;
+    const machineId = patch.machineId ?? agent.machineId;
+    if (!machineId) return undefined;
+    const machine = this.getMachine(machineId);
+    if (!machine) return { status: 400, error: `Machine ${machineId} not found` };
+    if (!machine.runtimes.includes(runtime)) return { status: 400, error: `Machine does not support runtime ${runtime}` };
+    return undefined;
   }
 
   private startAgent(agentId: string): Response {
@@ -2780,6 +2801,11 @@ export class XoxiangHub extends DurableObject<Env> {
 
   private listMachines(): Machine[] {
     return this.ctx.storage.sql.exec<Row>('SELECT * FROM machines ORDER BY connected_at').toArray().map(toMachine);
+  }
+
+  private getMachine(machineId: string): Machine | undefined {
+    const row = this.ctx.storage.sql.exec<Row>('SELECT * FROM machines WHERE id = ? LIMIT 1', machineId).toArray()[0];
+    return row ? toMachine(row) : undefined;
   }
 
   private upsertMachine(machine: Machine): Machine {

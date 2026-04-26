@@ -240,6 +240,35 @@ describe('App', () => {
     });
   });
 
+  it('lets users edit an agent runtime from the profile panel', async () => {
+    vi.mocked(api.getAgents).mockResolvedValue([{
+      id: 'agent-runtime',
+      name: 'engineer',
+      displayName: 'Engineer',
+      runtime: 'claude',
+      status: 'inactive',
+      createdAt: '2026-04-25T00:00:00.000Z',
+    }]);
+    vi.mocked(api.patchAgent).mockResolvedValue({
+      id: 'agent-runtime',
+      name: 'engineer',
+      displayName: 'Engineer',
+      runtime: 'codex',
+      status: 'inactive',
+      createdAt: '2026-04-25T00:00:00.000Z',
+    });
+
+    render(<App />);
+
+    fireEvent.click(await screen.findByText('Engineer'));
+    fireEvent.change(await screen.findByLabelText('RUNTIME'), { target: { value: 'codex' } });
+    fireEvent.click(screen.getByText('SAVE'));
+
+    await waitFor(() => {
+      expect(api.patchAgent).toHaveBeenCalledWith('agent-runtime', expect.objectContaining({ runtime: 'codex' }));
+    });
+  });
+
   it('shows review evidence and acceptance status on the task board', async () => {
     vi.mocked(api.getAgents).mockResolvedValue([{
       id: 'agent-qa',
@@ -355,6 +384,7 @@ vi.mock('../src/api.js', () => ({
   getAgents: vi.fn(async () => []),
   getMachines: vi.fn(async () => []),
   getAgentActivities: vi.fn(async () => []),
+  patchAgent: vi.fn(),
   getHubVersion: vi.fn(async () => ({ component: 'hub', version: 'test-version' })),
   getTasks: vi.fn(async () => []),
   messageToTask: vi.fn(),

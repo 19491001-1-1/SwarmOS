@@ -62,6 +62,18 @@ function parseCommand(argv: string[]): ParsedCommand {
     const params = new URLSearchParams({ query });
     return { method: 'GET', path: `/agents/resolve?${params.toString()}` };
   }
+  if (group === 'agent' && action === 'update') {
+    const targetAgentId = required(rest[0], 'agent id');
+    const opts = parseFlags(rest.slice(1));
+    const body: Record<string, string> = {};
+    if (typeof opts.runtime === 'string') body.runtime = opts.runtime;
+    if (typeof opts.model === 'string') body.model = opts.model;
+    if (typeof opts['display-name'] === 'string') body.displayName = opts['display-name'];
+    if (typeof opts.description === 'string') body.description = opts.description;
+    if (typeof opts.machine === 'string') body.machineId = opts.machine;
+    if (Object.keys(body).length === 0) throw new Error('missing update field');
+    return { method: 'PATCH', path: `/agents/${encodeURIComponent(targetAgentId)}`, body };
+  }
   if (group === 'message' && action === 'check') return { method: 'GET', path: '/messages/check' };
   if (group === 'inbox' && action === undefined) return { method: 'GET', path: '/inbox' };
   if (group === 'work' && action === 'list') return { method: 'GET', path: '/work' };

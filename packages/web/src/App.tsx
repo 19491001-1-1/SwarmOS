@@ -559,6 +559,7 @@ export function App() {
       ) : selectedAgent ? (
         <AgentDetailPanel
           agent={selectedAgent}
+          machines={machines}
           activities={activitiesByAgent[selectedAgent.id] ?? []}
           reminders={remindersByAgent[selectedAgent.id] ?? []}
           tasks={tasks}

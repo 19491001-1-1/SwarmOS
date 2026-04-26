@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
-import type { Agent, AgentActivity, DirectMessage, DirectMessageThread, Reminder, Task } from '../api.js';
+import type { Agent, AgentActivity, DirectMessage, DirectMessageThread, Machine, Reminder, Task } from '../api.js';
 import { cancelReminder, createAgentReminder, getAgentDirectMessages, getAgentDmThreads, patchAgent, sendAgentDirectMessage } from '../api.js';
 import { WorkspaceBrowser } from './WorkspaceBrowser.js';
 
 type Props = {
   agent: Agent;
+  machines: Machine[];
   activities: AgentActivity[];
   reminders: Reminder[];
   tasks: Task[];
@@ -26,7 +27,7 @@ const ACTIVITY_META: Record<AgentActivity['type'], { label: string; color: strin
   error: { label: 'ERROR', color: '#f44336' },
 };
 
-export function AgentDetailPanel({ agent, activities, reminders, tasks, onReminderUpdated, onAgentUpdated, onClose }: Props) {
+export function AgentDetailPanel({ agent, machines, activities, reminders, tasks, onReminderUpdated, onAgentUpdated, onClose }: Props) {
   const [tab, setTab] = useState<Tab>('profile');
 
   return (
@@ -65,7 +66,7 @@ export function AgentDetailPanel({ agent, activities, reminders, tasks, onRemind
       </div>
 
       <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: 12 }}>
-        {tab === 'profile' ? <Profile agent={agent} tasks={tasks} onAgentUpdated={onAgentUpdated} /> : null}
+        {tab === 'profile' ? <Profile agent={agent} machines={machines} tasks={tasks} onAgentUpdated={onAgentUpdated} /> : null}
         {tab === 'dms' ? <DirectMessages agent={agent} /> : null}
         {tab === 'reminders' ? <Reminders agent={agent} reminders={reminders} onReminderUpdated={onReminderUpdated} /> : null}
         {tab === 'workspace' ? <WorkspaceBrowser agentId={agent.id} /> : null}
@@ -75,7 +76,8 @@ export function AgentDetailPanel({ agent, activities, reminders, tasks, onRemind
   );
 }
 
-function Profile({ agent, tasks, onAgentUpdated }: { agent: Agent; tasks: Task[]; onAgentUpdated: (agent: Agent) => void }) {
+function Profile({ agent, machines, tasks, onAgentUpdated }: { agent: Agent; machines: Machine[]; tasks: Task[]; onAgentUpdated: (agent: Agent) => void }) {
+  const [runtime, setRuntime] = useState(agent.runtime);
   const [displayName, setDisplayName] = useState(agent.displayName ?? '');
   const [description, setDescription] = useState(agent.description ?? '');
   const [model, setModel] = useState(agent.model ?? '');
@@ -85,19 +87,21 @@ function Profile({ agent, tasks, onAgentUpdated }: { agent: Agent; tasks: Task[]
   const [error, setError] = useState<string | undefined>();
 
   useEffect(() => {
+    setRuntime(agent.runtime);
     setDisplayName(agent.displayName ?? '');
     setDescription(agent.description ?? '');
     setModel(agent.model ?? '');
     setSystemPrompt(agent.systemPrompt ?? '');
     setEnvVarsText(formatEnvVars(agent.envVars));
     setError(undefined);
-  }, [agent.id, agent.displayName, agent.description, agent.model, agent.systemPrompt, agent.envVars]);
+  }, [agent.id, agent.runtime, agent.displayName, agent.description, agent.model, agent.systemPrompt, agent.envVars]);
 
   const save = async () => {
     setSaving(true);
     setError(undefined);
     try {
       const updated = await patchAgent(agent.id, {
+        runtime: runtime !== agent.runtime ? runtime : undefined,
         displayName: displayName.trim() || undefined,
         description: description.trim() || undefined,
         model: model.trim() || undefined,
@@ -111,6 +115,8 @@ function Profile({ agent, tasks, onAgentUpdated }: { agent: Agent; tasks: Task[]
       setSaving(false);
     }
   };
+  const machine = agent.machineId ? machines.find((item) => item.id === agent.machineId) : undefined;
+  const busy = ['starting', 'running', 'working'].includes(agent.status);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -124,6 +130,12 @@ function Profile({ agent, tasks, onAgentUpdated }: { agent: Agent; tasks: Task[]
           <div style={{ marginTop: 4, fontSize: 11, color: '#555' }}>{agent.runtime.toUpperCase()} / {agent.status.toUpperCase()}</div>
         </div>
       </div>
+      <RuntimeSelect
+        value={runtime}
+        machine={machine}
+        busy={busy}
+        onChange={setRuntime}
+      />
       <Field label="DISPLAY" value={displayName} onChange={setDisplayName} />
       <Field label="DESCRIPTION" value={description} onChange={setDescription} multiline />
       <Field label="MODEL" value={model} onChange={setModel} />
@@ -138,6 +150,32 @@ function Profile({ agent, tasks, onAgentUpdated }: { agent: Agent; tasks: Task[]
         {saving ? 'SAVING' : 'SAVE'}
       </button>
     </div>
+  );
+}
+
+function RuntimeSelect({ value, machine, busy, onChange }: { value: string; machine?: Machine; busy: boolean; onChange: (value: string) => void }) {
+  const runtimes = ['claude', 'codex', 'gemini'];
+  return (
+    <label style={{ display: 'grid', gap: 4, fontSize: 11, fontWeight: 700 }}>
+      RUNTIME
+      <select
+        aria-label="RUNTIME"
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        disabled={busy}
+        style={inputStyle}
+      >
+        {runtimes.map((runtime) => {
+          const unsupported = Boolean(machine && !machine.runtimes.includes(runtime));
+          return (
+            <option key={runtime} value={runtime} disabled={unsupported}>
+              {runtime.toUpperCase()}{unsupported ? ' (UNSUPPORTED)' : ''}
+            </option>
+          );
+        })}
+      </select>
+      {busy ? <span style={{ color: '#b00020' }}>STOP AGENT BEFORE CHANGING RUNTIME</span> : null}
+    </label>
   );
 }
 
