@@ -1,6 +1,6 @@
 # For Coding Agents
 
-This directory stores handoff material for future coding agents entering the Xoxiang repository.
+This directory stores handoff material for future coding agents entering the Crewden repository.
 
 Use this directory before starting implementation work:
 

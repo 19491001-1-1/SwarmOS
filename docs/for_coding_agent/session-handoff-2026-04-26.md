@@ -1,10 +1,10 @@
 # Coding Agent Handoff - 2026-04-26
 
-This document preserves current project context, operational rules, and recent lessons for future coding agents working on Xoxiang.
+This document preserves current project context, operational rules, and recent lessons for future coding agents working on Crewden.
 
 ## Project Intent
 
-Xoxiang is moving toward an agent-first company organization.
+Crewden is moving toward an agent-first company organization.
 
 The user acts like the boss: they give goals, priorities, and approvals. Agents should behave like a coordinated company: clarify intent, split work, claim ownership, pass context, request review, produce evidence, preserve knowledge, and close the loop.
 
@@ -22,7 +22,7 @@ High-quality work should improve at least one of these outcomes:
 - Recent main-line context includes `533cae2 merge: v1.5.1 editable agent runtime`.
 - A later main update added Cloudflare test environment and task-claim acknowledgement work before this handoff merge.
 - Recent implementation branches were merged with non-fast-forward merge commits, preserving branch history.
-- The project uses a pnpm monorepo under `agent-workspace`.
+- The project uses a pnpm monorepo under `crewden`.
 
 Core packages:
 
@@ -54,18 +54,18 @@ Follow `AGENTS.md` first. Short version:
 Test is the default remote validation target.
 
 ```text
-Test Worker: xoxiang-hub-test
-Test Worker URL: https://xoxiang-hub-test.xingke0.workers.dev
-Test Pages project: xoxiang-web-test
-Test Web URL: https://xoxiang-web-test.pages.dev
+Test Worker: crewden-hub-test
+Test Worker URL: https://crewden-hub-test.xingke0.workers.dev
+Test Pages project: crewden-web-test
+Test Web URL: https://crewden-web-test.pages.dev
 ```
 
 Production is the current live environment and requires explicit user approval.
 
 ```text
-Production Worker: xoxiang-hub
-Production Worker URL: https://xoxiang-hub.xingke0.workers.dev
-Production Pages project: xoxiang-web
+Production Worker: crewden-hub
+Production Worker URL: https://crewden-hub.xingke0.workers.dev
+Production Pages project: crewden-web
 ```
 
 Production workflows are manual only:
@@ -90,24 +90,24 @@ pnpm verify
 For Cloudflare Worker changes:
 
 ```bash
-pnpm --filter @mini-slock/cloudflare exec wrangler deploy --dry-run
-pnpm --filter @mini-slock/cloudflare exec wrangler deploy --config wrangler.test.jsonc --dry-run
+pnpm --filter @crewden/cloudflare exec wrangler deploy --dry-run
+pnpm --filter @crewden/cloudflare exec wrangler deploy --config wrangler.test.jsonc --dry-run
 ```
 
 For web builds against the test hub:
 
 ```bash
-VITE_API_BASE=https://xoxiang-hub-test.xingke0.workers.dev pnpm --filter @mini-slock/web build
+VITE_API_BASE=https://crewden-hub-test.xingke0.workers.dev pnpm --filter @crewden/web build
 ```
 
 Targeted tests:
 
 ```bash
-pnpm --filter @mini-slock/shared test
-pnpm --filter @mini-slock/server test
-pnpm --filter @mini-slock/cloudflare test
-pnpm --filter @mini-slock/daemon test
-pnpm --filter @mini-slock/web test
+pnpm --filter @crewden/shared test
+pnpm --filter @crewden/server test
+pnpm --filter @crewden/cloudflare test
+pnpm --filter @crewden/daemon test
+pnpm --filter @crewden/web test
 ```
 
 If Corepack fails with `Cannot find matching keyid`, update or bypass Corepack:
@@ -145,7 +145,7 @@ Agents used to claim work and then spend time processing before the user saw a r
 Now, when an agent successfully claims an unassigned task through:
 
 ```bash
-xoxiang task claim <taskId>
+crewden task claim <taskId>
 ```
 
 the hub should immediately post a short channel/thread acknowledgement before the slow work continues.
@@ -164,10 +164,10 @@ Implemented a project knowledge layer:
 - Knowledge entries for decision, project archive, user preference, runbook, learning, and artifact.
 - Public and internal APIs for search/read/write/update.
 - Agent-facing CLI commands:
-  - `xoxiang knowledge search`
-  - `xoxiang knowledge read`
-  - `xoxiang knowledge write`
-  - `xoxiang goal archive`
+  - `crewden knowledge search`
+  - `crewden knowledge read`
+  - `crewden knowledge write`
+  - `crewden goal archive`
 - Web Knowledge panel.
 - Server and Cloudflare parity.
 
@@ -197,7 +197,7 @@ PATCH /internal/agent/:agentId/agents/:targetAgentId
 - Agent-facing CLI supports:
 
 ```bash
-xoxiang agent update <agentId> --runtime codex
+crewden agent update <agentId> --runtime codex
 ```
 
 - Web Agent profile panel has a runtime selector.
@@ -292,29 +292,29 @@ Gemini CLI notes:
 The CLI targets whichever hub the daemon is configured to use:
 
 - Local mode: usually `http://localhost:3000`.
-- Cloudflare test mode: usually `https://xoxiang-hub-test.xingke0.workers.dev`.
-- Cloudflare production mode: usually `https://xoxiang-hub.xingke0.workers.dev`.
+- Cloudflare test mode: usually `https://crewden-hub-test.xingke0.workers.dev`.
+- Cloudflare production mode: usually `https://crewden-hub.xingke0.workers.dev`.
 
 Useful commands:
 
 ```bash
-xoxiang auth whoami
-xoxiang server info
-xoxiang agent list
-xoxiang agent resolve "产品经理"
-xoxiang agent update <agentId> --runtime codex
-xoxiang message check
-xoxiang message read --channel general --limit 20
-xoxiang message send --channel general --content "..."
-xoxiang task list --all
-xoxiang task read <taskId> --context
-xoxiang task update <taskId> --status done
-xoxiang task handoff <taskId> --to <agentId> --notes "..."
-xoxiang knowledge search "query"
-xoxiang knowledge write --kind runbook --title "..." --summary "..." --body "..." --source doc:...
+crewden auth whoami
+crewden server info
+crewden agent list
+crewden agent resolve "产品经理"
+crewden agent update <agentId> --runtime codex
+crewden message check
+crewden message read --channel general --limit 20
+crewden message send --channel general --content "..."
+crewden task list --all
+crewden task read <taskId> --context
+crewden task update <taskId> --status done
+crewden task handoff <taskId> --to <agentId> --notes "..."
+crewden knowledge search "query"
+crewden knowledge write --kind runbook --title "..." --summary "..." --body "..." --source doc:...
 ```
 
-Some runtimes sandbox subprocesses. Recent daemon prompt work encourages starting CLI-backed runtimes with enough permission for `xoxiang` to reach the hub.
+Some runtimes sandbox subprocesses. Recent daemon prompt work encourages starting CLI-backed runtimes with enough permission for `crewden` to reach the hub.
 
 ## Knowledge And Memory Guidance
 
