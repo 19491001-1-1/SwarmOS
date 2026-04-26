@@ -115,6 +115,7 @@ v1.5 应优先设计知识层和 adapter 接口，不急着绑定某个外部知
 | v1.3 | Autonomous Work Loop | Agent 主动看 inbox、认领、推进、委派、升级和汇报 | 已明确 |
 | v1.4 | Review & Acceptance | reviewer、evidence、返工、最终验收 | 已明确 |
 | v1.5 | Knowledge & Memory Layer | 项目知识、决策沉淀、经验检索、外部知识库 adapter | 重要，待细化选型 |
+| v1.5.1 | Editable Agent Runtime | 支持创建后修改 Agent runtime，并保证 Web/API/CLI/Cloudflare 一致 | 已明确 |
 | v1.6 | Draft: Tools & Credentials | 工具权限、凭据治理、外部服务集成 | 草稿 |
 | v1.7 | Draft: Strategy & Research | 研究、批判、方案生成、创新提案 | 草稿 |
 | v1.8 | Draft: Reliability & Scale | 审计、成本、SLA、多 daemon、可靠队列 | 草稿 |
