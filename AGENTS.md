@@ -2,6 +2,25 @@
 
 These rules are mandatory for coding agents working in this repository.
 
+## First Read
+
+Before making non-trivial changes, read the current coding-agent handoff notes:
+
+```text
+docs/for_coding_agent/
+```
+
+Treat these notes as project memory for recent operational context, current deployment habits, and product lessons. If a turn produces durable knowledge that future coding agents need, add or update a document in this directory.
+
+## Product Direction
+
+The project goal is to build an agent-first company organization.
+
+- The user is the boss: they give goals, priorities, and approvals.
+- Agents should coordinate like a company: clarify intent, split work, claim ownership, pass context, request review, produce evidence, and close the loop.
+- Favor changes that reduce user micromanagement, improve agent-to-agent context transfer, make progress visible, and preserve useful knowledge.
+- Do not optimize only for chat replies. Important work should update system state: tasks, goals, reviews, messages, and knowledge.
+
 ## Branch Workflow
 
 Never implement changes directly on `main`.
@@ -106,6 +125,14 @@ Expected flow:
 3. Validate the user-facing behavior on the test Pages URL.
 4. Ask for production approval with the test result summary.
 5. Only after approval, manually run the production Hub and Pages workflows.
+
+## Agent Experience Rules
+
+- When an agent claims or starts long-running work, the user should see a fast acknowledgement in the relevant channel or thread before the slow work continues.
+- Task handoffs must carry enough context for the next agent: objective, background, constraints, acceptance criteria, dependencies, artifacts, and private notes when appropriate.
+- Agent display names are not stable identifiers. Prefer agent id first, then unique name/display name when resolving a target.
+- Do not mark meaningful work `done` without concrete evidence. High-risk work should be reviewed by a different agent unless the user explicitly allows self-review with a reason.
+- Before context-dependent work, search project knowledge. Write durable decisions, user preferences, runbooks, failure lessons, and reusable facts back to knowledge. Do not store secrets or short-lived chat noise.
 
 ## When Already On A Feature Branch
 
