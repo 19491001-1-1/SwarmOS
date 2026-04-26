@@ -68,6 +68,30 @@ Every deployable iteration must carry a version across components.
 - CI/CD should inject the current commit SHA through `XOXIANG_VERSION` for hub/server/daemon-style runtimes and `VITE_APP_VERSION` for the web build.
 - Do not hardcode a new component-local version if it can use the shared version helper or the build-time environment variable.
 
+## Knowledge And Handoff Discipline
+
+Every substantial development session should leave usable context for the next coding agent.
+
+Use these locations consistently:
+
+- Long-term rules and mandatory workflow constraints belong in `AGENTS.md`.
+- Cross-session handoff summaries, runbooks, and reusable operational lessons belong in `docs/for_coding_agent/`.
+- Product/version execution plans belong in `docs/v*.md`.
+- Agent-local working context belongs in agent workspace `MEMORY.md` and `notes/`.
+- Project-level reusable decisions, runbooks, lessons, user preferences, and archives should also be written through the Knowledge layer when available.
+
+When exporting session knowledge:
+
+1. Summarize the current repository state and recent commits.
+2. Record changed components and key files.
+3. Record verification commands that passed or failed.
+4. Record common tool commands and invocation patterns.
+5. Record project-specific lessons and business/domain knowledge.
+6. Record known pitfalls and caveats.
+7. Prefer concise structured summaries over raw chat logs.
+
+Never write secrets, auth tokens, API keys, or sensitive private data into `AGENTS.md`, docs, `MEMORY.md`, notes, transcripts, or Knowledge entries.
+
 ## Merge Procedure
 
 After verification passes:
