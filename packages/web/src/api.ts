@@ -185,12 +185,13 @@ export async function createAgent(data: {
   return r.json();
 }
 
-export async function patchAgent(agentId: string, data: { machineId?: string; displayName?: string; description?: string; model?: string; systemPrompt?: string; envVars?: Record<string, string>; organization?: AgentOrganization; autoStart?: boolean }): Promise<Agent> {
+export async function patchAgent(agentId: string, data: { runtime?: string; machineId?: string; displayName?: string; description?: string; model?: string; systemPrompt?: string; envVars?: Record<string, string>; organization?: AgentOrganization; autoStart?: boolean }): Promise<Agent> {
   const r = await apiFetch(`${API_BASE}/api/agents/${agentId}`, {
     method: 'PATCH',
     headers: authHeaders({ 'Content-Type': 'application/json' }),
     body: JSON.stringify(data),
   });
+  if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error ?? 'Update agent failed');
   return r.json();
 }
 

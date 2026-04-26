@@ -8,6 +8,7 @@ import { resolveStartMachineId, toRuntimeConfig } from '@mini-slock/hub-core';
 import { delegateAgent } from '../delegation.js';
 import { toAgentRuntimeConfig } from '../runtimeConfig.js';
 import { buildOpenTaskSummary } from '../taskDelivery.js';
+import { validateAgentRuntimePatch } from '../agentRuntimePatch.js';
 
 export async function agentRoutes(app: FastifyInstance) {
   app.get('/api/agents', async () => {
@@ -119,6 +120,8 @@ export async function agentRoutes(app: FastifyInstance) {
     if (!parsed.success) {
       return reply.status(400).send({ error: 'Invalid request body', issues: parsed.error.issues });
     }
+    const runtimeError = await validateAgentRuntimePatch(agent, parsed.data, (machineId) => store.getMachine(machineId));
+    if (runtimeError) return reply.status(runtimeError.statusCode).send({ error: runtimeError.error });
     const updated = await store.updateAgent(agent.id, parsed.data);
     if (updated) {
       eventBus.emit({ type: 'agent:update', agent: updated });

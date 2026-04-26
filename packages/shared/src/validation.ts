@@ -328,6 +328,7 @@ export const CreateAgentRequestSchema = z.object({
 
 export const PatchAgentRequestSchema = z
   .object({
+    runtime: RuntimeIdSchema.optional(),
     machineId: z.string().optional(),
     displayName: z.string().optional(),
     description: z.string().optional(),
@@ -340,6 +341,7 @@ export const PatchAgentRequestSchema = z
   .refine(
     (val) =>
       val.machineId !== undefined ||
+      val.runtime !== undefined ||
       val.displayName !== undefined ||
       val.description !== undefined ||
       val.model !== undefined ||

@@ -122,6 +122,18 @@ describe('agent-facing xoxiang CLI', () => {
     expect(JSON.parse(result.stdout).match.id).toBe('agent-111');
   });
 
+  it('updates an agent runtime', async () => {
+    const fetchImpl = okFetch({ id: 'agent-2', runtime: 'gemini' });
+    const result = await run(['agent', 'update', 'agent-2', '--runtime', 'gemini'], fetchImpl);
+
+    expect(result.code).toBe(0);
+    expect(fetchImpl).toHaveBeenCalledWith(
+      'http://hub.test/internal/agent/agent-1/agents/agent-2',
+      expect.objectContaining({ method: 'PATCH', body: JSON.stringify({ runtime: 'gemini' }) })
+    );
+    expect(JSON.parse(result.stdout).runtime).toBe('gemini');
+  });
+
   it('delegates with wake flag', async () => {
     const fetchImpl = okFetch({ id: 'delegation-1' });
     const result = await run(['agent', 'delegate', '--to', 'target', '--content', 'work', '--start-if-inactive'], fetchImpl);
