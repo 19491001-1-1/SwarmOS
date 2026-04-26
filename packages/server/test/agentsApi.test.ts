@@ -25,7 +25,7 @@ describe('GET /api/version', () => {
     expect(res.statusCode).toBe(200);
     const body = res.json();
     expect(body.component).toBe('server');
-    expect(body.version).toBe(process.env.CREWDEN_VERSION || '0.6.0');
+    expect(body.version).toBe(process.env.CREWDEN_VERSION || '1.5.1');
     expect(body.version).toBeTruthy();
     await app.close();
   });
@@ -294,7 +294,7 @@ describe('PATCH /api/agents/:id', () => {
       id: 'machine-1',
       hostname: 'host',
       os: 'darwin',
-      daemonVersion: '0.6.0',
+      daemonVersion: '1.5.1',
       runtimes: ['claude'],
       runtimeVersions: { claude: '1.0.0' },
       status: 'online',
@@ -325,7 +325,7 @@ describe('PATCH /api/agents/:id', () => {
       id: 'machine-codex',
       hostname: 'host',
       os: 'darwin',
-      daemonVersion: '0.6.0',
+      daemonVersion: '1.5.1',
       runtimes: ['codex'],
       runtimeVersions: { codex: '1.0.0' },
       status: 'online',

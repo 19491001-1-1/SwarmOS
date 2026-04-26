@@ -7,7 +7,7 @@ PROJECT_NAME="${CLOUDFLARE_PAGES_PROJECT:-crewden-web}"
 BRANCH="${CLOUDFLARE_PAGES_BRANCH:-main}"
 API_BASE="${VITE_API_BASE:-https://crewden-hub.xingke0.workers.dev}"
 WEB_TOKEN="${VITE_WEB_AUTH_TOKEN:-}"
-APP_VERSION="${VITE_APP_VERSION:-$(git -C "$ROOT" rev-parse --short=12 HEAD 2>/dev/null || printf '0.6.0')}"
+APP_VERSION="${VITE_APP_VERSION:-$(git -C "$ROOT" rev-parse --short=12 HEAD 2>/dev/null || printf '1.5.1')}"
 COMMIT_SHA="${VITE_COMMIT_SHA:-$(git -C "$ROOT" rev-parse HEAD 2>/dev/null || true)}"
 DIST_DIR="$ROOT/packages/web/dist"
 

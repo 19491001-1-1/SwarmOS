@@ -104,6 +104,12 @@ importers:
 
   packages/server:
     dependencies:
+      '@crewden/hub-core':
+        specifier: workspace:*
+        version: link:../hub-core
+      '@crewden/shared':
+        specifier: workspace:*
+        version: link:../shared
       '@fastify/cors':
         specifier: ^9.0.1
         version: 9.0.1
@@ -113,12 +119,6 @@ importers:
       '@libsql/client':
         specifier: ^0.17.3
         version: 0.17.3
-      '@crewden/hub-core':
-        specifier: workspace:*
-        version: link:../hub-core
-      '@crewden/shared':
-        specifier: workspace:*
-        version: link:../shared
       drizzle-orm:
         specifier: ^0.45.2
         version: 0.45.2(@cloudflare/workers-types@4.20260424.1)(@libsql/client@0.17.3)
