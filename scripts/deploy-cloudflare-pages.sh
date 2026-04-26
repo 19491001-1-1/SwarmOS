@@ -23,7 +23,7 @@ log "Web version: $APP_VERSION"
 if [[ "$API_BASE" == *workers.dev* || "$API_BASE" == https://* ]]; then
   if [[ -z "$WEB_TOKEN" ]]; then
     log "ERROR: VITE_WEB_AUTH_TOKEN is required when deploying against the public Cloudflare hub."
-    log "Set it via: export VITE_WEB_AUTH_TOKEN=<token>"
+    log "Set it via: export VITE_WEB_AUTH_TOKEN=***"
     exit 1
   fi
   log "Web auth token: configured (length=${#WEB_TOKEN})"
@@ -33,7 +33,11 @@ log "Checking Cloudflare authentication..."
 pnpm --dir "$ROOT" --filter @crewden/cloudflare exec wrangler whoami >/dev/null
 
 log "Building web UI..."
-VITE_API_BASE="$API_BASE" VITE_WEB_AUTH_TOKEN="$WEB_TOKEN" VITE_APP_VERSION="$APP_VERSION" VITE_COMMIT_SHA="$COMMIT_SHA" pnpm --dir "$ROOT" --filter @crewden/web build
+VITE_API_BASE="$API_BASE" \
+VITE_WEB_AUTH_TOKEN="$WEB_TOKEN" \
+VITE_APP_VERSION="$APP_VERSION" \
+VITE_COMMIT_SHA="$COMMIT_SHA" \
+pnpm --dir "$ROOT" --filter @crewden/web build
 
 log "Deploying $DIST_DIR to Cloudflare Pages..."
 set +e

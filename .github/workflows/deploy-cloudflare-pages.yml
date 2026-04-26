@@ -38,8 +38,13 @@ jobs:
             echo "::error::CLOUDFLARE_API_TOKEN secret is not set. Please add it in repo Settings > Secrets."
             exit 1
           fi
+          if [ -z "$CLOUDFLARE_ACCOUNT_ID" ]; then
+            echo "::error::CLOUDFLARE_ACCOUNT_ID secret is not set."
+            exit 1
+          fi
           if [ -z "$WEB_AUTH_TOKEN" ]; then
-            echo "::warning::WEB_AUTH_TOKEN secret is not set; web UI will fail to authenticate against the public hub."
+            echo "::error::WEB_AUTH_TOKEN secret is not set; web UI cannot authenticate against the public hub."
+            exit 1
           fi
 
       - name: Build web UI
@@ -60,6 +65,14 @@ jobs:
             --commit-dirty=true 2>&1 | tee /tmp/wrangler-pages-deploy.log
           status=${PIPESTATUS[0]}
           set -e
+          if [ "$status" -ne 0 ] && grep -q 'Project not found' /tmp/wrangler-pages-deploy.log; then
+            pnpm --filter @crewden/cloudflare exec wrangler pages project create crewden-web --production-branch main
+            pnpm --filter @crewden/cloudflare exec wrangler pages deploy "$GITHUB_WORKSPACE/packages/web/dist" \
+              --project-name crewden-web \
+              --branch main \
+              --commit-dirty=true 2>&1 | tee /tmp/wrangler-pages-deploy.log
+            status=${PIPESTATUS[0]}
+          fi
           if [ "$status" -ne 0 ]; then
             echo "::error::wrangler pages deploy failed with exit code $status"
             exit "$status"

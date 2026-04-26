@@ -12,6 +12,7 @@ jobs:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       DAEMON_API_KEY: ${{ secrets.DAEMON_API_KEY }}
+      WEB_AUTH_TOKEN: ${{ secrets.WEB_AUTH_TOKEN }}
       CREWDEN_VERSION: ${{ github.sha }}
       CREWDEN_COMMIT_SHA: ${{ github.sha }}
       CREWDEN_BUILD_ID: ${{ github.run_id }}
@@ -35,17 +36,27 @@ jobs:
 
       - name: Check required secrets
         run: |
-          if [ -z "$DAEMON_API_KEY" ]; then
-            echo "::error::DAEMON_API_KEY secret is not set. Please add it in repo Settings > Secrets."
-            exit 1
-          fi
           if [ -z "$CLOUDFLARE_API_TOKEN" ]; then
             echo "::error::CLOUDFLARE_API_TOKEN secret is not set."
             exit 1
           fi
+          if [ -z "$CLOUDFLARE_ACCOUNT_ID" ]; then
+            echo "::error::CLOUDFLARE_ACCOUNT_ID secret is not set."
+            exit 1
+          fi
+          if [ -z "$DAEMON_API_KEY" ]; then
+            echo "::error::DAEMON_API_KEY secret is not set. Please add it in repo Settings > Secrets."
+            exit 1
+          fi
+          if [ -z "$WEB_AUTH_TOKEN" ]; then
+            echo "::error::WEB_AUTH_TOKEN secret is not set. Please add it in repo Settings > Secrets."
+            exit 1
+          fi
 
-      - name: Upload DAEMON_API_KEY to Cloudflare Worker
-        run: printf '%s' "$DAEMON_API_KEY" | pnpm --filter @crewden/cloudflare exec wrangler secret put DAEMON_API_KEY
+      - name: Upload Worker secrets
+        run: |
+          printf '%s' "$DAEMON_API_KEY" | pnpm --filter @crewden/cloudflare exec wrangler secret put DAEMON_API_KEY
+          printf '%s' "$WEB_AUTH_TOKEN" | pnpm --filter @crewden/cloudflare exec wrangler secret put WEB_AUTH_TOKEN
 
       - name: Deploy Cloudflare Worker
         run: pnpm --filter @crewden/cloudflare run deploy
