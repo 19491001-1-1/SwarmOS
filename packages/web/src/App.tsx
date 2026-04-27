@@ -14,6 +14,7 @@ import { LoginView } from './components/LoginView.js';
 import type { Channel, Message, MessageThread, Agent, Machine, AgentActivity, VersionInfo, Task, Reminder, SearchMessageResult, GoalBrief, GoalAlignment } from './api.js';
 import { AuthError, WEB_COMMIT_SHA, WEB_VERSION, buildWsUrl, getChannels, getMessages, getMessageThread, sendMessage, getAgents, getMachines, getAgentActivities, getHubVersion, getTasks, messageToTask, startGoalAlignment, getAgentReminders, createChannel, deleteChannel, searchMessages, setAuthFailureHandler, verifyAuthToken } from './api.js';
 import { clearStoredAuthToken, getEffectiveAuthToken, markSignedOut, setStoredAuthToken } from './auth.js';
+import { notifyBrowser, requestPermission } from './notifications.js';
 
 const LAST_PAGE_KEY = 'crewden_last_page';
 
@@ -184,6 +185,7 @@ export function App() {
     loadMachines();
     loadTasks();
     getHubVersion().then(setHubVersion).catch(() => undefined);
+    requestPermission().catch(() => undefined);
   }, [isAuthenticated, loadAgents, loadChannels, loadMachines, loadTasks]);
 
   useEffect(() => {
@@ -269,6 +271,12 @@ export function App() {
           if (msg.message.channelId === selectedChannelRef.current) {
             upsertMessage(msg.message);
           }
+          const sender: string = msg.message.senderName ?? msg.message.agentId ?? 'Someone';
+          notifyBrowser(
+            sender,
+            { body: msg.message.content?.slice(0, 80), tag: `msg:${msg.message.id}` },
+            'messages',
+          );
         } else if (msg.type === 'thread:message:new') {
           updateThreadRoot(msg.root);
           setThread((current) => {
@@ -278,8 +286,23 @@ export function App() {
               : [...current.replies, msg.message];
             return { root: msg.root, replies };
           });
+          const replySender: string = msg.message.senderName ?? msg.message.agentId ?? 'Someone';
+          notifyBrowser(
+            `${replySender} replied in thread`,
+            { body: msg.message.content?.slice(0, 80), tag: `thread:${msg.message.id}` },
+            'messages',
+          );
         } else if (msg.type === 'agent:update' || msg.type === 'agent:updated') {
           setAgents((prev) => prev.map((a) => (a.id === msg.agent.id ? msg.agent : a)));
+          const agentStatus: string = msg.agent.status;
+          if (agentStatus === 'working' || agentStatus === 'idle') {
+            const agentLabel: string = msg.agent.displayName ?? msg.agent.name ?? msg.agent.id;
+            notifyBrowser(
+              `Agent: ${agentLabel}`,
+              { body: agentStatus === 'working' ? 'Started working' : 'Now idle', tag: `agent:${msg.agent.id}:status` },
+              'agents',
+            );
+          }
         } else if (msg.type === 'agent:deleted') {
           setAgents((prev) => prev.filter((agent) => agent.id !== msg.agentId));
           setSelectedAgentId((current) => current === msg.agentId ? undefined : current);
@@ -303,6 +326,15 @@ export function App() {
             if (exists) return prev.map((task) => (task.id === msg.task.id ? msg.task : task));
             return [...prev, msg.task];
           });
+          const taskStatus: string = msg.task.status;
+          if (taskStatus === 'done' || taskStatus === 'blocked' || taskStatus === 'in_review') {
+            const statusLabel: Record<string, string> = { done: 'Done', blocked: 'Blocked', in_review: 'Needs review' };
+            notifyBrowser(
+              `Task ${statusLabel[taskStatus] ?? taskStatus}`,
+              { body: msg.task.title?.slice(0, 80), tag: `task:${msg.task.id}:${taskStatus}` },
+              'tasks',
+            );
+          }
         } else if (msg.type === 'goal:update') {
           setGoalDraft((current) => current?.id === msg.goal.id ? msg.goal : current);
         } else if (msg.type === 'goal-alignment:update') {
