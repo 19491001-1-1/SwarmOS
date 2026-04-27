@@ -11,6 +11,7 @@ const ACTIVE_STATUSES = new Set(['starting', 'running', 'working', 'idle']);
 export async function notifyTaskAssignee(task: Task): Promise<void> {
   if (!task.assigneeId || task.status === 'done') return;
   const store = getStore();
+  if (await hasOpenDependencies(task)) return;
   const target = await store.findAgentByNameOrId(task.assigneeId);
   if (!target) return;
 
@@ -45,6 +46,26 @@ export async function notifyTaskAssignee(task: Task): Promise<void> {
   if (!sent) return;
   const updated = await store.updateAgent(target.id, { machineId, status: 'starting' });
   if (updated) eventBus.emit({ type: 'agent:update', agent: updated });
+}
+
+export async function notifyTasksBlockedBy(blockerTaskId: string): Promise<void> {
+  const tasks = await getStore().listTasks();
+  for (const task of tasks) {
+    if (task.context?.blockedByTaskIds?.includes(blockerTaskId)) {
+      await notifyTaskAssignee(task);
+    }
+  }
+}
+
+async function hasOpenDependencies(task: Task): Promise<boolean> {
+  const blockedByTaskIds = task.context?.blockedByTaskIds ?? [];
+  if (blockedByTaskIds.length === 0) return false;
+  const store = getStore();
+  for (const taskId of blockedByTaskIds) {
+    const blocker = await store.getTask(taskId);
+    if (!blocker || blocker.status !== 'done') return true;
+  }
+  return false;
 }
 
 export async function buildOpenTaskSummary(agent: Agent): Promise<string | undefined> {

@@ -3,7 +3,7 @@ import { nanoid } from 'nanoid';
 import { CreateTaskRequestSchema, CreateTaskReviewRequestSchema, MessageToTaskRequestSchema, PatchTaskRequestSchema, ReviewDecisionRequestSchema, TaskStatusSchema, type TaskReview, type TaskStatus } from '@crewden/shared';
 import { getStore } from '../db.js';
 import { eventBus } from '../events.js';
-import { notifyTaskAssignee } from '../taskDelivery.js';
+import { notifyTaskAssignee, notifyTasksBlockedBy } from '../taskDelivery.js';
 
 export async function taskRoutes(app: FastifyInstance) {
   app.get<{ Querystring: { channelId?: string; status?: string } }>('/api/tasks', async (req, reply) => {
@@ -21,8 +21,12 @@ export async function taskRoutes(app: FastifyInstance) {
     const channel = await getStore().getChannel(parsed.data.channelId);
     if (!channel) return reply.status(404).send({ error: 'Channel not found' });
 
+    const taskId = nanoid();
+    const dependencyError = await validateTaskDependencies(taskId, parsed.data.context?.blockedByTaskIds);
+    if (dependencyError) return reply.status(422).send({ error: dependencyError });
+
     const task = await getStore().createTask({
-      id: nanoid(),
+      id: taskId,
       channelId: parsed.data.channelId,
       messageId: parsed.data.messageId,
       title: parsed.data.title,
@@ -49,6 +53,8 @@ export async function taskRoutes(app: FastifyInstance) {
     if (patch.status && !isTaskTransitionAllowed(existing.status, patch.status)) {
       return reply.status(422).send({ error: 'Invalid task status transition', from: existing.status, to: patch.status });
     }
+    const dependencyError = await validateTaskDependencies(existing.id, patch.context?.blockedByTaskIds);
+    if (dependencyError) return reply.status(422).send({ error: dependencyError });
     const task = await store.updateTask(req.params.id, patch);
     if (!task) return reply.status(404).send({ error: 'Task not found' });
     if (patch.status && patch.status !== existing.status) {
@@ -64,6 +70,7 @@ export async function taskRoutes(app: FastifyInstance) {
     }
     eventBus.emit({ type: 'task:update', task });
     await notifyTaskAssignee(task);
+    if (task.status === 'done' && existing.status !== 'done') await notifyTasksBlockedBy(task.id);
     return task;
   });
 
@@ -195,4 +202,29 @@ function isTaskTransitionAllowed(from: TaskStatus, to: TaskStatus): boolean {
     cancelled: [],
   };
   return allowed[from].includes(to);
+}
+
+async function validateTaskDependencies(taskId: string, blockedByTaskIds: string[] | undefined): Promise<string | undefined> {
+  if (!blockedByTaskIds?.length) return undefined;
+  if (blockedByTaskIds.includes(taskId)) return 'Circular task dependency';
+  const store = getStore();
+  for (const blockerId of blockedByTaskIds) {
+    const blocker = await store.getTask(blockerId);
+    if (!blocker) return 'Unknown task dependency';
+    if (await hasDependencyPath(blockerId, taskId, new Set([taskId]))) {
+      return 'Circular task dependency';
+    }
+  }
+  return undefined;
+}
+
+async function hasDependencyPath(fromTaskId: string, targetTaskId: string, visited: Set<string>): Promise<boolean> {
+  if (fromTaskId === targetTaskId) return true;
+  if (visited.has(fromTaskId)) return false;
+  visited.add(fromTaskId);
+  const task = await getStore().getTask(fromTaskId);
+  for (const blockerId of task?.context?.blockedByTaskIds ?? []) {
+    if (await hasDependencyPath(blockerId, targetTaskId, visited)) return true;
+  }
+  return false;
 }

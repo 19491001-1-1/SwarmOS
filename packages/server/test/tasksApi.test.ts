@@ -1,6 +1,7 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { buildApp } from '../src/app.js';
 import { getStore, resetStore } from '../src/db.js';
+import { daemonRegistry } from '../src/daemonRegistry.js';
 
 beforeEach(async () => {
   await resetStore();
@@ -185,6 +186,131 @@ describe('task API', () => {
     ]));
     expect(JSON.stringify(logs)).not.toContain(token);
 
+    await app.close();
+  });
+
+  it('does not deliver task while dependency is open', async () => {
+    const app = await buildApp();
+    const store = getStore();
+    const fakeSocket = { readyState: 1, send: vi.fn() };
+    daemonRegistry.register('machine-1', fakeSocket as any);
+    await store.createAgent({
+      id: 'agent-1',
+      name: 'worker',
+      runtime: 'claude',
+      status: 'idle',
+      machineId: 'machine-1',
+      createdAt: new Date().toISOString(),
+    });
+    const blocker = await app.inject({
+      method: 'POST',
+      url: '/api/tasks',
+      payload: { channelId: 'general', title: 'blocker', creatorName: 'user' },
+    });
+
+    const dependent = await app.inject({
+      method: 'POST',
+      url: '/api/tasks',
+      payload: {
+        channelId: 'general',
+        title: 'dependent',
+        creatorName: 'user',
+        assigneeId: 'agent-1',
+        context: { blockedByTaskIds: [blocker.json().id] },
+      },
+    });
+
+    expect(dependent.statusCode).toBe(201);
+    expect(fakeSocket.send).not.toHaveBeenCalled();
+    daemonRegistry.unregister('machine-1');
+    await app.close();
+  });
+
+  it('unblocks dependency when blocker is done', async () => {
+    const app = await buildApp();
+    const store = getStore();
+    const fakeSocket = { readyState: 1, send: vi.fn() };
+    daemonRegistry.register('machine-1', fakeSocket as any);
+    await store.createAgent({
+      id: 'agent-1',
+      name: 'worker',
+      runtime: 'claude',
+      status: 'idle',
+      machineId: 'machine-1',
+      createdAt: new Date().toISOString(),
+    });
+    const blocker = await app.inject({
+      method: 'POST',
+      url: '/api/tasks',
+      payload: { channelId: 'general', title: 'blocker', creatorName: 'user' },
+    });
+    const dependent = await app.inject({
+      method: 'POST',
+      url: '/api/tasks',
+      payload: {
+        channelId: 'general',
+        title: 'dependent',
+        creatorName: 'user',
+        assigneeId: 'agent-1',
+        context: { blockedByTaskIds: [blocker.json().id] },
+      },
+    });
+    expect(fakeSocket.send).not.toHaveBeenCalled();
+
+    const started = await app.inject({
+      method: 'PATCH',
+      url: `/api/tasks/${blocker.json().id}`,
+      payload: { status: 'in_progress', expectedVersion: blocker.json().version },
+    });
+    const review = await app.inject({
+      method: 'PATCH',
+      url: `/api/tasks/${blocker.json().id}`,
+      payload: { status: 'in_review', expectedVersion: started.json().version },
+    });
+    const done = await app.inject({
+      method: 'PATCH',
+      url: `/api/tasks/${blocker.json().id}`,
+      payload: { status: 'done', expectedVersion: review.json().version },
+    });
+
+    expect(done.statusCode).toBe(200);
+    expect(fakeSocket.send).toHaveBeenCalledTimes(1);
+    const sent = JSON.parse(fakeSocket.send.mock.calls[0][0]);
+    expect(sent).toMatchObject({
+      type: 'agent:deliver',
+      agentId: 'agent-1',
+      message: { channelId: `task:${dependent.json().id}` },
+    });
+    daemonRegistry.unregister('machine-1');
+    await app.close();
+  });
+
+  it('rejects circular task dependency', async () => {
+    const app = await buildApp();
+    const first = await app.inject({
+      method: 'POST',
+      url: '/api/tasks',
+      payload: { channelId: 'general', title: 'first', creatorName: 'user' },
+    });
+    const second = await app.inject({
+      method: 'POST',
+      url: '/api/tasks',
+      payload: {
+        channelId: 'general',
+        title: 'second',
+        creatorName: 'user',
+        context: { blockedByTaskIds: [first.json().id] },
+      },
+    });
+
+    const cycle = await app.inject({
+      method: 'PATCH',
+      url: `/api/tasks/${first.json().id}`,
+      payload: { context: { blockedByTaskIds: [second.json().id] }, expectedVersion: first.json().version },
+    });
+
+    expect(cycle.statusCode).toBe(422);
+    expect(cycle.json()).toMatchObject({ error: 'Circular task dependency' });
     await app.close();
   });
 

@@ -184,6 +184,7 @@ export type TaskContext = {
   assumptions?: string[];
   risks?: string[];
   dependencies?: string[];
+  blockedByTaskIds?: string[];
   sourceMessageIds?: string[];
   artifacts?: string[];
   requesterAgentId?: string;

@@ -92,6 +92,7 @@ export const TaskContextSchema = z.object({
   assumptions: z.array(z.string()).optional(),
   risks: z.array(z.string()).optional(),
   dependencies: z.array(z.string()).optional(),
+  blockedByTaskIds: z.array(z.string().min(1)).optional(),
   sourceMessageIds: z.array(z.string()).optional(),
   artifacts: z.array(z.string()).optional(),
   requesterAgentId: z.string().optional(),

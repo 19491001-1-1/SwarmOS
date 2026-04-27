@@ -924,9 +924,12 @@ export class CrewdenHub extends DurableObject<Env> {
     const parsed = CreateTaskRequestSchema.safeParse(body);
     if (!parsed.success) return json({ error: 'Invalid request body', issues: parsed.error.issues }, 400);
     if (!this.getChannel(parsed.data.channelId)) return json({ error: 'Channel not found' }, 404);
+    const taskId = crypto.randomUUID();
+    const dependencyError = this.validateTaskDependencies(taskId, parsed.data.context?.blockedByTaskIds);
+    if (dependencyError) return json({ error: dependencyError }, 422);
 
     const task = this.createTask({
-      id: crypto.randomUUID(),
+      id: taskId,
       channelId: parsed.data.channelId,
       messageId: parsed.data.messageId,
       title: parsed.data.title,
@@ -1036,10 +1039,13 @@ export class CrewdenHub extends DurableObject<Env> {
     if (patch.status && !isTaskTransitionAllowed(existing.status, patch.status)) {
       return json({ error: 'Invalid task status transition', from: existing.status, to: patch.status }, 422);
     }
+    const dependencyError = this.validateTaskDependencies(existing.id, patch.context?.blockedByTaskIds);
+    if (dependencyError) return json({ error: dependencyError }, 422);
     const task = this.updateTask(taskId, patch);
     if (!task) return json({ error: 'Task not found' }, 404);
     this.broadcast({ type: 'task:update', task });
     this.notifyTaskAssignee(task);
+    if (task.status === 'done' && existing.status !== 'done') this.notifyTasksBlockedBy(task.id);
     return json(task);
   }
 
@@ -2767,6 +2773,7 @@ export class CrewdenHub extends DurableObject<Env> {
 
   private notifyTaskAssignee(task: Task): void {
     if (!task.assigneeId || task.status === 'done') return;
+    if (this.hasOpenDependencies(task)) return;
     const target = this.findAgentByNameOrId(task.assigneeId);
     if (!target) return;
     const message = toTaskDelivery(task);
@@ -2796,6 +2803,42 @@ export class CrewdenHub extends DurableObject<Env> {
     if (!sent) return;
     const updated = this.updateAgent(target.id, { machineId, status: 'starting' });
     if (updated) this.broadcast({ type: 'agent:update', agent: updated });
+  }
+
+  private notifyTasksBlockedBy(blockerTaskId: string): void {
+    for (const task of this.listTasks()) {
+      if (task.context?.blockedByTaskIds?.includes(blockerTaskId)) this.notifyTaskAssignee(task);
+    }
+  }
+
+  private hasOpenDependencies(task: Task): boolean {
+    for (const blockerId of task.context?.blockedByTaskIds ?? []) {
+      const blocker = this.getTask(blockerId);
+      if (!blocker || blocker.status !== 'done') return true;
+    }
+    return false;
+  }
+
+  private validateTaskDependencies(taskId: string, blockedByTaskIds: string[] | undefined): string | undefined {
+    if (!blockedByTaskIds?.length) return undefined;
+    if (blockedByTaskIds.includes(taskId)) return 'Circular task dependency';
+    for (const blockerId of blockedByTaskIds) {
+      const blocker = this.getTask(blockerId);
+      if (!blocker) return 'Unknown task dependency';
+      if (this.hasDependencyPath(blockerId, taskId, new Set([taskId]))) return 'Circular task dependency';
+    }
+    return undefined;
+  }
+
+  private hasDependencyPath(fromTaskId: string, targetTaskId: string, visited: Set<string>): boolean {
+    if (fromTaskId === targetTaskId) return true;
+    if (visited.has(fromTaskId)) return false;
+    visited.add(fromTaskId);
+    const task = this.getTask(fromTaskId);
+    for (const blockerId of task?.context?.blockedByTaskIds ?? []) {
+      if (this.hasDependencyPath(blockerId, targetTaskId, visited)) return true;
+    }
+    return false;
   }
 
   private openTaskSummaryDelivery(agent: Agent) {
