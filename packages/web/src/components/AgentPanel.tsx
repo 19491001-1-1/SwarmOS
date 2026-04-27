@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import type { Agent, Machine } from '../api.js';
-import { createAgent, startAgent, stopAgent } from '../api.js';
+import { createAgent, deleteAgent, startAgent, stopAgent } from '../api.js';
 
 type Props = {
   agents: Agent[];
@@ -34,6 +34,9 @@ export function AgentPanel({ agents, machines, onAgentsChange, onClose }: Props)
     machineId: '',
   });
   const [loading, setLoading] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<Agent | undefined>();
+  const [deleteError, setDeleteError] = useState<string | undefined>();
+  const [deleting, setDeleting] = useState(false);
 
   const onlineMachines = machines.filter((m) => m.status === 'online');
 
@@ -60,6 +63,21 @@ export function AgentPanel({ agents, machines, onAgentsChange, onClose }: Props)
       onAgentsChange();
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    setDeleteError(undefined);
+    try {
+      await deleteAgent(deleteTarget.id);
+      setDeleteTarget(undefined);
+      onAgentsChange();
+    } catch (err) {
+      setDeleteError(err instanceof Error ? err.message : 'DELETE FAILED');
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -198,14 +216,36 @@ export function AgentPanel({ agents, machines, onAgentsChange, onClose }: Props)
           </div>
         )}
         {agents.map((a) => (
-          <AgentCard key={a.id} agent={a} onStart={() => { startAgent(a.id).then(onAgentsChange); }} onStop={() => { stopAgent(a.id).then(onAgentsChange); }} />
+          <AgentCard
+            key={a.id}
+            agent={a}
+            onStart={() => { startAgent(a.id).then(onAgentsChange); }}
+            onStop={() => { stopAgent(a.id).then(onAgentsChange); }}
+            onDelete={() => {
+              setDeleteTarget(a);
+              setDeleteError(undefined);
+            }}
+          />
         ))}
       </div>
+      {deleteTarget ? (
+        <DeleteAgentModal
+          agent={deleteTarget}
+          error={deleteError}
+          deleting={deleting}
+          onCancel={() => {
+            if (deleting) return;
+            setDeleteTarget(undefined);
+            setDeleteError(undefined);
+          }}
+          onConfirm={handleDelete}
+        />
+      ) : null}
     </div>
   );
 }
 
-function AgentCard({ agent, onStart, onStop }: { agent: Agent; onStart: () => void; onStop: () => void }) {
+function AgentCard({ agent, onStart, onStop, onDelete }: { agent: Agent; onStart: () => void; onStop: () => void; onDelete: () => void }) {
   const statusColor = agent.status === 'idle' || agent.status === 'running' ? '#00c853'
     : agent.status === 'working' ? '#FFD700'
     : agent.status === 'starting' ? '#2196f3'
@@ -246,11 +286,61 @@ function AgentCard({ agent, onStart, onStop }: { agent: Agent; onStart: () => vo
       <div style={{ fontSize: 10, color: '#888', marginBottom: 7, letterSpacing: '0.3px' }}>
         STATUS: {agent.status.toUpperCase()} · AUTO START: {agent.autoStart ? 'ON' : 'OFF'}
       </div>
-      {['inactive', 'error'].includes(agent.status) ? (
-        <PxButton onClick={onStart} bg="#00c853" color="#fff" small>▶ START</PxButton>
-      ) : (
-        <PxButton onClick={onStop} bg="#f44336" color="#fff" small>■ STOP</PxButton>
-      )}
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        {['inactive', 'error'].includes(agent.status) ? (
+          <PxButton onClick={onStart} bg="#00c853" color="#fff" small>▶ START</PxButton>
+        ) : (
+          <PxButton onClick={onStop} bg="#f44336" color="#fff" small>■ STOP</PxButton>
+        )}
+        <PxButton onClick={onDelete} bg="#fff" color="#b00020" small>DELETE</PxButton>
+      </div>
+    </div>
+  );
+}
+
+function DeleteAgentModal({ agent, error, deleting, onCancel, onConfirm }: {
+  agent: Agent;
+  error?: string;
+  deleting: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  const isWorking = agent.status === 'working';
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label="Delete agent confirmation"
+      style={{
+        position: 'fixed',
+        inset: 0,
+        background: 'rgba(0,0,0,0.35)',
+        display: 'grid',
+        placeItems: 'center',
+        zIndex: 50,
+        padding: 16,
+      }}
+    >
+      <div style={{ width: 'min(380px, 100%)', border: '2px solid #000', background: '#fff', boxShadow: '4px 4px 0 #000', fontFamily: FONT }}>
+        <div style={{ borderBottom: '2px solid #000', padding: '10px 12px', fontWeight: 700, fontSize: 13 }}>
+          DELETE AGENT
+        </div>
+        <div style={{ padding: 12, display: 'grid', gap: 10, fontSize: 12, lineHeight: 1.45 }}>
+          <div>
+            Delete <strong>{agent.displayName ?? agent.name}</strong>? This cannot be undone. The agent will be removed from the agent list.
+          </div>
+          {isWorking ? (
+            <div style={{ border: '2px solid #b00020', background: '#ffe8e8', color: '#b00020', padding: 8, fontWeight: 700 }}>
+              WARNING: THIS AGENT IS WORKING. STOP IT BEFORE DELETING.
+            </div>
+          ) : null}
+          {error ? <div style={{ color: '#b00020', fontWeight: 700 }}>{error}</div> : null}
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+            <PxButton onClick={onCancel} disabled={deleting} bg="#fff" color="#000" small>CANCEL</PxButton>
+            <PxButton onClick={onConfirm} disabled={deleting} bg="#b00020" color="#fff" small>{deleting ? 'DELETING' : 'DELETE'}</PxButton>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

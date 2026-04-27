@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { App } from '../src/App.js';
 import * as api from '../src/api.js';
@@ -6,6 +6,7 @@ import * as api from '../src/api.js';
 describe('App', () => {
   beforeEach(() => {
     window.localStorage.clear();
+    vi.clearAllMocks();
     class MockWebSocket {
       static OPEN = 1;
       readyState = 1;
@@ -48,6 +49,345 @@ describe('App', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Open navigation' }));
 
     expect(container.querySelector('.sidebar-mobile-open')).toBeTruthy();
+  });
+
+  it('persists the last page as users navigate major sections', async () => {
+    vi.mocked(api.getChannels).mockResolvedValue([
+      { id: 'general', name: 'general', createdAt: '2026-04-25T00:00:00.000Z' },
+      { id: 'random', name: 'random', createdAt: '2026-04-25T00:00:00.000Z' },
+    ]);
+    vi.mocked(api.getAgents).mockResolvedValue([{
+      id: 'agent-1',
+      name: 'engineer',
+      displayName: 'Engineer',
+      runtime: 'codex',
+      status: 'idle',
+      createdAt: '2026-04-25T00:00:00.000Z',
+    }]);
+
+    render(<App />);
+
+    await screen.findByPlaceholderText('Message #general');
+    await waitFor(() => {
+      expect(window.localStorage.getItem('crewden_last_page')).toBe('/channels/general');
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /random/ }));
+    await waitFor(() => {
+      expect(window.localStorage.getItem('crewden_last_page')).toBe('/channels/random');
+    });
+
+    fireEvent.click(screen.getByText('Tasks'));
+    await waitFor(() => {
+      expect(window.localStorage.getItem('crewden_last_page')).toBe('/tasks');
+    });
+
+    fireEvent.click(screen.getByText('Knowledge'));
+    await waitFor(() => {
+      expect(window.localStorage.getItem('crewden_last_page')).toBe('/knowledge');
+    });
+
+    fireEvent.click(screen.getAllByText('Engineer')[0]);
+    await waitFor(() => {
+      expect(window.localStorage.getItem('crewden_last_page')).toBe('/agents/agent-1');
+      expect(screen.getByText('WORK SUMMARY')).toBeTruthy();
+    });
+  });
+
+  it('restores the last page from localStorage on startup', async () => {
+    vi.mocked(api.getChannels).mockResolvedValue([
+      { id: 'general', name: 'general', createdAt: '2026-04-25T00:00:00.000Z' },
+      { id: 'random', name: 'random', createdAt: '2026-04-25T00:00:00.000Z' },
+    ]);
+    vi.mocked(api.getAgents).mockResolvedValue([{
+      id: 'agent-1',
+      name: 'engineer',
+      displayName: 'Engineer',
+      runtime: 'codex',
+      status: 'idle',
+      createdAt: '2026-04-25T00:00:00.000Z',
+    }]);
+
+    window.localStorage.setItem('crewden_last_page', '/channels/random');
+    render(<App />);
+    expect(await screen.findByPlaceholderText('Message #random')).toBeTruthy();
+
+    cleanup();
+    window.localStorage.setItem('crewden_last_page', '/tasks');
+    render(<App />);
+    expect(await screen.findByText('TASKS')).toBeTruthy();
+
+    cleanup();
+    window.localStorage.setItem('crewden_last_page', '/knowledge');
+    render(<App />);
+    expect(await screen.findByText('Memory layer')).toBeTruthy();
+
+    cleanup();
+    window.localStorage.setItem('crewden_last_page', '/agents/agent-1');
+    render(<App />);
+    expect(await screen.findByText('WORK SUMMARY')).toBeTruthy();
+  });
+
+  it('keeps channel drafts by channel and clears them after a successful send', async () => {
+    vi.mocked(api.getChannels).mockResolvedValue([
+      { id: 'general', name: 'general', createdAt: '2026-04-25T00:00:00.000Z' },
+      { id: 'random', name: 'random', createdAt: '2026-04-25T00:00:00.000Z' },
+    ]);
+    vi.mocked(api.sendMessage).mockResolvedValueOnce({
+      id: 'msg-random',
+      channelId: 'random',
+      senderName: 'user',
+      content: 'random draft',
+      createdAt: '2026-04-25T00:00:01.000Z',
+    });
+
+    render(<App />);
+
+    const generalComposer = await screen.findByPlaceholderText('Message #general');
+    fireEvent.change(generalComposer, { target: { value: 'general draft' } });
+
+    fireEvent.click(screen.getByText('Knowledge'));
+    fireEvent.click(screen.getByRole('button', { name: /general/ }));
+
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText('Message #general')).toHaveValue('general draft');
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /random/ }));
+    fireEvent.change(await screen.findByPlaceholderText('Message #random'), { target: { value: 'random draft' } });
+
+    fireEvent.click(screen.getByRole('button', { name: /general/ }));
+    expect(await screen.findByPlaceholderText('Message #general')).toHaveValue('general draft');
+
+    fireEvent.click(screen.getByRole('button', { name: /random/ }));
+    expect(await screen.findByPlaceholderText('Message #random')).toHaveValue('random draft');
+
+    fireEvent.click(screen.getByText(/Send/));
+
+    await waitFor(() => {
+      expect(api.sendMessage).toHaveBeenCalledWith('random', 'user', 'random draft', undefined);
+      expect(screen.getByPlaceholderText('Message #random')).toHaveValue('');
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /general/ }));
+    expect(await screen.findByPlaceholderText('Message #general')).toHaveValue('general draft');
+  });
+
+  it('highlights channel mentions and distinguishes mentions of the current user', async () => {
+    vi.mocked(api.getAgents).mockResolvedValue([]);
+    vi.mocked(api.getMessages).mockResolvedValue([
+      {
+        id: 'msg-mention',
+        channelId: 'general',
+        senderName: 'Engineer',
+        content: 'Ping @Engineer and @user',
+        createdAt: '2026-04-25T00:00:00.000Z',
+      },
+      {
+        id: 'msg-plain',
+        channelId: 'general',
+        senderName: 'Engineer',
+        content: 'Plain status update',
+        createdAt: '2026-04-25T00:01:00.000Z',
+      },
+    ]);
+
+    render(<App />);
+
+    expect(await screen.findByText('@Engineer')).toHaveStyle({
+      background: '#fff3a3',
+      fontWeight: '700',
+    });
+    expect(screen.getByText('@user')).toHaveStyle({
+      background: '#dbeafe',
+      border: '1px solid #0b63ce',
+      fontWeight: '700',
+    });
+    expect(screen.getByText('Plain status update')).toBeTruthy();
+  });
+
+  it('clears the thread panel when selecting an agent from the sidebar', async () => {
+    vi.mocked(api.getMessages).mockResolvedValue([{
+      id: 'msg-thread',
+      channelId: 'general',
+      senderName: 'user',
+      content: 'Investigate the agent panel priority',
+      replyCount: 1,
+      createdAt: '2026-04-25T00:00:00.000Z',
+    }]);
+    vi.mocked(api.getMessageThread).mockResolvedValueOnce({
+      root: {
+        id: 'msg-thread',
+        channelId: 'general',
+        senderName: 'user',
+        content: 'Investigate the agent panel priority',
+        replyCount: 1,
+        createdAt: '2026-04-25T00:00:00.000Z',
+      },
+      replies: [{
+        id: 'msg-reply',
+        channelId: 'general',
+        senderName: 'Engineer',
+        content: 'Opened a thread reply.',
+        agentId: 'agent-thread',
+        threadRootId: 'msg-thread',
+        createdAt: '2026-04-25T00:01:00.000Z',
+      }],
+    });
+    vi.mocked(api.getAgents).mockResolvedValue([{
+      id: 'agent-thread',
+      name: 'engineer',
+      displayName: 'Engineer',
+      runtime: 'codex',
+      status: 'idle',
+      createdAt: '2026-04-25T00:00:00.000Z',
+    }]);
+
+    render(<App />);
+
+    fireEvent.click(await screen.findByTitle('Reply in thread'));
+    await screen.findByRole('button', { name: 'Close' });
+
+    fireEvent.click(screen.getAllByText('Engineer')[0]);
+
+    await waitFor(() => {
+      expect(screen.getByText('WORK SUMMARY')).toBeTruthy();
+      expect(screen.queryByRole('button', { name: 'Close' })).toBeNull();
+    });
+  });
+
+  it('shows the bound machine name and id in the agent detail profile', async () => {
+    vi.mocked(api.getAgents).mockResolvedValue([{
+      id: 'agent-1',
+      name: 'engineer',
+      displayName: 'Engineer',
+      runtime: 'codex',
+      status: 'idle',
+      machineId: 'machine-1',
+      createdAt: '2026-04-25T00:00:00.000Z',
+    }]);
+    vi.mocked(api.getMachines).mockResolvedValue([{
+      id: 'machine-1',
+      hostname: 'DevBook',
+      os: 'darwin',
+      runtimes: ['codex'],
+      status: 'online',
+      connectedAt: '2026-04-25T00:00:00.000Z',
+    }]);
+
+    render(<App />);
+
+    fireEvent.click((await screen.findAllByText('Engineer'))[0]);
+
+    await waitFor(() => {
+      expect(screen.getByText('DevBook (machine-1)')).toBeTruthy();
+    });
+  });
+
+  it('falls back to the machine id when the machine name is unavailable', async () => {
+    vi.mocked(api.getAgents).mockResolvedValue([{
+      id: 'agent-1',
+      name: 'engineer',
+      displayName: 'Engineer',
+      runtime: 'codex',
+      status: 'idle',
+      machineId: 'machine-missing',
+      createdAt: '2026-04-25T00:00:00.000Z',
+    }]);
+    vi.mocked(api.getMachines).mockResolvedValue([]);
+
+    render(<App />);
+
+    fireEvent.click((await screen.findAllByText('Engineer'))[0]);
+
+    await waitFor(() => {
+      expect(screen.getByText('machine-missing')).toBeTruthy();
+    });
+  });
+
+  it('shows DM participants by display name and falls back to ids', async () => {
+    vi.mocked(api.getAgents).mockResolvedValue([
+      {
+        id: 'agent-1',
+        name: 'engineer',
+        displayName: 'Engineer',
+        runtime: 'codex',
+        status: 'idle',
+        createdAt: '2026-04-25T00:00:00.000Z',
+      },
+      {
+        id: 'agent-2',
+        name: 'designer',
+        displayName: 'Designer',
+        runtime: 'codex',
+        status: 'idle',
+        createdAt: '2026-04-25T00:00:00.000Z',
+      },
+    ]);
+    vi.mocked(api.getAgentDmThreads).mockResolvedValue([
+      {
+        otherAgentId: 'user',
+        lastMessage: {
+          id: 'dm-user',
+          fromAgentId: 'user',
+          toAgentId: 'agent-1',
+          content: 'hello from user',
+          createdAt: '2026-04-25T00:00:00.000Z',
+        },
+      },
+      {
+        otherAgentId: 'agent-2',
+        lastMessage: {
+          id: 'dm-agent',
+          fromAgentId: 'agent-2',
+          toAgentId: 'agent-1',
+          content: 'hello from agent',
+          createdAt: '2026-04-25T00:01:00.000Z',
+        },
+      },
+      {
+        otherAgentId: 'agent-missing',
+        lastMessage: {
+          id: 'dm-missing',
+          fromAgentId: 'agent-missing',
+          toAgentId: 'agent-1',
+          content: 'hello from missing',
+          createdAt: '2026-04-25T00:02:00.000Z',
+        },
+      },
+    ]);
+    vi.mocked(api.getAgentDirectMessages).mockImplementation(async (_agentId, otherId) => [{
+      id: `message-${otherId}`,
+      fromAgentId: otherId,
+      toAgentId: 'agent-1',
+      content: `message from ${otherId}`,
+      createdAt: '2026-04-25T00:03:00.000Z',
+    }]);
+
+    render(<App />);
+
+    fireEvent.click((await screen.findAllByText('Engineer'))[0]);
+    fireEvent.click(screen.getByText('DMS'));
+
+    await waitFor(() => {
+      expect(api.getAgentDmThreads).toHaveBeenCalledWith('agent-1');
+      expect(screen.getAllByText('User').length).toBeGreaterThan(0);
+      expect(screen.getAllByText('Designer').length).toBeGreaterThan(0);
+      expect(screen.getAllByText('agent-missing').length).toBeGreaterThan(0);
+      expect(screen.queryByText('Unknown agent')).toBeNull();
+    });
+
+    fireEvent.change(screen.getByLabelText('DM recipient'), { target: { value: 'agent-2' } });
+    await waitFor(() => {
+      expect(api.getAgentDirectMessages).toHaveBeenCalledWith('agent-1', 'agent-2');
+      expect(screen.getByText('message from agent-2')).toBeTruthy();
+    });
+
+    fireEvent.change(screen.getByLabelText('DM recipient'), { target: { value: 'agent-missing' } });
+    await waitFor(() => {
+      expect(api.getAgentDirectMessages).toHaveBeenCalledWith('agent-1', 'agent-missing');
+      expect(screen.getByText('message from agent-missing')).toBeTruthy();
+    });
   });
 
   it('lets a user align a goal in chat and confirm contextual tasks', async () => {
@@ -271,6 +611,56 @@ describe('App', () => {
     });
   });
 
+  it('lets users delete an agent from the agent panel after confirmation', async () => {
+    vi.mocked(api.getAgents).mockResolvedValue([{
+      id: 'agent-delete',
+      name: 'deleteme',
+      displayName: 'Delete Me',
+      runtime: 'codex',
+      status: 'inactive',
+      createdAt: '2026-04-25T00:00:00.000Z',
+    }]);
+    vi.mocked(api.deleteAgent).mockResolvedValue();
+
+    render(<App />);
+
+    fireEvent.click((await screen.findAllByRole('button', { name: 'Open agents' }))[0]);
+    fireEvent.click(await screen.findByRole('button', { name: 'DELETE' }));
+
+    const dialog = await screen.findByRole('dialog', { name: 'Delete agent confirmation' });
+    expect(within(dialog).getByText(/This cannot be undone/)).toBeTruthy();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'DELETE' }));
+
+    await waitFor(() => {
+      expect(api.deleteAgent).toHaveBeenCalledWith('agent-delete');
+    });
+  });
+
+  it('warns before deleting a working agent from the detail panel', async () => {
+    vi.mocked(api.getAgents).mockResolvedValue([{
+      id: 'agent-working',
+      name: 'worker',
+      displayName: 'Worker',
+      runtime: 'codex',
+      status: 'working',
+      createdAt: '2026-04-25T00:00:00.000Z',
+    }]);
+    vi.mocked(api.deleteAgent).mockRejectedValue(new Error('Cannot delete agent while it is working. Stop the agent first.'));
+
+    render(<App />);
+
+    fireEvent.click(await screen.findByText('Worker'));
+    fireEvent.click(await screen.findByText('DELETE AGENT'));
+
+    const dialog = await screen.findByRole('dialog', { name: 'Delete agent confirmation' });
+    expect(within(dialog).getByText(/THIS AGENT IS WORKING/)).toBeTruthy();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'DELETE' }));
+
+    await waitFor(() => {
+      expect(within(dialog).getByText(/Stop the agent first/)).toBeTruthy();
+    });
+  });
+
   it('shows review evidence and acceptance status on the task board', async () => {
     vi.mocked(api.getAgents).mockResolvedValue([{
       id: 'agent-qa',
@@ -388,6 +778,7 @@ vi.mock('../src/api.js', () => ({
   getMachines: vi.fn(async () => []),
   getAgentActivities: vi.fn(async () => []),
   patchAgent: vi.fn(),
+  deleteAgent: vi.fn(),
   getHubVersion: vi.fn(async () => ({ component: 'hub', version: 'test-version' })),
   getTasks: vi.fn(async () => []),
   messageToTask: vi.fn(),
@@ -401,6 +792,9 @@ vi.mock('../src/api.js', () => ({
   createKnowledge: vi.fn(),
   patchKnowledge: vi.fn(),
   getAgentReminders: vi.fn(async () => []),
+  getAgentDmThreads: vi.fn(async () => []),
+  getAgentDirectMessages: vi.fn(async () => []),
+  sendAgentDirectMessage: vi.fn(),
   createChannel: vi.fn(),
   deleteChannel: vi.fn(),
   searchMessages: vi.fn(async () => ({ messages: [] })),
