@@ -5,7 +5,7 @@ export const RuntimeIdSchema = z.enum(['claude', 'codex', 'gemini']);
 export const AgentStatusSchema = z.enum(['inactive', 'starting', 'running', 'working', 'idle', 'error']);
 
 export const AgentActivityTypeSchema = z.enum(['thinking', 'working', 'output', 'idle', 'sending', 'error']);
-export const TaskStatusSchema = z.enum(['todo', 'in_progress', 'in_review', 'done']);
+export const TaskStatusSchema = z.enum(['todo', 'in_progress', 'in_review', 'done', 'blocked', 'cancelled']);
 export const GoalBriefStatusSchema = z.enum(['draft', 'confirmed', 'cancelled', 'completed']);
 export const GoalAlignmentStatusSchema = z.enum(['needs_clarification', 'awaiting_confirmation', 'confirmed', 'cancelled']);
 export const GoalAlignmentRiskLevelSchema = z.enum(['low', 'medium', 'high']);
@@ -92,6 +92,7 @@ export const TaskContextSchema = z.object({
   assumptions: z.array(z.string()).optional(),
   risks: z.array(z.string()).optional(),
   dependencies: z.array(z.string()).optional(),
+  blockedByTaskIds: z.array(z.string().min(1)).optional(),
   sourceMessageIds: z.array(z.string()).optional(),
   artifacts: z.array(z.string()).optional(),
   requesterAgentId: z.string().optional(),
@@ -188,6 +189,7 @@ export const TaskSchema = z.object({
   creatorName: z.string(),
   assigneeId: z.string().optional(),
   context: TaskContextSchema.optional(),
+  version: z.number().int().positive(),
   createdAt: z.string(),
   updatedAt: z.string(),
 });
@@ -392,6 +394,7 @@ export const PatchTaskRequestSchema = z
     status: TaskStatusSchema.optional(),
     assigneeId: z.string().optional(),
     context: TaskContextSchema.optional(),
+    expectedVersion: z.number().int().positive().optional(),
   })
   .refine((val) => val.status !== undefined || val.assigneeId !== undefined || val.context !== undefined, {
     message: 'At least one field must be provided',

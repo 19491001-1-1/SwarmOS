@@ -28,6 +28,15 @@ export async function delegateAgent(input: {
         resolve: await store.resolveAgent(input.toAgentId),
       }),
     });
+    await store.appendAuditLog({
+      actorType: 'agent',
+      actorId: input.fromAgentId,
+      action: 'agent.delegation_failed',
+      entityType: 'agent_delegation',
+      entityId: failed.id,
+      agentId: input.fromAgentId,
+      detailJson: { toAgentId: input.toAgentId, reason: 'target_not_found' },
+    });
     eventBus.emit({ type: 'agent:delegation', delegation: failed });
     return failed;
   }
@@ -38,6 +47,15 @@ export async function delegateAgent(input: {
     toAgentId: target.id,
     content: input.content,
     status: 'queued',
+  });
+  await store.appendAuditLog({
+    actorType: 'agent',
+    actorId: input.fromAgentId,
+    action: 'agent.delegated',
+    entityType: 'agent_delegation',
+    entityId: delegation.id,
+    agentId: input.fromAgentId,
+    detailJson: { toAgentId: target.id, status: delegation.status, startIfInactive: input.startIfInactive ?? true },
   });
   eventBus.emit({ type: 'agent:delegation', delegation });
 
@@ -114,6 +132,14 @@ function toDelegationDelivery(dm: DirectMessage) {
 async function updateDelegation(id: string, status: AgentDelegation['status'], error?: string): Promise<AgentDelegation> {
   const updated = await getStore().updateAgentDelegation(id, { status, error });
   if (!updated) throw new Error(`Delegation ${id} not found`);
+  await getStore().appendAuditLog({
+    actorType: 'system',
+    action: 'agent.delegation_status_changed',
+    entityType: 'agent_delegation',
+    entityId: updated.id,
+    agentId: updated.fromAgentId,
+    detailJson: { fromAgentId: updated.fromAgentId, toAgentId: updated.toAgentId, status: updated.status, error: updated.error },
+  });
   eventBus.emit({ type: 'agent:delegation', delegation: updated });
   return updated;
 }

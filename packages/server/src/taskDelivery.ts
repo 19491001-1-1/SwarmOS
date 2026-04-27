@@ -11,6 +11,7 @@ const ACTIVE_STATUSES = new Set(['starting', 'running', 'working', 'idle']);
 export async function notifyTaskAssignee(task: Task): Promise<void> {
   if (!task.assigneeId || task.status === 'done') return;
   const store = getStore();
+  if (await hasOpenDependencies(task)) return;
   const target = await store.findAgentByNameOrId(task.assigneeId);
   if (!target) return;
 
@@ -47,6 +48,26 @@ export async function notifyTaskAssignee(task: Task): Promise<void> {
   if (updated) eventBus.emit({ type: 'agent:update', agent: updated });
 }
 
+export async function notifyTasksBlockedBy(blockerTaskId: string): Promise<void> {
+  const tasks = await getStore().listTasks();
+  for (const task of tasks) {
+    if (task.context?.blockedByTaskIds?.includes(blockerTaskId)) {
+      await notifyTaskAssignee(task);
+    }
+  }
+}
+
+async function hasOpenDependencies(task: Task): Promise<boolean> {
+  const blockedByTaskIds = task.context?.blockedByTaskIds ?? [];
+  if (blockedByTaskIds.length === 0) return false;
+  const store = getStore();
+  for (const taskId of blockedByTaskIds) {
+    const blocker = await store.getTask(taskId);
+    if (!blocker || blocker.status !== 'done') return true;
+  }
+  return false;
+}
+
 export async function buildOpenTaskSummary(agent: Agent): Promise<string | undefined> {
   const tasks = (await getStore().listTasks({ assigneeId: agent.id }))
     .filter((task) => task.status !== 'done')
@@ -59,7 +80,7 @@ export async function buildOpenTaskSummary(agent: Agent): Promise<string | undef
       return `- ${task.id} [${task.status}] #${task.channelId}: ${task.title}${goal}`;
     }),
     '',
-    'Use `crewden task read <taskId> --context`, `crewden task update <taskId> --status in_progress|in_review|done`, and `crewden task handoff <taskId> --to agentName --notes "..."` to manage them.',
+    'Use `crewden task read <taskId> --context`, `crewden task update <taskId> --status in_progress|in_review|done|blocked|cancelled`, and `crewden task handoff <taskId> --to agentName --notes "..."` to manage them.',
   ].join('\n');
 }
 
@@ -78,7 +99,7 @@ export function toTaskDelivery(task: Task) {
       task.context?.background ? `Background: ${task.context.background}` : undefined,
       task.context?.handoffNotes?.length ? `Latest handoff: ${task.context.handoffNotes.at(-1)}` : undefined,
       '',
-      'Use `crewden task read <taskId> --context` for details and `crewden task update <taskId> --status in_progress|in_review|done` when you make progress.',
+      'Use `crewden task read <taskId> --context` for details and `crewden task update <taskId> --status in_progress|in_review|done|blocked|cancelled` when you make progress.',
     ].filter(Boolean).join('\n'),
     createdAt: task.updatedAt,
   };

@@ -41,6 +41,36 @@ describe('messages', () => {
   });
 });
 
+describe('audit log', () => {
+  it('appends and lists audit log entries by task id', async () => {
+    const entry = await store.appendAuditLog({
+      actorType: 'agent',
+      actorId: 'agent-1',
+      action: 'task.status_changed',
+      entityType: 'task',
+      entityId: 'task-1',
+      taskId: 'task-1',
+      agentId: 'agent-1',
+      detailJson: { from: 'todo', to: 'in_progress' },
+    });
+
+    expect(entry).toMatchObject({
+      actorType: 'agent',
+      actorId: 'agent-1',
+      action: 'task.status_changed',
+      entityType: 'task',
+      entityId: 'task-1',
+      taskId: 'task-1',
+      agentId: 'agent-1',
+      detailJson: { from: 'todo', to: 'in_progress' },
+    });
+    expect(entry.id).toBeTruthy();
+    expect(entry.createdAt).toBeTruthy();
+    expect(await store.listAuditLogs({ taskId: 'task-1' })).toEqual([entry]);
+    expect(await store.listAuditLogs({ taskId: 'other' })).toEqual([]);
+  });
+});
+
 describe('agents', () => {
   it('returns the created agent from getAgent', async () => {
     await store.createAgent({

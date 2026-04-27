@@ -15,14 +15,18 @@ const STATUSES: Array<{ id: TaskStatus; label: string }> = [
   { id: 'todo', label: 'TODO' },
   { id: 'in_progress', label: 'DOING' },
   { id: 'in_review', label: 'REVIEW' },
+  { id: 'blocked', label: 'BLOCKED' },
   { id: 'done', label: 'DONE' },
+  { id: 'cancelled', label: 'CANCELLED' },
 ];
 
 const STATUS_COLORS: Record<TaskStatus, string> = {
   todo: '#fff',
   in_progress: '#FFD700',
   in_review: '#7dd3fc',
+  blocked: '#fecdd3',
   done: '#86efac',
+  cancelled: '#e5e7eb',
 };
 
 export function TaskBoard({ tasks, channels, agents, onTaskUpdated, onTaskDeleted }: Props) {

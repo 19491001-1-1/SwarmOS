@@ -1,6 +1,7 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { buildApp } from '../src/app.js';
 import { getStore, resetStore } from '../src/db.js';
+import { daemonRegistry } from '../src/daemonRegistry.js';
 
 beforeEach(async () => {
   await resetStore();
@@ -31,18 +32,285 @@ describe('task API', () => {
     const patched = await app.inject({
       method: 'PATCH',
       url: `/api/tasks/${taskId}`,
-      payload: { status: 'in_review', context: { goal: 'ship board', handoffNotes: ['ready for review'] } },
+      payload: { status: 'in_progress', context: { goal: 'ship board', handoffNotes: ['ready for review'] } },
     });
     expect(patched.statusCode).toBe(200);
-    expect(patched.json().status).toBe('in_review');
+    expect(patched.json().status).toBe('in_progress');
     expect(patched.json().context.handoffNotes).toEqual(['ready for review']);
 
-    const filtered = await app.inject({ method: 'GET', url: '/api/tasks?status=in_review' });
+    const filtered = await app.inject({ method: 'GET', url: '/api/tasks?status=in_progress' });
     expect(filtered.json()).toHaveLength(1);
 
     const deleted = await app.inject({ method: 'DELETE', url: `/api/tasks/${taskId}` });
     expect(deleted.statusCode).toBe(204);
     expect(await getStore().listTasks()).toHaveLength(0);
+    await app.close();
+  });
+
+  it('rejects invalid task status transition', async () => {
+    const app = await buildApp();
+    const created = await app.inject({
+      method: 'POST',
+      url: '/api/tasks',
+      payload: { channelId: 'general', title: 'stateful task', creatorName: 'user' },
+    });
+    const taskId = created.json().id;
+
+    const invalid = await app.inject({
+      method: 'PATCH',
+      url: `/api/tasks/${taskId}`,
+      payload: { status: 'done' },
+    });
+    expect(invalid.statusCode).toBe(422);
+    expect(invalid.json()).toMatchObject({ error: 'Invalid task status transition' });
+
+    const started = await app.inject({
+      method: 'PATCH',
+      url: `/api/tasks/${taskId}`,
+      payload: { status: 'in_progress' },
+    });
+    expect(started.statusCode).toBe(200);
+    expect(started.json().status).toBe('in_progress');
+
+    const blocked = await app.inject({
+      method: 'PATCH',
+      url: `/api/tasks/${taskId}`,
+      payload: { status: 'blocked' },
+    });
+    expect(blocked.statusCode).toBe(200);
+    expect(blocked.json().status).toBe('blocked');
+
+    await app.close();
+  });
+
+  it('returns conflict when task version is stale', async () => {
+    const app = await buildApp();
+    const created = await app.inject({
+      method: 'POST',
+      url: '/api/tasks',
+      payload: { channelId: 'general', title: 'versioned task', creatorName: 'user' },
+    });
+    const task = created.json();
+    expect(task.version).toBe(1);
+
+    const started = await app.inject({
+      method: 'PATCH',
+      url: `/api/tasks/${task.id}`,
+      payload: { status: 'in_progress', expectedVersion: task.version },
+    });
+    expect(started.statusCode).toBe(200);
+    expect(started.json()).toMatchObject({ status: 'in_progress', version: 2 });
+
+    const stale = await app.inject({
+      method: 'PATCH',
+      url: `/api/tasks/${task.id}`,
+      payload: { status: 'blocked', expectedVersion: task.version },
+    });
+    expect(stale.statusCode).toBe(409);
+    expect(stale.json()).toMatchObject({ error: 'Task version conflict', currentVersion: 2 });
+
+    const current = await app.inject({
+      method: 'PATCH',
+      url: `/api/tasks/${task.id}`,
+      payload: { status: 'blocked', expectedVersion: started.json().version },
+    });
+    expect(current.statusCode).toBe(200);
+    expect(current.json()).toMatchObject({ status: 'blocked', version: 3 });
+
+    await app.close();
+  });
+
+  it('writes audit log for task status change and handoff', async () => {
+    const app = await buildApp();
+    const store = getStore();
+    await store.createAgent({
+      id: 'agent-1',
+      name: 'bot',
+      displayName: 'Bot',
+      runtime: 'claude',
+      status: 'idle',
+      createdAt: new Date().toISOString(),
+    });
+    await store.createAgent({
+      id: 'agent-2',
+      name: 'target',
+      displayName: 'Target',
+      runtime: 'claude',
+      status: 'idle',
+      createdAt: new Date().toISOString(),
+    });
+    const token = (await store.getOrCreateAgentToken('agent-1')).token;
+    const headers = { Authorization: `Bearer ${token}`, 'X-Agent-Id': 'agent-1' };
+    const created = await app.inject({
+      method: 'POST',
+      url: '/api/tasks',
+      payload: { channelId: 'general', title: 'audited task', creatorName: 'user', assigneeId: 'agent-1' },
+    });
+    const task = created.json();
+
+    const started = await app.inject({
+      method: 'PATCH',
+      url: `/api/tasks/${task.id}`,
+      payload: { status: 'in_progress', expectedVersion: task.version },
+    });
+    expect(started.statusCode).toBe(200);
+
+    const handedOff = await app.inject({
+      method: 'POST',
+      url: `/internal/agent/agent-1/tasks/${task.id}/handoff`,
+      headers,
+      payload: { to: 'target', notes: 'analysis done', nextStep: 'write tests' },
+    });
+    expect(handedOff.statusCode).toBe(200);
+
+    const logs = await store.listAuditLogs({ taskId: task.id });
+    expect(logs).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        actorType: 'user',
+        action: 'task.status_changed',
+        entityType: 'task',
+        entityId: task.id,
+        taskId: task.id,
+        detailJson: expect.objectContaining({ from: 'todo', to: 'in_progress' }),
+      }),
+      expect.objectContaining({
+        actorType: 'agent',
+        actorId: 'agent-1',
+        action: 'task.handoff',
+        entityType: 'task',
+        entityId: task.id,
+        taskId: task.id,
+        agentId: 'agent-1',
+        detailJson: expect.objectContaining({ toAgentId: 'agent-2', fromAgentId: 'agent-1' }),
+      }),
+    ]));
+    expect(JSON.stringify(logs)).not.toContain(token);
+
+    await app.close();
+  });
+
+  it('does not deliver task while dependency is open', async () => {
+    const app = await buildApp();
+    const store = getStore();
+    const fakeSocket = { readyState: 1, send: vi.fn() };
+    daemonRegistry.register('machine-1', fakeSocket as any);
+    await store.createAgent({
+      id: 'agent-1',
+      name: 'worker',
+      runtime: 'claude',
+      status: 'idle',
+      machineId: 'machine-1',
+      createdAt: new Date().toISOString(),
+    });
+    const blocker = await app.inject({
+      method: 'POST',
+      url: '/api/tasks',
+      payload: { channelId: 'general', title: 'blocker', creatorName: 'user' },
+    });
+
+    const dependent = await app.inject({
+      method: 'POST',
+      url: '/api/tasks',
+      payload: {
+        channelId: 'general',
+        title: 'dependent',
+        creatorName: 'user',
+        assigneeId: 'agent-1',
+        context: { blockedByTaskIds: [blocker.json().id] },
+      },
+    });
+
+    expect(dependent.statusCode).toBe(201);
+    expect(fakeSocket.send).not.toHaveBeenCalled();
+    daemonRegistry.unregister('machine-1');
+    await app.close();
+  });
+
+  it('unblocks dependency when blocker is done', async () => {
+    const app = await buildApp();
+    const store = getStore();
+    const fakeSocket = { readyState: 1, send: vi.fn() };
+    daemonRegistry.register('machine-1', fakeSocket as any);
+    await store.createAgent({
+      id: 'agent-1',
+      name: 'worker',
+      runtime: 'claude',
+      status: 'idle',
+      machineId: 'machine-1',
+      createdAt: new Date().toISOString(),
+    });
+    const blocker = await app.inject({
+      method: 'POST',
+      url: '/api/tasks',
+      payload: { channelId: 'general', title: 'blocker', creatorName: 'user' },
+    });
+    const dependent = await app.inject({
+      method: 'POST',
+      url: '/api/tasks',
+      payload: {
+        channelId: 'general',
+        title: 'dependent',
+        creatorName: 'user',
+        assigneeId: 'agent-1',
+        context: { blockedByTaskIds: [blocker.json().id] },
+      },
+    });
+    expect(fakeSocket.send).not.toHaveBeenCalled();
+
+    const started = await app.inject({
+      method: 'PATCH',
+      url: `/api/tasks/${blocker.json().id}`,
+      payload: { status: 'in_progress', expectedVersion: blocker.json().version },
+    });
+    const review = await app.inject({
+      method: 'PATCH',
+      url: `/api/tasks/${blocker.json().id}`,
+      payload: { status: 'in_review', expectedVersion: started.json().version },
+    });
+    const done = await app.inject({
+      method: 'PATCH',
+      url: `/api/tasks/${blocker.json().id}`,
+      payload: { status: 'done', expectedVersion: review.json().version },
+    });
+
+    expect(done.statusCode).toBe(200);
+    expect(fakeSocket.send).toHaveBeenCalledTimes(1);
+    const sent = JSON.parse(fakeSocket.send.mock.calls[0][0]);
+    expect(sent).toMatchObject({
+      type: 'agent:deliver',
+      agentId: 'agent-1',
+      message: { channelId: `task:${dependent.json().id}` },
+    });
+    daemonRegistry.unregister('machine-1');
+    await app.close();
+  });
+
+  it('rejects circular task dependency', async () => {
+    const app = await buildApp();
+    const first = await app.inject({
+      method: 'POST',
+      url: '/api/tasks',
+      payload: { channelId: 'general', title: 'first', creatorName: 'user' },
+    });
+    const second = await app.inject({
+      method: 'POST',
+      url: '/api/tasks',
+      payload: {
+        channelId: 'general',
+        title: 'second',
+        creatorName: 'user',
+        context: { blockedByTaskIds: [first.json().id] },
+      },
+    });
+
+    const cycle = await app.inject({
+      method: 'PATCH',
+      url: `/api/tasks/${first.json().id}`,
+      payload: { context: { blockedByTaskIds: [second.json().id] }, expectedVersion: first.json().version },
+    });
+
+    expect(cycle.statusCode).toBe(422);
+    expect(cycle.json()).toMatchObject({ error: 'Circular task dependency' });
     await app.close();
   });
 
@@ -75,7 +343,7 @@ describe('task API', () => {
     const app = await buildApp();
     expect((await app.inject({ method: 'POST', url: '/api/tasks', payload: { title: '' } })).statusCode).toBe(400);
     expect((await app.inject({ method: 'PATCH', url: '/api/tasks/nope', payload: {} })).statusCode).toBe(400);
-    expect((await app.inject({ method: 'GET', url: '/api/tasks?status=blocked' })).statusCode).toBe(400);
+    expect((await app.inject({ method: 'GET', url: '/api/tasks?status=not_a_status' })).statusCode).toBe(400);
     await app.close();
   });
 

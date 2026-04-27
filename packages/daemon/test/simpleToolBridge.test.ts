@@ -189,7 +189,7 @@ describe('task bridge lines', () => {
 
   it('rejects invalid task bridge lines', () => {
     expect(parseCreateTaskLine(`${CREATE_TASK_BRIDGE_MARKER} {"title":""}`)).toBeNull();
-    expect(parseUpdateTaskLine(`${UPDATE_TASK_BRIDGE_MARKER} {"taskId":"task-1","status":"blocked"}`)).toBeNull();
+    expect(parseUpdateTaskLine(`${UPDATE_TASK_BRIDGE_MARKER} {"taskId":"task-1","status":"not_a_status"}`)).toBeNull();
   });
 
   it('includes task markers in generated instructions', () => {

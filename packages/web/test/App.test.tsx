@@ -162,6 +162,7 @@ describe('App', () => {
           goalObjective: 'Help me ship a Mac voice input MVP',
           acceptanceCriteria: ['MVP plan is actionable'],
         },
+        version: 1,
         createdAt: '2026-04-25T00:00:03.000Z',
         updatedAt: '2026-04-25T00:00:03.000Z',
       }],
@@ -220,6 +221,7 @@ describe('App', () => {
         blockedNeeds: 'user provides token',
         progressEvents: [{ id: 'evt-1', taskId: 'task-1', agentId: 'agent-1', type: 'blocked', detail: 'missing API token', createdAt: '2026-04-25T00:00:00.000Z' }],
       },
+      version: 1,
       createdAt: '2026-04-25T00:00:00.000Z',
       updatedAt: '2026-04-25T00:00:01.000Z',
     }]);
@@ -228,7 +230,7 @@ describe('App', () => {
 
     fireEvent.click(await screen.findByText('Tasks'));
     await waitFor(() => {
-      expect(screen.getByText('BLOCKED')).toBeTruthy();
+      expect(screen.getAllByText('BLOCKED').length).toBeGreaterThan(0);
       expect(screen.getByText('missing API token')).toBeTruthy();
       expect(screen.getByText('Needs: user provides token')).toBeTruthy();
     });
@@ -298,6 +300,7 @@ describe('App', () => {
           updatedAt: '2026-04-25T00:00:01.000Z',
         }],
       },
+      version: 1,
       createdAt: '2026-04-25T00:00:00.000Z',
       updatedAt: '2026-04-25T00:00:01.000Z',
     }]);

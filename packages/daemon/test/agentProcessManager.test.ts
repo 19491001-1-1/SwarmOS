@@ -53,6 +53,26 @@ function createFakeProc(stdout: string[], exitCode = 0) {
   return proc;
 }
 
+function createFakeProcWithStderr(stderr: string[], exitCode = 1) {
+  const proc = new EventEmitter() as any;
+  proc.stdout = new EventEmitter();
+  proc.stderr = new EventEmitter();
+  proc.stdin = {
+    write: vi.fn(),
+    end: vi.fn(),
+  };
+  proc.kill = vi.fn();
+
+  setTimeout(() => {
+    for (const line of stderr) {
+      proc.stderr.emit('data', Buffer.from(line + '\n'));
+    }
+    proc.emit('close', exitCode);
+  }, 10);
+
+  return proc;
+}
+
 function createManualProc() {
   const proc = new EventEmitter() as any;
   proc.stdout = new EventEmitter();
@@ -73,6 +93,7 @@ describe('AgentProcessManager', () => {
   let delegations: Array<{ fromAgentId: string; toAgentId: string; content: string; startIfInactive?: boolean }> = [];
   let reminders: Array<{ agentId: string; message: string; triggerAt: string; channelId?: string }> = [];
   let cancelledReminders: Array<{ agentId: string; reminderId: string }> = [];
+  let taskUpdates: Array<{ agentId: string; taskId: string; status: string }> = [];
   let manager: AgentProcessManager;
 
   beforeEach(() => {
@@ -83,6 +104,7 @@ describe('AgentProcessManager', () => {
     delegations = [];
     reminders = [];
     cancelledReminders = [];
+    taskUpdates = [];
     manager = new AgentProcessManager(
       '/tmp/test-workspaces',
       (agentId, channelId, content, inReplyToMessageId) => messages.push({ agentId, channelId, content, inReplyToMessageId }),
@@ -91,7 +113,7 @@ describe('AgentProcessManager', () => {
       (fromAgentId, toAgentId, content) => dms.push({ fromAgentId, toAgentId, content }),
       (fromAgentId, toAgentId, content, startIfInactive) => delegations.push({ fromAgentId, toAgentId, content, startIfInactive }),
       () => {},
-      () => {},
+      (agentId, taskId, status) => taskUpdates.push({ agentId, taskId, status }),
       (agentId, message, triggerAt, channelId) => reminders.push({ agentId, message, triggerAt, channelId }),
       (agentId, reminderId) => cancelledReminders.push({ agentId, reminderId })
     );
@@ -317,6 +339,50 @@ describe('AgentProcessManager', () => {
     expect(mockSpawn).toHaveBeenCalledTimes(2);
     const secondPrompt = mockSpawn.mock.calls[1]?.[1]?.[1] as string;
     expect(secondPrompt).toContain('first');
+  });
+
+  it('retries transient agent failure before marking error', async () => {
+    mockSpawn
+      .mockImplementationOnce(() => createFakeProcWithStderr(['ECONNRESET upstream reset'], 1))
+      .mockImplementationOnce(() => createFakeProcWithStderr(['rate limit exceeded'], 1))
+      .mockImplementationOnce(() => createFakeProc([`${BRIDGE_MARKER} {"content":"Recovered"}`], 0));
+
+    await manager.startAgent('agent-1', { runtime: 'claude', name: 'bot' }, 'general');
+    await manager.deliverMessage('agent-1', {
+      id: 'msg-1',
+      channelId: 'general',
+      channelName: 'general',
+      senderName: 'user',
+      content: 'retry this',
+      createdAt: new Date().toISOString(),
+    });
+
+    await new Promise((r) => setTimeout(r, 120));
+
+    expect(mockSpawn).toHaveBeenCalledTimes(3);
+    expect(messages).toEqual([expect.objectContaining({ agentId: 'agent-1', content: 'Recovered' })]);
+    expect(activities.some((a) => a.agentId === 'agent-1' && a.type === 'working' && a.detail?.includes('Retrying after transient failure'))).toBe(true);
+    expect(statuses.at(-1)).toEqual({ agentId: 'agent-1', status: 'idle' });
+  });
+
+  it('blocks task on permanent failure', async () => {
+    mockSpawn.mockReturnValueOnce(createFakeProcWithStderr(['authentication failed: permission denied'], 1));
+
+    await manager.startAgent('agent-1', { runtime: 'claude', name: 'bot' }, 'general');
+    await manager.deliverMessage('agent-1', {
+      id: 'task:task-1:2026-04-27T00:00:00.000Z',
+      channelId: 'task:task-1',
+      channelName: 'Task task-1',
+      senderName: 'task-board',
+      content: 'Task assigned',
+      createdAt: new Date().toISOString(),
+    });
+
+    await new Promise((r) => setTimeout(r, 80));
+
+    expect(mockSpawn).toHaveBeenCalledTimes(1);
+    expect(taskUpdates).toEqual([{ agentId: 'agent-1', taskId: 'task-1', status: 'blocked' }]);
+    expect(activities.some((a) => a.agentId === 'agent-1' && a.type === 'error' && a.detail?.includes('Permanent failure'))).toBe(true);
   });
 
   it('stdout line parsed into agent:message', async () => {

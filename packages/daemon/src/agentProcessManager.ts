@@ -15,6 +15,9 @@ const DRIVERS: Record<string, RuntimeDriver> = {
   gemini: geminiDriver,
 };
 
+const MAX_TRANSIENT_ATTEMPTS = 3;
+const RETRY_BASE_DELAY_MS = 10;
+
 function buildAgentCliWrapper(): string {
   const moduleDir = dirname(fileURLToPath(import.meta.url));
   const packageDir = dirname(moduleDir);
@@ -60,6 +63,7 @@ interface AgentEntry {
   activeConfig?: AgentRuntimeConfig;
   driver: RuntimeDriver;
   inbox: AgentDelivery[];
+  retryAttempts: Map<string, number>;
   sessionId?: string;
   activeDeliveryId?: string;
 }
@@ -140,6 +144,7 @@ export class AgentProcessManager {
       idleConfig: config,
       driver,
       inbox: [],
+      retryAttempts: new Map(),
     });
     const entry = this.agents.get(agentId)!;
     await this.prepareRuntimeWorkspace(entry, config);
@@ -229,6 +234,7 @@ export class AgentProcessManager {
 
     let outputBuffer = '';
     let fullStdout = '';
+    let fullStderr = '';
     let bridgeMessageSent = false;
 
     proc.stdout?.on('data', (chunk: Buffer) => {
@@ -244,7 +250,9 @@ export class AgentProcessManager {
     });
 
     proc.stderr?.on('data', (chunk: Buffer) => {
-      process.stderr.write(`[agent:${entry.agentId}:stderr] ${chunk.toString()}`);
+      const text = chunk.toString();
+      fullStderr += text;
+      process.stderr.write(`[agent:${entry.agentId}:stderr] ${text}`);
     });
 
     proc.on('close', (code) => {
@@ -255,6 +263,9 @@ export class AgentProcessManager {
       if (code === 0 && entry.inbox[0]?.id === entry.activeDeliveryId) {
         entry.inbox.shift();
       }
+      if (code === 0 && entry.activeDeliveryId) {
+        entry.retryAttempts.delete(entry.activeDeliveryId);
+      }
       if (code === 0 && !bridgeMessageSent) {
         const fallback = fullStdout.trim();
         if (fallback) {
@@ -263,6 +274,9 @@ export class AgentProcessManager {
           this.onMessage(entry.agentId, entry.channelId, fallback);
           this.onActivity(entry.agentId, 'output', fallback.slice(0, 100));
         }
+      }
+      if (code !== 0 && this.handleFailedProcess(entry, code, fullStderr)) {
+        return;
       }
       entry.proc = null;
       entry.activeConfig = undefined;
@@ -296,6 +310,39 @@ export class AgentProcessManager {
     } catch (err) {
       this.onActivity(entry.agentId, 'error', err instanceof Error ? err.message : 'Failed to send busy notification');
     }
+  }
+
+  private handleFailedProcess(entry: AgentEntry, code: number | null, stderr: string): boolean {
+    const activeDeliveryId = entry.activeDeliveryId;
+    const failureClass = classifyAgentFailure(stderr);
+    if (failureClass === 'transient' && activeDeliveryId) {
+      const attempt = (entry.retryAttempts.get(activeDeliveryId) ?? 1) + 1;
+      if (attempt <= MAX_TRANSIENT_ATTEMPTS) {
+        entry.retryAttempts.set(activeDeliveryId, attempt);
+        entry.proc = null;
+        entry.activeConfig = undefined;
+        entry.activeDeliveryId = undefined;
+        entry.processStatus = 'idle';
+        const delay = RETRY_BASE_DELAY_MS * 2 ** Math.max(0, attempt - 2);
+        this.onActivity(entry.agentId, 'working', `Retrying after transient failure (${attempt}/${MAX_TRANSIENT_ATTEMPTS})`);
+        setTimeout(() => this.runNext(entry), delay);
+        return true;
+      }
+    }
+
+    if (failureClass === 'permanent') {
+      const activeDelivery = activeDeliveryId
+        ? entry.inbox.find((delivery) => delivery.id === activeDeliveryId)
+        : entry.inbox[0];
+      const taskId = activeDelivery ? extractTaskId(activeDelivery) : undefined;
+      if (taskId) {
+        this.onUpdateTask(entry.agentId, taskId, 'blocked');
+        if (entry.inbox[0]?.id === activeDeliveryId) entry.inbox.shift();
+      }
+      this.onActivity(entry.agentId, 'error', `Permanent failure: ${summarizeFailure(stderr, code)}`);
+    }
+
+    return false;
   }
 
   private sendNextToActiveProcess(entry: AgentEntry): void {
@@ -500,4 +547,23 @@ export class AgentProcessManager {
   async readWorkspace(agentId: string, relPath: string): Promise<WorkspaceEntry | WorkspaceError> {
     return readAgentWorkspace(agentId, relPath, this.workspaceBase);
   }
+}
+
+function classifyAgentFailure(stderr: string): 'transient' | 'permanent' | 'unknown' {
+  const text = stderr.toLowerCase();
+  if (/(enotfound|econnreset|rate limit|timeout|timed out)/i.test(text)) return 'transient';
+  if (/(auth|permission denied|command not found)/i.test(text)) return 'permanent';
+  return 'unknown';
+}
+
+function extractTaskId(delivery: AgentDelivery): string | undefined {
+  const channelMatch = delivery.channelId.match(/^task:([^:]+)$/);
+  if (channelMatch) return channelMatch[1];
+  const idMatch = delivery.id.match(/^task:([^:]+):/);
+  return idMatch?.[1];
+}
+
+function summarizeFailure(stderr: string, code: number | null): string {
+  const trimmed = stderr.trim().replace(/\s+/g, ' ');
+  return trimmed ? trimmed.slice(0, 200) : `process exited with code ${code}`;
 }

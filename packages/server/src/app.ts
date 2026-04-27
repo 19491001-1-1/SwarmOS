@@ -12,13 +12,14 @@ import { goalAlignmentRoutes } from './routes/goalAlignments.js';
 import { knowledgeRoutes } from './routes/knowledge.js';
 import { daemonSocketHandler } from './ws/daemonSocket.js';
 import { browserSocketHandler } from './ws/browserSocket.js';
-import { initDb } from './db.js';
+import { initDb, resetVolatileState } from './db.js';
 import { createVersionInfo } from '@crewden/shared';
 import { startReminderScheduler } from './reminders.js';
 import { browserAuthConfigured, requireBrowserAuth } from './browserAuth.js';
 
 export async function buildApp(opts: { logger?: boolean } = {}) {
   await initDb();
+  await resetVolatileState();
 
   const app = Fastify({ logger: opts.logger ?? false });
 
