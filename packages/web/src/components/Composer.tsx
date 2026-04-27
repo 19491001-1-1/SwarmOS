@@ -26,7 +26,20 @@ export function Composer({ agents, channelName, content, onChange, onSend }: Pro
     if (!trimmed || sending) return;
     setSending(true);
     try {
-      await onSend(trimmed, selectedAgent || undefined);
+      // When "To Somebody" is selected, prepend @mention so the message
+      // renders with the same highlight as inline @mentions.
+      let finalContent = trimmed;
+      if (selectedAgent) {
+        const target = agents.find((a) => a.id === selectedAgent);
+        if (target) {
+          const label = target.displayName ?? target.name;
+          const mentionPrefix = `@${label} `;
+          if (!trimmed.startsWith(mentionPrefix)) {
+            finalContent = `${mentionPrefix}${trimmed}`;
+          }
+        }
+      }
+      await onSend(finalContent, selectedAgent || undefined);
       if (!onChange) setInternalContent('');
       textareaRef.current?.focus();
     } finally {
@@ -141,7 +154,9 @@ export function Composer({ agents, channelName, content, onChange, onSend }: Pro
                   insertMention(option.label);
                 }}
                 style={{
-                  display: 'block',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
                   width: '100%',
                   border: 'none',
                   background: index === mentionIndex ? '#FFD700' : '#fff',
@@ -152,6 +167,14 @@ export function Composer({ agents, channelName, content, onChange, onSend }: Pro
                   cursor: 'pointer',
                 }}
               >
+                <span style={{
+                  display: 'inline-block',
+                  width: 8,
+                  height: 8,
+                  borderRadius: '50%',
+                  background: option.online ? '#22c55e' : '#d1d5db',
+                  flexShrink: 0,
+                }} />
                 @{option.label}
               </button>
             ))}
@@ -216,9 +239,16 @@ export function Composer({ agents, channelName, content, onChange, onSend }: Pro
   );
 }
 
-function mentionOptions(agents: Agent[]): Array<{ type: 'agent' | 'user'; id: string; label: string }> {
+const ONLINE_STATUSES = new Set(['running', 'idle', 'working']);
+
+function mentionOptions(agents: Agent[]): Array<{ type: 'agent' | 'user'; id: string; label: string; online: boolean }> {
   return [
-    { type: 'user', id: 'user', label: 'user' },
-    ...agents.map((agent) => ({ type: 'agent' as const, id: agent.id, label: agent.displayName ?? agent.name })),
+    { type: 'user', id: 'user', label: 'user', online: true },
+    ...agents.map((agent) => ({
+      type: 'agent' as const,
+      id: agent.id,
+      label: agent.displayName ?? agent.name,
+      online: ONLINE_STATUSES.has(agent.status),
+    })),
   ];
 }
