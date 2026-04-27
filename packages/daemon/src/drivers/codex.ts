@@ -1,5 +1,5 @@
 import type { RuntimeDriver, AgentSpawnContext, RuntimeCommand, AgentOutputEvent } from './types.js';
-import { parseBridgeLine, buildBridgeInstruction, buildDmInstruction, parseDmLine, buildDelegateInstruction, parseDelegateLine, buildTaskInstruction, buildMemoryInstruction, parseCreateTaskLine, parseUpdateTaskLine, buildReminderInstruction, parseReminderLine, parseCancelReminderLine } from '../bridge/simpleToolBridge.js';
+import { parseBridgeLine, buildBridgeInstruction, buildDmInstruction, parseDmLine, buildDelegateInstruction, parseDelegateLine, buildTaskInstruction, buildMemoryInstruction, buildCommunicationInstruction, parseCreateTaskLine, parseUpdateTaskLine, buildReminderInstruction, parseReminderLine, parseCancelReminderLine } from '../bridge/simpleToolBridge.js';
 
 export const codexDriver: RuntimeDriver = {
   id: 'codex',
@@ -20,6 +20,7 @@ export const codexDriver: RuntimeDriver = {
       buildTaskInstruction(),
       buildReminderInstruction(),
       buildMemoryInstruction(),
+      buildCommunicationInstruction(),
     ]
       .filter(Boolean)
       .join('\n\n');

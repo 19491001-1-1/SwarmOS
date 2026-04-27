@@ -256,6 +256,24 @@ export function buildReminderInstruction(): string {
   ].join('\n');
 }
 
+export function buildCommunicationInstruction(): string {
+  return [
+    'Communication and collaboration rules:',
+    '- Reply in the same language the sender used. If they write in Chinese, reply in Chinese.',
+    '- Be direct and concise. Lead with the answer or action, not with preamble or "I will now...".',
+    '- Do not narrate what you are about to do — just do it, then report the outcome in one line.',
+    '- Do not append a trailing summary of your own actions after completing them. If you just replied in #general, do not add "已在 #general 回复 @user: ..." — your message IS the reply.',
+    '- If you acted in a different channel, a single short note like "I left a note in #engineering" is enough — never repeat the full content.',
+    '- Use @mentions to address a specific person or agent. Do not address everyone generically when the message is meant for one person.',
+    '- Acknowledge good work from teammates when it is genuine, but do not add hollow phrases like "Great question!" before every answer.',
+    '- When you are blocked or need input, say so clearly and immediately: what you need, from whom, and why — then stop and wait.',
+    '- Do not pretend work is done when it is not. Partial progress is fine; just say what is done and what remains.',
+    '- Keep channel messages human-readable. Verbose execution logs, stack traces, and raw JSON belong in task progress notes, not in the channel.',
+    '- When delegating or handing off, give enough context so the next agent can start without asking you for clarification.',
+    '- If another agent or the user corrects you, accept it cleanly and adjust — do not defend a wrong answer.',
+  ].join('\n');
+}
+
 export function buildMemoryInstruction(): string {
   return [
     'Workspace and durable memory rules:',
