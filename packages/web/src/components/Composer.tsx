@@ -5,22 +5,33 @@ import { t } from '../i18n.js';
 type Props = {
   agents: Agent[];
   channelName?: string;
-  onSend: (content: string, agentId?: string) => void;
+  content?: string;
+  onChange?: (content: string) => void;
+  onSend: (content: string, agentId?: string) => void | Promise<void>;
 };
 
-export function Composer({ agents, channelName, onSend }: Props) {
-  const [content, setContent] = useState('');
+export function Composer({ agents, channelName, content, onChange, onSend }: Props) {
+  const [internalContent, setInternalContent] = useState('');
   const [selectedAgent, setSelectedAgent] = useState('');
   const [pressing, setPressing] = useState(false);
+  const [sending, setSending] = useState(false);
   const [mentionOpen, setMentionOpen] = useState(false);
   const [mentionIndex, setMentionIndex] = useState(0);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const value = content ?? internalContent;
+  const updateContent = onChange ?? setInternalContent;
 
-  const handleSend = () => {
-    if (!content.trim()) return;
-    onSend(content.trim(), selectedAgent || undefined);
-    setContent('');
-    textareaRef.current?.focus();
+  const handleSend = async () => {
+    const trimmed = value.trim();
+    if (!trimmed || sending) return;
+    setSending(true);
+    try {
+      await onSend(trimmed, selectedAgent || undefined);
+      if (!onChange) setInternalContent('');
+      textareaRef.current?.focus();
+    } finally {
+      setSending(false);
+    }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -43,17 +54,17 @@ export function Composer({ agents, channelName, onSend }: Props) {
     }
     if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
       e.preventDefault();
-      handleSend();
+      void handleSend();
     }
   };
 
   const insertMention = (label: string) => {
     const textarea = textareaRef.current;
-    const cursor = textarea?.selectionStart ?? content.length;
-    const before = content.slice(0, cursor).replace(/@[\p{L}\p{N}_-]*$/u, '');
-    const after = content.slice(cursor);
+    const cursor = textarea?.selectionStart ?? value.length;
+    const before = value.slice(0, cursor).replace(/@[\p{L}\p{N}_-]*$/u, '');
+    const after = value.slice(cursor);
     const next = `${before}@${label} ${after}`;
-    setContent(next);
+    updateContent(next);
     setMentionOpen(false);
     requestAnimationFrame(() => {
       textarea?.focus();
@@ -63,7 +74,7 @@ export function Composer({ agents, channelName, onSend }: Props) {
   };
 
   const runningAgents = agents.filter((a) => ['running', 'idle', 'working'].includes(a.status));
-  const canSend = content.trim().length > 0;
+  const canSend = value.trim().length > 0 && !sending;
 
   return (
     <div className="composer-shell" style={{
@@ -148,9 +159,9 @@ export function Composer({ agents, channelName, onSend }: Props) {
         ) : null}
         <textarea
           ref={textareaRef}
-          value={content}
+          value={value}
           onChange={(e) => {
-            setContent(e.target.value);
+            updateContent(e.target.value);
             const cursor = e.currentTarget.selectionStart;
             setMentionOpen(/@[\p{L}\p{N}_-]*$/u.test(e.target.value.slice(0, cursor)));
             setMentionIndex(0);
@@ -176,7 +187,7 @@ export function Composer({ agents, channelName, onSend }: Props) {
           onBlur={(e) => { e.currentTarget.style.outline = 'none'; }}
         />
         <button
-          onClick={handleSend}
+          onClick={() => void handleSend()}
           onMouseDown={() => setPressing(true)}
           onMouseUp={() => setPressing(false)}
           onMouseLeave={() => setPressing(false)}

@@ -195,6 +195,11 @@ export async function patchAgent(agentId: string, data: { runtime?: string; mach
   return r.json();
 }
 
+export async function deleteAgent(agentId: string): Promise<void> {
+  const r = await apiFetch(`${API_BASE}/api/agents/${agentId}`, { method: 'DELETE', headers: authHeaders() });
+  if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error ?? 'Delete agent failed');
+}
+
 export async function getAgentDmThreads(agentId: string): Promise<DirectMessageThread[]> {
   const r = await apiFetch(`${API_BASE}/api/agents/${agentId}/dms`, { headers: authHeaders() });
   return r.json();

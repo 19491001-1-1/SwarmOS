@@ -1137,6 +1137,20 @@ export class SqliteStore {
       .where(eq(agents.id, id));
     return updated;
   }
+
+  async deleteAgent(id: string): Promise<Agent | undefined> {
+    await initDb();
+    const existing = await this.getAgent(id);
+    if (!existing) return undefined;
+    const database = getDb();
+    await database.delete(activities).where(eq(activities.agentId, id));
+    await database.delete(agentTokens).where(eq(agentTokens.agentId, id));
+    await database.delete(reminders).where(eq(reminders.agentId, id));
+    await database.delete(agentDelegations).where(or(eq(agentDelegations.fromAgentId, id), eq(agentDelegations.toAgentId, id)));
+    await database.delete(directMessages).where(or(eq(directMessages.fromAgentId, id), eq(directMessages.toAgentId, id)));
+    await database.delete(agents).where(eq(agents.id, id));
+    return existing;
+  }
 }
 
 export function getStore(): SqliteStore {

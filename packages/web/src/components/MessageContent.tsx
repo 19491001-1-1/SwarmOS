@@ -5,6 +5,7 @@ import type { Mention } from '../api.js';
 type Props = {
   content: string;
   mentions?: Mention[];
+  currentUserName?: string;
   onOpenAgent?: (agentId: string) => void;
 };
 
@@ -12,7 +13,7 @@ export function normalizeMessageContent(content: string): string {
   return content.replace(/\\n/g, '\n');
 }
 
-export function MessageContent({ content, mentions = [], onOpenAgent }: Props) {
+export function MessageContent({ content, mentions = [], currentUserName = 'user', onOpenAgent }: Props) {
   const normalized = applyMentionLinks(normalizeMessageContent(content), mentions);
   return (
     <div style={contentStyle}>
@@ -21,20 +22,22 @@ export function MessageContent({ content, mentions = [], onOpenAgent }: Props) {
         skipHtml
         components={{
           a: ({ href, children }) => {
-            if (href?.startsWith('mention:')) {
-              const [, type, id] = href.split(':');
+            if (href?.startsWith('#mention:') || href?.startsWith('mention:')) {
+              const mentionHref = href.startsWith('#') ? href.slice(1) : href;
+              const [, type, id] = mentionHref.split(':');
+              const isCurrentUser = type === 'user' && id === currentUserName;
               if (type === 'agent' && id) {
                 return (
                   <button
                     type="button"
                     onClick={() => onOpenAgent?.(id)}
-                    style={mentionStyle(true)}
+                    style={mentionStyle({ actionable: true, currentUser: false })}
                   >
                     {children}
                   </button>
                 );
               }
-              return <span style={mentionStyle(false)}>{children}</span>;
+              return <span style={mentionStyle({ actionable: false, currentUser: isCurrentUser })}>{children}</span>;
             }
             return <a href={href} target="_blank" rel="noreferrer" style={{ color: '#0b63ce', overflowWrap: 'anywhere' }}>{children}</a>;
           },
@@ -54,16 +57,20 @@ export function MessageContent({ content, mentions = [], onOpenAgent }: Props) {
 }
 
 function applyMentionLinks(content: string, mentions: Mention[]): string {
-  let result = content;
-  for (const mention of mentions) {
-    const token = `@${mention.label}`;
-    const link = `[@${mention.label}](mention:${mention.type}:${mention.id})`;
-    result = result.split(token).join(link);
-  }
-  if (!mentions.some((mention) => mention.type === 'user') && result.includes('@user')) {
-    result = result.split('@user').join('[@user](mention:user:user)');
-  }
-  return result;
+  const mentionByLabel = new Map(mentions.map((mention) => [mention.label, mention]));
+  const mentionPattern = /(^|[^\w\u4e00-\u9fa5])@([\w\u4e00-\u9fa5]+)/g;
+  return content.replace(mentionPattern, (_match, prefix: string, label: string) => {
+    const mention = mentionByLabel.get(label) ?? {
+      type: 'user' as const,
+      id: label,
+      label,
+    };
+    return `${prefix}${formatMentionLink(mention)}`;
+  });
+}
+
+function formatMentionLink(mention: Mention): string {
+  return `[@${mention.label}](#mention:${mention.type}:${mention.id})`;
 }
 
 const contentStyle: React.CSSProperties = {
@@ -116,11 +123,11 @@ const quoteStyle: React.CSSProperties = {
   color: '#555',
 };
 
-function mentionStyle(agent: boolean): React.CSSProperties {
+function mentionStyle({ actionable, currentUser }: { actionable: boolean; currentUser: boolean }): React.CSSProperties {
   return {
     display: 'inline-block',
-    border: '1px solid #c9a400',
-    background: agent ? '#fff3a3' : '#f1f1e8',
+    border: currentUser ? '1px solid #0b63ce' : '1px solid #c9a400',
+    background: currentUser ? '#dbeafe' : '#fff3a3',
     color: '#111',
     padding: '0 5px',
     borderRadius: 4,
@@ -128,6 +135,6 @@ function mentionStyle(agent: boolean): React.CSSProperties {
     lineHeight: 1.5,
     fontFamily: 'inherit',
     fontSize: 'inherit',
-    cursor: agent ? 'pointer' : 'default',
+    cursor: actionable ? 'pointer' : 'default',
   };
 }

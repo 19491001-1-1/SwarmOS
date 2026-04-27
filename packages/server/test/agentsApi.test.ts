@@ -343,6 +343,43 @@ describe('PATCH /api/agents/:id', () => {
   });
 });
 
+describe('DELETE /api/agents/:id', () => {
+  it('deletes an inactive agent and removes it from the list', async () => {
+    const app = await buildApp();
+    const created = await app.inject({ method: 'POST', url: '/api/agents', payload: { name: 'delete-me', runtime: 'claude' } });
+    const agentId = created.json().id;
+
+    const deleted = await app.inject({ method: 'DELETE', url: `/api/agents/${agentId}` });
+    expect(deleted.statusCode).toBe(204);
+
+    const fetched = await app.inject({ method: 'GET', url: `/api/agents/${agentId}` });
+    expect(fetched.statusCode).toBe(404);
+
+    const listed = await app.inject({ method: 'GET', url: '/api/agents' });
+    expect(listed.json().some((agent: { id: string }) => agent.id === agentId)).toBe(false);
+    await app.close();
+  });
+
+  it('rejects deleting a working agent', async () => {
+    const app = await buildApp();
+    await getStore().createAgent({
+      id: 'agent-working',
+      name: 'working',
+      runtime: 'codex',
+      status: 'working',
+      createdAt: new Date().toISOString(),
+    });
+
+    const deleted = await app.inject({ method: 'DELETE', url: '/api/agents/agent-working' });
+    expect(deleted.statusCode).toBe(409);
+    expect(deleted.json().error).toContain('Stop the agent first');
+
+    const listed = await app.inject({ method: 'GET', url: '/api/agents' });
+    expect(listed.json().some((agent: { id: string }) => agent.id === 'agent-working')).toBe(true);
+    await app.close();
+  });
+});
+
 describe('agent direct messages API', () => {
   it('creates a DM and lists it in threads and conversation', async () => {
     const app = await buildApp();

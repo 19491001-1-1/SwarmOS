@@ -130,6 +130,22 @@ export async function agentRoutes(app: FastifyInstance) {
     return updated;
   });
 
+  app.delete<{ Params: { id: string } }>('/api/agents/:id', async (req, reply) => {
+    const store = getStore();
+    const agent = await store.getAgent(req.params.id);
+    if (!agent) return reply.status(404).send({ error: 'Agent not found' });
+    if (agent.status === 'working') {
+      return reply.status(409).send({ error: 'Cannot delete agent while it is working. Stop the agent first.' });
+    }
+
+    if (agent.machineId && agent.status !== 'inactive') {
+      daemonRegistry.send(agent.machineId, { type: 'agent:stop', agentId: agent.id });
+    }
+    await store.deleteAgent(agent.id);
+    eventBus.emit({ type: 'agent:deleted', agentId: agent.id });
+    return reply.status(204).send();
+  });
+
   app.get<{ Params: { id: string } }>('/api/agents/:id/dms', async (req, reply) => {
     const store = getStore();
     const agent = await store.getAgent(req.params.id);

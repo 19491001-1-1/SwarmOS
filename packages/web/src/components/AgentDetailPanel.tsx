@@ -1,16 +1,18 @@
 import { useEffect, useState } from 'react';
 import type { Agent, AgentActivity, DirectMessage, DirectMessageThread, Machine, Reminder, Task } from '../api.js';
-import { cancelReminder, createAgentReminder, getAgentDirectMessages, getAgentDmThreads, patchAgent, sendAgentDirectMessage } from '../api.js';
+import { cancelReminder, createAgentReminder, deleteAgent, getAgentDirectMessages, getAgentDmThreads, patchAgent, sendAgentDirectMessage } from '../api.js';
 import { WorkspaceBrowser } from './WorkspaceBrowser.js';
 
 type Props = {
   agent: Agent;
+  agents: Agent[];
   machines: Machine[];
   activities: AgentActivity[];
   reminders: Reminder[];
   tasks: Task[];
   onReminderUpdated: (reminder: Reminder) => void;
   onAgentUpdated: (agent: Agent) => void;
+  onAgentDeleted: (agentId: string) => void;
   onClose: () => void;
 };
 
@@ -27,7 +29,7 @@ const ACTIVITY_META: Record<AgentActivity['type'], { label: string; color: strin
   error: { label: 'ERROR', color: '#f44336' },
 };
 
-export function AgentDetailPanel({ agent, machines, activities, reminders, tasks, onReminderUpdated, onAgentUpdated, onClose }: Props) {
+export function AgentDetailPanel({ agent, agents, machines, activities, reminders, tasks, onReminderUpdated, onAgentUpdated, onAgentDeleted, onClose }: Props) {
   const [tab, setTab] = useState<Tab>('profile');
 
   return (
@@ -66,8 +68,8 @@ export function AgentDetailPanel({ agent, machines, activities, reminders, tasks
       </div>
 
       <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: 12 }}>
-        {tab === 'profile' ? <Profile agent={agent} machines={machines} tasks={tasks} onAgentUpdated={onAgentUpdated} /> : null}
-        {tab === 'dms' ? <DirectMessages agent={agent} /> : null}
+        {tab === 'profile' ? <Profile agent={agent} machines={machines} tasks={tasks} onAgentUpdated={onAgentUpdated} onAgentDeleted={onAgentDeleted} /> : null}
+        {tab === 'dms' ? <DirectMessages agent={agent} agents={agents} /> : null}
         {tab === 'reminders' ? <Reminders agent={agent} reminders={reminders} onReminderUpdated={onReminderUpdated} /> : null}
         {tab === 'workspace' ? <WorkspaceBrowser agentId={agent.id} /> : null}
         {tab === 'activity' ? <ActivityTimeline activities={activities} /> : null}
@@ -76,7 +78,13 @@ export function AgentDetailPanel({ agent, machines, activities, reminders, tasks
   );
 }
 
-function Profile({ agent, machines, tasks, onAgentUpdated }: { agent: Agent; machines: Machine[]; tasks: Task[]; onAgentUpdated: (agent: Agent) => void }) {
+function Profile({ agent, machines, tasks, onAgentUpdated, onAgentDeleted }: {
+  agent: Agent;
+  machines: Machine[];
+  tasks: Task[];
+  onAgentUpdated: (agent: Agent) => void;
+  onAgentDeleted: (agentId: string) => void;
+}) {
   const [runtime, setRuntime] = useState(agent.runtime);
   const [displayName, setDisplayName] = useState(agent.displayName ?? '');
   const [description, setDescription] = useState(agent.description ?? '');
@@ -85,6 +93,9 @@ function Profile({ agent, machines, tasks, onAgentUpdated }: { agent: Agent; mac
   const [envVarsText, setEnvVarsText] = useState(formatEnvVars(agent.envVars));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | undefined>();
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | undefined>();
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     setRuntime(agent.runtime);
@@ -94,6 +105,8 @@ function Profile({ agent, machines, tasks, onAgentUpdated }: { agent: Agent; mac
     setSystemPrompt(agent.systemPrompt ?? '');
     setEnvVarsText(formatEnvVars(agent.envVars));
     setError(undefined);
+    setDeleteError(undefined);
+    setDeleteOpen(false);
   }, [agent.id, agent.runtime, agent.displayName, agent.description, agent.model, agent.systemPrompt, agent.envVars]);
 
   const save = async () => {
@@ -115,7 +128,20 @@ function Profile({ agent, machines, tasks, onAgentUpdated }: { agent: Agent; mac
       setSaving(false);
     }
   };
+  const confirmDelete = async () => {
+    setDeleting(true);
+    setDeleteError(undefined);
+    try {
+      await deleteAgent(agent.id);
+      onAgentDeleted(agent.id);
+    } catch (err) {
+      setDeleteError(err instanceof Error ? err.message : 'DELETE FAILED');
+    } finally {
+      setDeleting(false);
+    }
+  };
   const machine = agent.machineId ? machines.find((item) => item.id === agent.machineId) : undefined;
+  const machineLabel = formatMachineLabel(agent.machineId, machine);
   const busy = ['starting', 'running', 'working'].includes(agent.status);
 
   return (
@@ -142,15 +168,84 @@ function Profile({ agent, machines, tasks, onAgentUpdated }: { agent: Agent; mac
       <Field label="SYSTEM" value={systemPrompt} onChange={setSystemPrompt} multiline />
       <Field label="ENV" value={envVarsText} onChange={setEnvVarsText} multiline />
       <ReadonlyRows rows={[
-        ['MACHINE', agent.machineId ?? '-'],
+        ['MACHINE', machineLabel],
         ['CREATED', formatDate(agent.createdAt)],
       ]} />
       {error ? <div style={{ fontSize: 11, color: '#b00020', fontWeight: 700 }}>{error}</div> : null}
       <button onClick={save} disabled={saving} style={buttonStyle('#000', '#FFD700')}>
         {saving ? 'SAVING' : 'SAVE'}
       </button>
+      <button onClick={() => setDeleteOpen(true)} style={buttonStyle('#fff', '#b00020')}>
+        DELETE AGENT
+      </button>
+      {deleteOpen ? (
+        <DeleteAgentDialog
+          agent={agent}
+          error={deleteError}
+          deleting={deleting}
+          onCancel={() => {
+            if (deleting) return;
+            setDeleteOpen(false);
+            setDeleteError(undefined);
+          }}
+          onConfirm={confirmDelete}
+        />
+      ) : null}
     </div>
   );
+}
+
+function DeleteAgentDialog({ agent, error, deleting, onCancel, onConfirm }: {
+  agent: Agent;
+  error?: string;
+  deleting: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  const isWorking = agent.status === 'working';
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label="Delete agent confirmation"
+      style={{
+        position: 'fixed',
+        inset: 0,
+        background: 'rgba(0,0,0,0.35)',
+        display: 'grid',
+        placeItems: 'center',
+        zIndex: 50,
+        padding: 16,
+      }}
+    >
+      <div style={{ width: 'min(380px, 100%)', border: '2px solid #000', background: '#fff', boxShadow: '4px 4px 0 #000', fontFamily: FONT }}>
+        <div style={{ borderBottom: '2px solid #000', padding: '10px 12px', fontWeight: 700, fontSize: 13 }}>
+          DELETE AGENT
+        </div>
+        <div style={{ padding: 12, display: 'grid', gap: 10, fontSize: 12, lineHeight: 1.45 }}>
+          <div>
+            Delete <strong>{agent.displayName ?? agent.name}</strong>? This cannot be undone. The agent will be removed from the agent list.
+          </div>
+          {isWorking ? (
+            <div style={{ border: '2px solid #b00020', background: '#ffe8e8', color: '#b00020', padding: 8, fontWeight: 700 }}>
+              WARNING: THIS AGENT IS WORKING. STOP IT BEFORE DELETING.
+            </div>
+          ) : null}
+          {error ? <div style={{ color: '#b00020', fontWeight: 700 }}>{error}</div> : null}
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+            <button onClick={onCancel} disabled={deleting} style={buttonStyle('#fff', '#000')}>CANCEL</button>
+            <button onClick={onConfirm} disabled={deleting} style={buttonStyle('#b00020', '#fff')}>{deleting ? 'DELETING' : 'DELETE'}</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function formatMachineLabel(machineId?: string, machine?: Machine): string {
+  if (!machineId) return '-';
+  const displayName = machine?.hostname?.trim();
+  return displayName ? `${displayName} (${machineId})` : machineId;
 }
 
 function RuntimeSelect({ value, machine, busy, onChange }: { value: string; machine?: Machine; busy: boolean; onChange: (value: string) => void }) {
@@ -214,16 +309,26 @@ function matchesAgentTask(agent: Agent, task: Task): boolean {
   return fields.some((field) => field.length >= 3 && (haystack.includes(field) || field.split(/\W+/).some((part) => part.length >= 4 && haystack.includes(part))));
 }
 
-function DirectMessages({ agent }: { agent: Agent }) {
+function DirectMessages({ agent, agents }: { agent: Agent; agents: Agent[] }) {
   const [threads, setThreads] = useState<DirectMessageThread[]>([]);
   const [selectedOtherId, setSelectedOtherId] = useState('user');
   const [messages, setMessages] = useState<DirectMessage[]>([]);
   const [draft, setDraft] = useState('');
+  const otherAgentIds = new Set(threads.map((thread) => thread.otherAgentId));
+  const recipientOptions = [
+    { id: 'user', label: 'User' },
+    ...agents
+      .filter((item) => item.id !== agent.id)
+      .map((item) => ({ id: item.id, label: formatAgentLabel(item, item.id) })),
+    ...Array.from(otherAgentIds)
+      .filter((id) => id !== 'user' && id !== agent.id && !agents.some((item) => item.id === id))
+      .map((id) => ({ id, label: id })),
+  ];
 
-  const loadThreads = async () => {
+  const loadThreads = async (selectFirst = false) => {
     const data = await getAgentDmThreads(agent.id);
     setThreads(data);
-    if (selectedOtherId === 'user' && data.length > 0) setSelectedOtherId(data[0].otherAgentId);
+    if (selectFirst && data.length > 0) setSelectedOtherId(data[0].otherAgentId);
   };
 
   const loadMessages = async (otherId: string) => {
@@ -237,7 +342,7 @@ function DirectMessages({ agent }: { agent: Agent }) {
   useEffect(() => {
     setSelectedOtherId('user');
     setMessages([]);
-    loadThreads();
+    loadThreads(true);
   }, [agent.id]);
 
   useEffect(() => {
@@ -254,23 +359,33 @@ function DirectMessages({ agent }: { agent: Agent }) {
     setMessages((prev) => [...prev, sent]);
     await loadThreads();
   };
+  const displayParticipant = (agentId: string) => {
+    if (agentId === 'user') return 'User';
+    if (agentId === agent.id) return formatAgentLabel(agent, agentId);
+    return formatAgentLabel(agents.find((item) => item.id === agentId), agentId);
+  };
+  const visibleThreads = threads.filter((thread) => thread.otherAgentId !== 'user');
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 6 }}>
-        <input
+        <select
+          aria-label="DM recipient"
           value={selectedOtherId}
           onChange={(event) => setSelectedOtherId(event.target.value)}
           style={inputStyle}
-          placeholder="other id"
-        />
+        >
+          {recipientOptions.map((option) => (
+            <option key={option.id} value={option.id}>{option.label}</option>
+          ))}
+        </select>
         <button onClick={() => loadMessages(selectedOtherId)} style={buttonStyle('#fff', '#000')}>OPEN</button>
       </div>
       <div style={{ display: 'flex', gap: 6, overflowX: 'auto', paddingBottom: 2 }}>
-        <button onClick={() => setSelectedOtherId('user')} style={threadButtonStyle(selectedOtherId === 'user')}>user</button>
-        {threads.map((thread) => (
+        <button onClick={() => setSelectedOtherId('user')} style={threadButtonStyle(selectedOtherId === 'user')}>User</button>
+        {visibleThreads.map((thread) => (
           <button key={thread.otherAgentId} onClick={() => setSelectedOtherId(thread.otherAgentId)} style={threadButtonStyle(selectedOtherId === thread.otherAgentId)}>
-            {thread.otherAgentId}
+            {displayParticipant(thread.otherAgentId)}
           </button>
         ))}
       </div>
@@ -286,7 +401,7 @@ function DirectMessages({ agent }: { agent: Agent }) {
             fontSize: 11,
             overflowWrap: 'anywhere',
           }}>
-            <div style={{ fontWeight: 700, marginBottom: 4 }}>{message.fromAgentId}</div>
+            <div style={{ fontWeight: 700, marginBottom: 4 }}>{displayParticipant(message.fromAgentId)}</div>
             <div>{message.content}</div>
             <div style={{ marginTop: 5, color: '#555', fontSize: 10 }}>{formatTime(message.createdAt)}</div>
           </div>
@@ -296,6 +411,11 @@ function DirectMessages({ agent }: { agent: Agent }) {
       <button onClick={send} style={buttonStyle('#000', '#FFD700')}>SEND DM</button>
     </div>
   );
+}
+
+function formatAgentLabel(agent: Agent | undefined, fallbackId: string): string {
+  if (!agent) return fallbackId;
+  return agent.displayName?.trim() || agent.name;
 }
 
 function Reminders({ agent, reminders, onReminderUpdated }: { agent: Agent; reminders: Reminder[]; onReminderUpdated: (reminder: Reminder) => void }) {

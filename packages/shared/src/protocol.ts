@@ -398,6 +398,7 @@ export type BrowserEvent =
   | { type: 'channel:deleted'; channelId: string }
   | { type: 'agent:update'; agent: Agent }
   | { type: 'agent:updated'; agent: Agent }
+  | { type: 'agent:deleted'; agentId: string }
   | { type: 'agent:activity'; agentId: string; activity: AgentActivity }
   | { type: 'dm:new'; dm: DirectMessage }
   | { type: 'agent:delegation'; delegation: AgentDelegation }
