@@ -105,6 +105,34 @@ describe('daemon WebSocket', () => {
     ws.close();
   });
 
+  it('restores known daemon machines after server restart', async () => {
+    await getStore().upsertMachine({
+      id: 'known-machine',
+      hostname: 'known-host',
+      os: 'linux',
+      daemonVersion: '0.1.0',
+      runtimes: ['claude'],
+      runtimeVersions: { claude: '1.0' },
+      status: 'online',
+      connectedAt: new Date().toISOString(),
+    });
+
+    await app.close();
+    app = await buildApp();
+    await app.listen({ port: 0, host: '127.0.0.1' });
+    const address = app.server.address();
+    port = typeof address === 'object' && address ? address.port : 3000;
+
+    const machines = await getStore().listMachines();
+    expect(machines).toEqual([
+      expect.objectContaining({
+        id: 'known-machine',
+        hostname: 'known-host',
+        status: 'offline',
+      }),
+    ]);
+  });
+
   it('creates channel message on agent:message', async () => {
     const ws = await connectDaemon('dev-machine-key');
     await sendAndWait(ws, {
