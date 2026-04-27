@@ -122,6 +122,28 @@ pnpm install
 
 ## Recent Important Changes
 
+### v1.6 Reliable Task Flow
+
+Implemented on branch `feat/v1-6-reliable-task-flow`:
+
+- Task status machine now rejects invalid public PATCH transitions with `422`.
+- Task status values include `blocked` and `cancelled`; `todo` remains the open/default state and `in_review` remains the review state.
+- Tasks now carry `version`; public task PATCH supports `expectedVersion` and returns `409` on stale writes.
+- Server SQLite now has `audit_log` plus `appendAuditLog/listAuditLogs`; public status changes, internal task status changes, handoffs, blocks, claims, and delegation events write audit entries without storing auth tokens.
+- Daemon process manager retries transient runtime failures (`ENOTFOUND`, `ECONNRESET`, rate limit, timeout) up to three total attempts and blocks task deliveries on permanent auth/permission/command failures.
+- Server startup now resets machine live status to `offline` while preserving known machine metadata.
+- Minimal task dependencies use `task.context.blockedByTaskIds`; dependent task delivery is suppressed until all blockers are `done`, blocker completion triggers dependent delivery, and circular dependencies return `422`.
+
+Key verification from the implementation session:
+
+```bash
+pnpm verify
+pnpm --filter @crewden/cloudflare exec wrangler deploy --dry-run
+pnpm --filter @crewden/cloudflare exec wrangler deploy --config wrangler.test.jsonc --dry-run
+```
+
+All three commands passed locally. Cloudflare tests/dry-runs may still print known non-blocking Workers Runtime compatibility or request-stream warnings.
+
 ### Cloudflare Test Environment
 
 Recent commits added:
