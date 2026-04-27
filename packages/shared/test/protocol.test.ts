@@ -361,6 +361,7 @@ describe('Task schemas', () => {
         blockedReason: 'missing input',
         progressEvents: [{ id: 'evt-1', taskId: 'task-1', agentId: 'agent-1', type: 'heartbeat', detail: 'working', createdAt: new Date().toISOString() }],
       },
+      version: 1,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     }).success).toBe(true);

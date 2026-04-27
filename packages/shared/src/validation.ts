@@ -188,6 +188,7 @@ export const TaskSchema = z.object({
   creatorName: z.string(),
   assigneeId: z.string().optional(),
   context: TaskContextSchema.optional(),
+  version: z.number().int().positive(),
   createdAt: z.string(),
   updatedAt: z.string(),
 });
@@ -392,6 +393,7 @@ export const PatchTaskRequestSchema = z
     status: TaskStatusSchema.optional(),
     assigneeId: z.string().optional(),
     context: TaskContextSchema.optional(),
+    expectedVersion: z.number().int().positive().optional(),
   })
   .refine((val) => val.status !== undefined || val.assigneeId !== undefined || val.context !== undefined, {
     message: 'At least one field must be provided',

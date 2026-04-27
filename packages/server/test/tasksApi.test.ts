@@ -82,6 +82,43 @@ describe('task API', () => {
     await app.close();
   });
 
+  it('returns conflict when task version is stale', async () => {
+    const app = await buildApp();
+    const created = await app.inject({
+      method: 'POST',
+      url: '/api/tasks',
+      payload: { channelId: 'general', title: 'versioned task', creatorName: 'user' },
+    });
+    const task = created.json();
+    expect(task.version).toBe(1);
+
+    const started = await app.inject({
+      method: 'PATCH',
+      url: `/api/tasks/${task.id}`,
+      payload: { status: 'in_progress', expectedVersion: task.version },
+    });
+    expect(started.statusCode).toBe(200);
+    expect(started.json()).toMatchObject({ status: 'in_progress', version: 2 });
+
+    const stale = await app.inject({
+      method: 'PATCH',
+      url: `/api/tasks/${task.id}`,
+      payload: { status: 'blocked', expectedVersion: task.version },
+    });
+    expect(stale.statusCode).toBe(409);
+    expect(stale.json()).toMatchObject({ error: 'Task version conflict', currentVersion: 2 });
+
+    const current = await app.inject({
+      method: 'PATCH',
+      url: `/api/tasks/${task.id}`,
+      payload: { status: 'blocked', expectedVersion: started.json().version },
+    });
+    expect(current.statusCode).toBe(200);
+    expect(current.json()).toMatchObject({ status: 'blocked', version: 3 });
+
+    await app.close();
+  });
+
   it('creates a task from a message', async () => {
     const app = await buildApp();
     const message = await app.inject({

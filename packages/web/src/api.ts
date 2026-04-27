@@ -28,7 +28,7 @@ export type GoalAlignmentRiskLevel = 'low' | 'medium' | 'high';
 export type TaskProgressEvent = { id: string; taskId: string; agentId: string; type: 'claimed' | 'started' | 'heartbeat' | 'blocked' | 'handoff' | 'completed' | 'escalated'; detail: string; createdAt: string };
 export type TaskReview = { id: string; taskId: string; requesterAgentId?: string; reviewerAgentId?: string; status: 'requested' | 'changes_requested' | 'approved' | 'cancelled'; evidence: string[]; checklist: Array<{ label: string; checked: boolean }>; comment?: string; createdAt: string; updatedAt: string };
 export type TaskContext = { goalId?: string; goalObjective?: string; goal?: string; background?: string; acceptanceCriteria?: string[]; constraints?: string[]; assumptions?: string[]; risks?: string[]; dependencies?: string[]; sourceMessageIds?: string[]; artifacts?: string[]; requesterAgentId?: string; previousAgentId?: string; handoffNotes?: string[]; privateNotes?: string[]; claimedByAgentId?: string; blockedReason?: string; blockedNeeds?: string; escalatedReason?: string; progressEvents?: TaskProgressEvent[]; reviewerAgentId?: string; evidence?: string[]; acceptanceChecklist?: string[]; reviewIds?: string[]; reviewNotes?: string[]; reviews?: TaskReview[] };
-export type Task = { id: string; channelId: string; messageId?: string; title: string; status: TaskStatus; creatorName: string; assigneeId?: string; context?: TaskContext; createdAt: string; updatedAt: string };
+export type Task = { id: string; channelId: string; messageId?: string; title: string; status: TaskStatus; creatorName: string; assigneeId?: string; context?: TaskContext; version: number; createdAt: string; updatedAt: string };
 export type GoalBrief = { id: string; channelId: string; sourceMessageId?: string; requesterName: string; objective: string; background: string[]; successCriteria: string[]; constraints: string[]; assumptions: string[]; risks: string[]; status: GoalBriefStatus; createdAt: string; updatedAt: string };
 export type GoalAlignmentTaskDraft = { title: string; assigneeId?: string; dependencies?: string[]; acceptanceCriteria?: string[]; artifacts?: string[]; role?: 'owner' | 'reviewer' | 'support' };
 export type GoalAlignment = { id: string; channelId: string; threadRootId: string; sourceMessageId: string; goalId?: string; status: GoalAlignmentStatus; objective: string; questions: string[]; answers: string[]; successCriteria: string[]; constraints: string[]; planSummary?: string; taskDrafts: GoalAlignmentTaskDraft[]; recommendedAgentIds: string[]; reviewerAgentIds: string[]; recommendationReasons: Record<string, string>; gaps: string[]; riskLevel: GoalAlignmentRiskLevel; createdAt: string; updatedAt: string };
@@ -247,7 +247,7 @@ export async function createTask(data: { channelId?: string; title: string; assi
   return r.json();
 }
 
-export async function patchTask(taskId: string, data: { status?: TaskStatus; assigneeId?: string }): Promise<Task> {
+export async function patchTask(taskId: string, data: { status?: TaskStatus; assigneeId?: string; expectedVersion?: number }): Promise<Task> {
   const r = await apiFetch(`${API_BASE}/api/tasks/${taskId}`, {
     method: 'PATCH',
     headers: authHeaders({ 'Content-Type': 'application/json' }),

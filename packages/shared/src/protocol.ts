@@ -212,6 +212,7 @@ export type Task = {
   creatorName: string;
   assigneeId?: string;
   context?: TaskContext;
+  version: number;
   createdAt: string;
   updatedAt: string;
 };

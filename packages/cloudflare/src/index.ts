@@ -672,6 +672,7 @@ export class CrewdenHub extends DurableObject<Env> {
         creator_name TEXT NOT NULL,
         assignee_id TEXT,
         context TEXT,
+        version INTEGER NOT NULL DEFAULT 1,
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL
       )
@@ -719,6 +720,11 @@ export class CrewdenHub extends DurableObject<Env> {
     `);
     try {
       this.ctx.storage.sql.exec('ALTER TABLE tasks ADD COLUMN context TEXT');
+    } catch {
+      // Existing Durable Objects may already have the column.
+    }
+    try {
+      this.ctx.storage.sql.exec('ALTER TABLE tasks ADD COLUMN version INTEGER NOT NULL DEFAULT 1');
     } catch {
       // Existing Durable Objects may already have the column.
     }
@@ -1021,12 +1027,16 @@ export class CrewdenHub extends DurableObject<Env> {
   private patchTask(taskId: string, body: unknown): Response {
     const parsed = PatchTaskRequestSchema.safeParse(body);
     if (!parsed.success) return json({ error: 'Invalid request body', issues: parsed.error.issues }, 400);
+    const { expectedVersion, ...patch } = parsed.data;
     const existing = this.getTask(taskId);
     if (!existing) return json({ error: 'Task not found' }, 404);
-    if (parsed.data.status && !isTaskTransitionAllowed(existing.status, parsed.data.status)) {
-      return json({ error: 'Invalid task status transition', from: existing.status, to: parsed.data.status }, 422);
+    if (expectedVersion !== undefined && expectedVersion !== existing.version) {
+      return json({ error: 'Task version conflict', currentVersion: existing.version }, 409);
     }
-    const task = this.updateTask(taskId, parsed.data);
+    if (patch.status && !isTaskTransitionAllowed(existing.status, patch.status)) {
+      return json({ error: 'Invalid task status transition', from: existing.status, to: patch.status }, 422);
+    }
+    const task = this.updateTask(taskId, patch);
     if (!task) return json({ error: 'Task not found' }, 404);
     this.broadcast({ type: 'task:update', task });
     this.notifyTaskAssignee(task);
@@ -2257,12 +2267,12 @@ export class CrewdenHub extends DurableObject<Env> {
     return mentions.size ? [...mentions.values()] : undefined;
   }
 
-  private createTask(task: Omit<Task, 'createdAt' | 'updatedAt'>): Task {
+  private createTask(task: Omit<Task, 'createdAt' | 'updatedAt' | 'version'>): Task {
     const now = new Date().toISOString();
-    const created: Task = { ...task, title: task.title.slice(0, 200), createdAt: now, updatedAt: now };
+    const created: Task = { ...task, title: task.title.slice(0, 200), version: 1, createdAt: now, updatedAt: now };
     this.ctx.storage.sql.exec(
-      `INSERT INTO tasks (id, channel_id, message_id, title, status, creator_name, assignee_id, context, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO tasks (id, channel_id, message_id, title, status, creator_name, assignee_id, context, version, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       created.id,
       created.channelId,
       created.messageId ?? null,
@@ -2271,6 +2281,7 @@ export class CrewdenHub extends DurableObject<Env> {
       created.creatorName,
       created.assigneeId ?? null,
       created.context ? JSON.stringify(created.context) : null,
+      created.version,
       created.createdAt,
       created.updatedAt
     );
@@ -2421,12 +2432,13 @@ export class CrewdenHub extends DurableObject<Env> {
   private updateTask(id: string, patch: Partial<Pick<Task, 'status' | 'assigneeId' | 'context'>>): Task | undefined {
     const existing = this.getTask(id);
     if (!existing) return undefined;
-    const updated: Task = { ...existing, ...patch, updatedAt: new Date().toISOString() };
+    const updated: Task = { ...existing, ...patch, version: existing.version + 1, updatedAt: new Date().toISOString() };
     this.ctx.storage.sql.exec(
-      'UPDATE tasks SET status = ?, assignee_id = ?, context = ?, updated_at = ? WHERE id = ?',
+      'UPDATE tasks SET status = ?, assignee_id = ?, context = ?, version = ?, updated_at = ? WHERE id = ?',
       updated.status,
       updated.assigneeId ?? null,
       updated.context ? JSON.stringify(updated.context) : null,
+      updated.version,
       updated.updatedAt,
       id,
     );
@@ -3082,6 +3094,7 @@ function toTask(row: Row): Task {
     creatorName: String(row.creator_name),
     assigneeId: row.assignee_id ? String(row.assignee_id) : undefined,
     context: row.context ? JSON.parse(String(row.context)) as Task['context'] : undefined,
+    version: Number(row.version ?? 1),
     createdAt: String(row.created_at),
     updatedAt: String(row.updated_at),
   };

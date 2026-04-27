@@ -117,6 +117,7 @@ export async function initDb(): Promise<void> {
         creator_name TEXT NOT NULL,
         assignee_id TEXT,
         context TEXT,
+        version INTEGER NOT NULL DEFAULT 1,
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL
       )
@@ -190,6 +191,7 @@ export async function initDb(): Promise<void> {
       )
     `);
     await database.run(`ALTER TABLE tasks ADD COLUMN context TEXT`).catch(() => undefined);
+    await database.run(`ALTER TABLE tasks ADD COLUMN version INTEGER NOT NULL DEFAULT 1`).catch(() => undefined);
     await database.run(`
       CREATE TABLE IF NOT EXISTS agents (
         id TEXT PRIMARY KEY,
@@ -334,6 +336,7 @@ function toTask(row: typeof tasks.$inferSelect): Task {
     creatorName: row.creatorName,
     assigneeId: row.assigneeId ?? undefined,
     context: row.context ? JSON.parse(row.context) as Task['context'] : undefined,
+    version: row.version ?? 1,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   };
@@ -635,10 +638,10 @@ export class SqliteStore {
     return task ? toTask(task) : undefined;
   }
 
-  async createTask(task: Omit<Task, 'createdAt' | 'updatedAt'>): Promise<Task> {
+  async createTask(task: Omit<Task, 'createdAt' | 'updatedAt' | 'version'>): Promise<Task> {
     await initDb();
     const now = new Date().toISOString();
-    const created: Task = { ...task, title: task.title.slice(0, 200), createdAt: now, updatedAt: now };
+    const created: Task = { ...task, title: task.title.slice(0, 200), version: 1, createdAt: now, updatedAt: now };
     await getDb().insert(tasks).values({
       ...created,
       messageId: created.messageId ?? null,
@@ -652,13 +655,14 @@ export class SqliteStore {
     await initDb();
     const existing = await this.getTask(id);
     if (!existing) return undefined;
-    const updated: Task = { ...existing, ...patch, updatedAt: new Date().toISOString() };
+    const updated: Task = { ...existing, ...patch, version: existing.version + 1, updatedAt: new Date().toISOString() };
     await getDb()
       .update(tasks)
       .set({
         status: updated.status,
         assigneeId: updated.assigneeId ?? null,
         context: updated.context ? JSON.stringify(updated.context) : null,
+        version: updated.version,
         updatedAt: updated.updatedAt,
       })
       .where(eq(tasks.id, id));

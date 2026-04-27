@@ -39,13 +39,17 @@ export async function taskRoutes(app: FastifyInstance) {
   app.patch<{ Params: { id: string } }>('/api/tasks/:id', async (req, reply) => {
     const parsed = PatchTaskRequestSchema.safeParse(req.body);
     if (!parsed.success) return reply.status(400).send({ error: 'Invalid request body', issues: parsed.error.issues });
+    const { expectedVersion, ...patch } = parsed.data;
     const store = getStore();
     const existing = await store.getTask(req.params.id);
     if (!existing) return reply.status(404).send({ error: 'Task not found' });
-    if (parsed.data.status && !isTaskTransitionAllowed(existing.status, parsed.data.status)) {
-      return reply.status(422).send({ error: 'Invalid task status transition', from: existing.status, to: parsed.data.status });
+    if (expectedVersion !== undefined && expectedVersion !== existing.version) {
+      return reply.status(409).send({ error: 'Task version conflict', currentVersion: existing.version });
     }
-    const task = await store.updateTask(req.params.id, parsed.data);
+    if (patch.status && !isTaskTransitionAllowed(existing.status, patch.status)) {
+      return reply.status(422).send({ error: 'Invalid task status transition', from: existing.status, to: patch.status });
+    }
+    const task = await store.updateTask(req.params.id, patch);
     if (!task) return reply.status(404).send({ error: 'Task not found' });
     eventBus.emit({ type: 'task:update', task });
     await notifyTaskAssignee(task);
