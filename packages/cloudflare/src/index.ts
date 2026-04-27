@@ -417,6 +417,10 @@ export class CrewdenHub extends DurableObject<Env> {
         return this.patchAgent(decodeURIComponent(agentMatch[1]), await request.json());
       }
 
+      if (agentMatch && request.method === 'DELETE') {
+        return this.deleteAgent(decodeURIComponent(agentMatch[1]));
+      }
+
       const startMatch = url.pathname.match(/^\/api\/agents\/([^/]+)\/start$/);
       if (startMatch && request.method === 'POST') {
         return this.startAgent(startMatch[1]);
@@ -1922,6 +1926,17 @@ export class CrewdenHub extends DurableObject<Env> {
       this.broadcast({ type: 'agent:updated', agent: updated });
     }
     return json(updated);
+  }
+
+  private deleteAgent(agentId: string): Response {
+    const agent = this.getAgent(agentId);
+    if (!agent) return json({ error: 'Agent not found' }, 404);
+    if (agent.status === 'working') {
+      return json({ error: 'Cannot delete agent while it is working. Stop the agent first.' }, 409);
+    }
+    this.ctx.storage.sql.exec('DELETE FROM agents WHERE id = ?', agentId);
+    this.broadcast({ type: 'agent:deleted', agentId });
+    return new Response(null, { status: 204 });
   }
 
   private validateAgentRuntimePatch(agent: Agent, patch: Partial<Agent>): { status: 400 | 409; error: string } | undefined {
