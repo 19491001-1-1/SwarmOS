@@ -1,14 +1,28 @@
 import { mkdir } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { homedir } from 'node:os';
+import { nanoid } from 'nanoid';
 import { drizzle, type LibSQLDatabase } from 'drizzle-orm/libsql';
 import { createClient, type Client } from '@libsql/client';
 import { asc, desc, eq, inArray, or } from 'drizzle-orm';
 import type { Channel, Message, MessageThread, Machine, Agent, RuntimeId, AgentStatus, AgentActivity, DirectMessage, DirectMessageThread, AgentDelegation, AgentTokenInfo, Task, TaskStatus, GoalBrief, GoalBriefStatus, GoalAlignment, GoalAlignmentStatus, Reminder, ReminderStatus, SearchMessageResult, KnowledgeEntry, KnowledgeKind, KnowledgeSearchResult, KnowledgeStatus } from '@crewden/shared';
 import { resolveAgentReference } from '@crewden/hub-core';
-import { activities, agentDelegations, agentTokens, agents, channels, directMessages, goalAlignments, goals, knowledgeEntries, machines, messages, reminders, tasks } from './schema.js';
+import { activities, agentDelegations, agentTokens, agents, auditLogs, channels, directMessages, goalAlignments, goals, knowledgeEntries, machines, messages, reminders, tasks } from './schema.js';
 
 type Database = LibSQLDatabase<typeof import('./schema.js')>;
+
+export type AuditLog = {
+  id: string;
+  actorType: 'user' | 'agent' | 'daemon' | 'system';
+  actorId?: string;
+  action: string;
+  entityType: string;
+  entityId: string;
+  taskId?: string;
+  agentId?: string;
+  detailJson: Record<string, unknown>;
+  createdAt: string;
+};
 
 let client: Client | null = null;
 let db: Database | null = null;
@@ -33,7 +47,7 @@ async function ensureDbDirectory(path: string): Promise<void> {
 function createDatabase(): Database {
   const path = getDbPath();
   client = createClient({ url: getDbUrl(path) });
-  db = drizzle(client, { schema: { activities, agentDelegations, agentTokens, agents, channels, directMessages, goalAlignments, goals, knowledgeEntries, machines, messages, reminders, tasks } });
+  db = drizzle(client, { schema: { activities, agentDelegations, agentTokens, agents, auditLogs, channels, directMessages, goalAlignments, goals, knowledgeEntries, machines, messages, reminders, tasks } });
   return db;
 }
 
@@ -104,6 +118,20 @@ export async function initDb(): Promise<void> {
       CREATE TABLE IF NOT EXISTS agent_tokens (
         agent_id TEXT PRIMARY KEY,
         token TEXT NOT NULL,
+        created_at TEXT NOT NULL
+      )
+    `);
+    await database.run(`
+      CREATE TABLE IF NOT EXISTS audit_log (
+        id TEXT PRIMARY KEY,
+        actor_type TEXT NOT NULL,
+        actor_id TEXT,
+        action TEXT NOT NULL,
+        entity_type TEXT NOT NULL,
+        entity_id TEXT NOT NULL,
+        task_id TEXT,
+        agent_id TEXT,
+        detail_json TEXT NOT NULL,
         created_at TEXT NOT NULL
       )
     `);
@@ -322,6 +350,21 @@ function toAgentDelegation(row: typeof agentDelegations.$inferSelect): AgentDele
     content: row.content,
     status: row.status as AgentDelegation['status'],
     error: row.error ?? undefined,
+    createdAt: row.createdAt,
+  };
+}
+
+function toAuditLog(row: typeof auditLogs.$inferSelect): AuditLog {
+  return {
+    id: row.id,
+    actorType: row.actorType as AuditLog['actorType'],
+    actorId: row.actorId ?? undefined,
+    action: row.action,
+    entityType: row.entityType,
+    entityId: row.entityId,
+    taskId: row.taskId ?? undefined,
+    agentId: row.agentId ?? undefined,
+    detailJson: JSON.parse(row.detailJson) as Record<string, unknown>,
     createdAt: row.createdAt,
   };
 }
@@ -618,6 +661,40 @@ export class SqliteStore {
       .where(or(eq(agentDelegations.fromAgentId, agentId), eq(agentDelegations.toAgentId, agentId)))
       .orderBy(desc(agentDelegations.createdAt));
     return rows.map(toAgentDelegation);
+  }
+
+  async appendAuditLog(entry: Omit<AuditLog, 'id' | 'createdAt'> & { id?: string }): Promise<AuditLog> {
+    await initDb();
+    const created: AuditLog = {
+      ...entry,
+      id: entry.id ?? nanoid(),
+      createdAt: new Date().toISOString(),
+    };
+    await getDb().insert(auditLogs).values({
+      id: created.id,
+      actorType: created.actorType,
+      actorId: created.actorId ?? null,
+      action: created.action,
+      entityType: created.entityType,
+      entityId: created.entityId,
+      taskId: created.taskId ?? null,
+      agentId: created.agentId ?? null,
+      detailJson: JSON.stringify(created.detailJson),
+      createdAt: created.createdAt,
+    });
+    return created;
+  }
+
+  async listAuditLogs(filter: { taskId?: string; entityType?: string; entityId?: string } = {}): Promise<AuditLog[]> {
+    await initDb();
+    const rows = await getDb().select().from(auditLogs).orderBy(asc(auditLogs.createdAt));
+    return rows
+      .map(toAuditLog)
+      .filter((entry) =>
+        (!filter.taskId || entry.taskId === filter.taskId) &&
+        (!filter.entityType || entry.entityType === filter.entityType) &&
+        (!filter.entityId || entry.entityId === filter.entityId)
+      );
   }
 
   async listTasks(filter: { channelId?: string; status?: TaskStatus; assigneeId?: string } = {}): Promise<Task[]> {
@@ -1075,6 +1152,7 @@ export async function resetStore(): Promise<void> {
   await database.delete(directMessages);
   await database.delete(agentDelegations);
   await database.delete(agentTokens);
+  await database.delete(auditLogs);
   await database.delete(tasks);
   await database.delete(goals);
   await database.delete(goalAlignments);

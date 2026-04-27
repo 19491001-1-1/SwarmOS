@@ -51,6 +51,17 @@ export async function taskRoutes(app: FastifyInstance) {
     }
     const task = await store.updateTask(req.params.id, patch);
     if (!task) return reply.status(404).send({ error: 'Task not found' });
+    if (patch.status && patch.status !== existing.status) {
+      await store.appendAuditLog({
+        actorType: 'user',
+        actorId: existing.creatorName,
+        action: 'task.status_changed',
+        entityType: 'task',
+        entityId: task.id,
+        taskId: task.id,
+        detailJson: { from: existing.status, to: task.status, expectedVersion },
+      });
+    }
     eventBus.emit({ type: 'task:update', task });
     await notifyTaskAssignee(task);
     return task;

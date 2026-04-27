@@ -609,6 +609,18 @@ export async function internalAgentRoutes(app: FastifyInstance) {
       context: appendProgress(existing, agent.id, 'claimed', `Claimed by ${agent.displayName ?? agent.name}`),
     });
     if (!task) return reply.status(404).send({ error: 'Task not found' });
+    if (task.status !== existing.status) {
+      await store.appendAuditLog({
+        actorType: 'agent',
+        actorId: agent.id,
+        action: 'task.status_changed',
+        entityType: 'task',
+        entityId: task.id,
+        taskId: task.id,
+        agentId: agent.id,
+        detailJson: { from: existing.status, to: task.status, reason: 'claim' },
+      });
+    }
     eventBus.emit({ type: 'task:update', task });
     if (shouldAcknowledge) await createTaskClaimAcknowledgement(task, agent);
     return task;
@@ -644,6 +656,28 @@ export async function internalAgentRoutes(app: FastifyInstance) {
       context: { ...context, blockedReason: parsed.data.reason, blockedNeeds: parsed.data.needs },
     });
     if (!task) return reply.status(404).send({ error: 'Task not found' });
+    if (task.status !== existing.status) {
+      await store.appendAuditLog({
+        actorType: 'agent',
+        actorId: agent.id,
+        action: 'task.status_changed',
+        entityType: 'task',
+        entityId: task.id,
+        taskId: task.id,
+        agentId: agent.id,
+        detailJson: { from: existing.status, to: task.status, reason: 'block' },
+      });
+    }
+    await store.appendAuditLog({
+      actorType: 'agent',
+      actorId: agent.id,
+      action: 'task.blocked',
+      entityType: 'task',
+      entityId: task.id,
+      taskId: task.id,
+      agentId: agent.id,
+      detailJson: { reason: parsed.data.reason, needs: parsed.data.needs },
+    });
     eventBus.emit({ type: 'task:update', task });
     return task;
   });
@@ -683,6 +717,18 @@ export async function internalAgentRoutes(app: FastifyInstance) {
     if (!parsed.success) return reply.status(400).send({ error: 'Invalid request body', issues: parsed.error.issues });
     const task = await store.updateTask(req.params.taskId, parsed.data);
     if (!task) return reply.status(404).send({ error: 'Task not found' });
+    if (parsed.data.status && parsed.data.status !== existing.status) {
+      await store.appendAuditLog({
+        actorType: 'agent',
+        actorId: agent.id,
+        action: 'task.status_changed',
+        entityType: 'task',
+        entityId: task.id,
+        taskId: task.id,
+        agentId: agent.id,
+        detailJson: { from: existing.status, to: task.status },
+      });
+    }
     eventBus.emit({ type: 'task:update', task });
     return task;
   });
@@ -712,6 +758,21 @@ export async function internalAgentRoutes(app: FastifyInstance) {
       },
     });
     if (!task) return reply.status(404).send({ error: 'Task not found' });
+    await store.appendAuditLog({
+      actorType: 'agent',
+      actorId: agent.id,
+      action: 'task.handoff',
+      entityType: 'task',
+      entityId: task.id,
+      taskId: task.id,
+      agentId: agent.id,
+      detailJson: {
+        fromAgentId: agent.id,
+        toAgentId: target.id,
+        previousAssigneeId: existing.assigneeId,
+        noteCount: task.context?.handoffNotes?.length ?? 0,
+      },
+    });
     eventBus.emit({ type: 'task:update', task });
     await notifyTaskAssignee(task);
     return task;

@@ -119,6 +119,75 @@ describe('task API', () => {
     await app.close();
   });
 
+  it('writes audit log for task status change and handoff', async () => {
+    const app = await buildApp();
+    const store = getStore();
+    await store.createAgent({
+      id: 'agent-1',
+      name: 'bot',
+      displayName: 'Bot',
+      runtime: 'claude',
+      status: 'idle',
+      createdAt: new Date().toISOString(),
+    });
+    await store.createAgent({
+      id: 'agent-2',
+      name: 'target',
+      displayName: 'Target',
+      runtime: 'claude',
+      status: 'idle',
+      createdAt: new Date().toISOString(),
+    });
+    const token = (await store.getOrCreateAgentToken('agent-1')).token;
+    const headers = { Authorization: `Bearer ${token}`, 'X-Agent-Id': 'agent-1' };
+    const created = await app.inject({
+      method: 'POST',
+      url: '/api/tasks',
+      payload: { channelId: 'general', title: 'audited task', creatorName: 'user', assigneeId: 'agent-1' },
+    });
+    const task = created.json();
+
+    const started = await app.inject({
+      method: 'PATCH',
+      url: `/api/tasks/${task.id}`,
+      payload: { status: 'in_progress', expectedVersion: task.version },
+    });
+    expect(started.statusCode).toBe(200);
+
+    const handedOff = await app.inject({
+      method: 'POST',
+      url: `/internal/agent/agent-1/tasks/${task.id}/handoff`,
+      headers,
+      payload: { to: 'target', notes: 'analysis done', nextStep: 'write tests' },
+    });
+    expect(handedOff.statusCode).toBe(200);
+
+    const logs = await store.listAuditLogs({ taskId: task.id });
+    expect(logs).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        actorType: 'user',
+        action: 'task.status_changed',
+        entityType: 'task',
+        entityId: task.id,
+        taskId: task.id,
+        detailJson: expect.objectContaining({ from: 'todo', to: 'in_progress' }),
+      }),
+      expect.objectContaining({
+        actorType: 'agent',
+        actorId: 'agent-1',
+        action: 'task.handoff',
+        entityType: 'task',
+        entityId: task.id,
+        taskId: task.id,
+        agentId: 'agent-1',
+        detailJson: expect.objectContaining({ toAgentId: 'agent-2', fromAgentId: 'agent-1' }),
+      }),
+    ]));
+    expect(JSON.stringify(logs)).not.toContain(token);
+
+    await app.close();
+  });
+
   it('creates a task from a message', async () => {
     const app = await buildApp();
     const message = await app.inject({
