@@ -59,7 +59,7 @@ export async function buildOpenTaskSummary(agent: Agent): Promise<string | undef
       return `- ${task.id} [${task.status}] #${task.channelId}: ${task.title}${goal}`;
     }),
     '',
-    'Use `crewden task read <taskId> --context`, `crewden task update <taskId> --status in_progress|in_review|done`, and `crewden task handoff <taskId> --to agentName --notes "..."` to manage them.',
+    'Use `crewden task read <taskId> --context`, `crewden task update <taskId> --status in_progress|in_review|done|blocked|cancelled`, and `crewden task handoff <taskId> --to agentName --notes "..."` to manage them.',
   ].join('\n');
 }
 
@@ -78,7 +78,7 @@ export function toTaskDelivery(task: Task) {
       task.context?.background ? `Background: ${task.context.background}` : undefined,
       task.context?.handoffNotes?.length ? `Latest handoff: ${task.context.handoffNotes.at(-1)}` : undefined,
       '',
-      'Use `crewden task read <taskId> --context` for details and `crewden task update <taskId> --status in_progress|in_review|done` when you make progress.',
+      'Use `crewden task read <taskId> --context` for details and `crewden task update <taskId> --status in_progress|in_review|done|blocked|cancelled` when you make progress.',
     ].filter(Boolean).join('\n'),
     createdAt: task.updatedAt,
   };

@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { nanoid } from 'nanoid';
-import { CreateTaskRequestSchema, CreateTaskReviewRequestSchema, MessageToTaskRequestSchema, PatchTaskRequestSchema, ReviewDecisionRequestSchema, TaskStatusSchema, type TaskReview } from '@crewden/shared';
+import { CreateTaskRequestSchema, CreateTaskReviewRequestSchema, MessageToTaskRequestSchema, PatchTaskRequestSchema, ReviewDecisionRequestSchema, TaskStatusSchema, type TaskReview, type TaskStatus } from '@crewden/shared';
 import { getStore } from '../db.js';
 import { eventBus } from '../events.js';
 import { notifyTaskAssignee } from '../taskDelivery.js';
@@ -39,7 +39,13 @@ export async function taskRoutes(app: FastifyInstance) {
   app.patch<{ Params: { id: string } }>('/api/tasks/:id', async (req, reply) => {
     const parsed = PatchTaskRequestSchema.safeParse(req.body);
     if (!parsed.success) return reply.status(400).send({ error: 'Invalid request body', issues: parsed.error.issues });
-    const task = await getStore().updateTask(req.params.id, parsed.data);
+    const store = getStore();
+    const existing = await store.getTask(req.params.id);
+    if (!existing) return reply.status(404).send({ error: 'Task not found' });
+    if (parsed.data.status && !isTaskTransitionAllowed(existing.status, parsed.data.status)) {
+      return reply.status(422).send({ error: 'Invalid task status transition', from: existing.status, to: parsed.data.status });
+    }
+    const task = await store.updateTask(req.params.id, parsed.data);
     if (!task) return reply.status(404).send({ error: 'Task not found' });
     eventBus.emit({ type: 'task:update', task });
     await notifyTaskAssignee(task);
@@ -160,4 +166,18 @@ function createReview(taskId: string, data: { requesterAgentId?: string; reviewe
 
 function isHighRisk(task: { context?: { risks?: string[] } }): boolean {
   return (task.context?.risks ?? []).some((risk) => /high|production|payment|legal|privacy|credential|高风险|上线|支付|隐私/.test(risk.toLowerCase()));
+}
+
+function isTaskTransitionAllowed(from: TaskStatus, to: TaskStatus): boolean {
+  if (from === to) return true;
+  if (to === 'cancelled') return true;
+  const allowed: Record<TaskStatus, TaskStatus[]> = {
+    todo: ['in_progress', 'blocked'],
+    in_progress: ['in_review', 'blocked'],
+    in_review: ['done'],
+    done: [],
+    blocked: ['todo'],
+    cancelled: [],
+  };
+  return allowed[from].includes(to);
 }

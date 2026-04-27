@@ -1021,6 +1021,11 @@ export class CrewdenHub extends DurableObject<Env> {
   private patchTask(taskId: string, body: unknown): Response {
     const parsed = PatchTaskRequestSchema.safeParse(body);
     if (!parsed.success) return json({ error: 'Invalid request body', issues: parsed.error.issues }, 400);
+    const existing = this.getTask(taskId);
+    if (!existing) return json({ error: 'Task not found' }, 404);
+    if (parsed.data.status && !isTaskTransitionAllowed(existing.status, parsed.data.status)) {
+      return json({ error: 'Invalid task status transition', from: existing.status, to: parsed.data.status }, 422);
+    }
     const task = this.updateTask(taskId, parsed.data);
     if (!task) return json({ error: 'Task not found' }, 404);
     this.broadcast({ type: 'task:update', task });
@@ -1640,6 +1645,9 @@ export class CrewdenHub extends DurableObject<Env> {
       if (existing.assigneeId && existing.assigneeId !== agent.id) return json({ error: 'Task is assigned to another agent' }, 403);
       const parsed = InternalTaskUpdateRequestSchema.safeParse(await request.json());
       if (!parsed.success) return json({ error: 'Invalid request body', issues: parsed.error.issues }, 400);
+      if (parsed.data.status && !isTaskTransitionAllowed(existing.status, parsed.data.status)) {
+        return json({ error: 'Invalid task status transition', from: existing.status, to: parsed.data.status }, 422);
+      }
       const task = this.updateTask(existing.id, parsed.data);
       if (!task) return json({ error: 'Task not found' }, 404);
       this.broadcast({ type: 'task:update', task });
@@ -1684,7 +1692,7 @@ export class CrewdenHub extends DurableObject<Env> {
       const parsed = InternalTaskBlockRequestSchema.safeParse(await request.json());
       if (!parsed.success) return json({ error: 'Invalid request body', issues: parsed.error.issues }, 400);
       const context = appendProgress(existing, agent.id, 'blocked', `${parsed.data.reason}; needs: ${parsed.data.needs}`);
-      const task = this.updateTask(existing.id, { status: 'in_review', context: { ...context, blockedReason: parsed.data.reason, blockedNeeds: parsed.data.needs } });
+      const task = this.updateTask(existing.id, { status: 'blocked', context: { ...context, blockedReason: parsed.data.reason, blockedNeeds: parsed.data.needs } });
       if (!task) return json({ error: 'Task not found' }, 404);
       this.broadcast({ type: 'task:update', task });
       return json(task);
@@ -2793,7 +2801,7 @@ export class CrewdenHub extends DurableObject<Env> {
           return `- ${task.id} [${task.status}] #${task.channelId}: ${task.title}${goal}`;
         }),
         '',
-        'Use `crewden task read <taskId> --context`, `crewden task update <taskId> --status in_progress|in_review|done`, and `crewden task handoff <taskId> --to agentName --notes "..."` to manage them.',
+        'Use `crewden task read <taskId> --context`, `crewden task update <taskId> --status in_progress|in_review|done|blocked|cancelled`, and `crewden task handoff <taskId> --to agentName --notes "..."` to manage them.',
       ].join('\n'),
       createdAt: new Date().toISOString(),
     };
@@ -3209,6 +3217,20 @@ function isHighRiskTask(task: { context?: { risks?: string[] } }): boolean {
   return (task.context?.risks ?? []).some((risk) => /high|production|payment|legal|privacy|credential|高风险|上线|支付|隐私/.test(risk.toLowerCase()));
 }
 
+function isTaskTransitionAllowed(from: TaskStatus, to: TaskStatus): boolean {
+  if (from === to) return true;
+  if (to === 'cancelled') return true;
+  const allowed: Record<TaskStatus, TaskStatus[]> = {
+    todo: ['in_progress', 'blocked'],
+    in_progress: ['in_review', 'blocked'],
+    in_review: ['done'],
+    done: [],
+    blocked: ['todo'],
+    cancelled: [],
+  };
+  return allowed[from].includes(to);
+}
+
 function toReminder(row: Row): Reminder {
   return {
     id: String(row.id),
@@ -3274,7 +3296,7 @@ function toTaskDelivery(task: Task) {
       task.context?.background ? `Background: ${task.context.background}` : undefined,
       task.context?.handoffNotes?.length ? `Latest handoff: ${task.context.handoffNotes.at(-1)}` : undefined,
       '',
-      'Use `crewden task read <taskId> --context` for details and `crewden task update <taskId> --status in_progress|in_review|done` when you make progress.',
+      'Use `crewden task read <taskId> --context` for details and `crewden task update <taskId> --status in_progress|in_review|done|blocked|cancelled` when you make progress.',
     ].filter(Boolean).join('\n'),
     createdAt: task.updatedAt,
   };

@@ -46,7 +46,7 @@ export type AgentDelegation = {
   createdAt: string;
 };
 
-export type TaskStatus = 'todo' | 'in_progress' | 'in_review' | 'done';
+export type TaskStatus = 'todo' | 'in_progress' | 'in_review' | 'done' | 'blocked' | 'cancelled';
 export type GoalBriefStatus = 'draft' | 'confirmed' | 'cancelled' | 'completed';
 export type GoalAlignmentStatus = 'needs_clarification' | 'awaiting_confirmation' | 'confirmed' | 'cancelled';
 export type GoalAlignmentRiskLevel = 'low' | 'medium' | 'high';

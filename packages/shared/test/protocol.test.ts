@@ -370,8 +370,8 @@ describe('Task schemas', () => {
     expect(InternalTaskHandoffRequestSchema.safeParse({ to: 'agent-2', notes: 'done with analysis', nextStep: 'write tests' }).success).toBe(true);
   });
 
-  it('rejects invalid task status and empty patches', () => {
-    expect(PatchTaskRequestSchema.safeParse({ status: 'blocked' }).success).toBe(false);
+  it('accepts blocked task status and rejects empty patches', () => {
+    expect(PatchTaskRequestSchema.safeParse({ status: 'blocked' }).success).toBe(true);
     expect(PatchTaskRequestSchema.safeParse({}).success).toBe(false);
   });
 });

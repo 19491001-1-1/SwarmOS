@@ -640,7 +640,7 @@ export async function internalAgentRoutes(app: FastifyInstance) {
     if (!parsed.success) return reply.status(400).send({ error: 'Invalid request body', issues: parsed.error.issues });
     const context = appendProgress(existing, agent.id, 'blocked', `${parsed.data.reason}; needs: ${parsed.data.needs}`);
     const task = await store.updateTask(existing.id, {
-      status: 'in_review',
+      status: 'blocked',
       context: { ...context, blockedReason: parsed.data.reason, blockedNeeds: parsed.data.needs },
     });
     if (!task) return reply.status(404).send({ error: 'Task not found' });

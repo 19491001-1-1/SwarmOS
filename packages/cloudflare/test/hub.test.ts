@@ -479,6 +479,20 @@ describe('input validation', () => {
     expect(task.status).toBe('todo');
     expect((task as any).context.goal).toBe('cloudflare task board');
 
+    const started = await SELF.fetch(`https://hub.test/api/tasks/${task.id}`, {
+      method: 'PATCH',
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ status: 'in_progress' }),
+    });
+    expect(started.status).toBe(200);
+
+    const inReview = await SELF.fetch(`https://hub.test/api/tasks/${task.id}`, {
+      method: 'PATCH',
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ status: 'in_review' }),
+    });
+    expect(inReview.status).toBe(200);
+
     const patched = await SELF.fetch(`https://hub.test/api/tasks/${task.id}`, {
       method: 'PATCH',
       headers: authHeaders({ 'Content-Type': 'application/json' }),

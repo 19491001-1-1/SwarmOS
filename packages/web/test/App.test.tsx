@@ -228,7 +228,7 @@ describe('App', () => {
 
     fireEvent.click(await screen.findByText('Tasks'));
     await waitFor(() => {
-      expect(screen.getByText('BLOCKED')).toBeTruthy();
+      expect(screen.getAllByText('BLOCKED').length).toBeGreaterThan(0);
       expect(screen.getByText('missing API token')).toBeTruthy();
       expect(screen.getByText('Needs: user provides token')).toBeTruthy();
     });

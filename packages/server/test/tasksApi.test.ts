@@ -31,18 +31,54 @@ describe('task API', () => {
     const patched = await app.inject({
       method: 'PATCH',
       url: `/api/tasks/${taskId}`,
-      payload: { status: 'in_review', context: { goal: 'ship board', handoffNotes: ['ready for review'] } },
+      payload: { status: 'in_progress', context: { goal: 'ship board', handoffNotes: ['ready for review'] } },
     });
     expect(patched.statusCode).toBe(200);
-    expect(patched.json().status).toBe('in_review');
+    expect(patched.json().status).toBe('in_progress');
     expect(patched.json().context.handoffNotes).toEqual(['ready for review']);
 
-    const filtered = await app.inject({ method: 'GET', url: '/api/tasks?status=in_review' });
+    const filtered = await app.inject({ method: 'GET', url: '/api/tasks?status=in_progress' });
     expect(filtered.json()).toHaveLength(1);
 
     const deleted = await app.inject({ method: 'DELETE', url: `/api/tasks/${taskId}` });
     expect(deleted.statusCode).toBe(204);
     expect(await getStore().listTasks()).toHaveLength(0);
+    await app.close();
+  });
+
+  it('rejects invalid task status transition', async () => {
+    const app = await buildApp();
+    const created = await app.inject({
+      method: 'POST',
+      url: '/api/tasks',
+      payload: { channelId: 'general', title: 'stateful task', creatorName: 'user' },
+    });
+    const taskId = created.json().id;
+
+    const invalid = await app.inject({
+      method: 'PATCH',
+      url: `/api/tasks/${taskId}`,
+      payload: { status: 'done' },
+    });
+    expect(invalid.statusCode).toBe(422);
+    expect(invalid.json()).toMatchObject({ error: 'Invalid task status transition' });
+
+    const started = await app.inject({
+      method: 'PATCH',
+      url: `/api/tasks/${taskId}`,
+      payload: { status: 'in_progress' },
+    });
+    expect(started.statusCode).toBe(200);
+    expect(started.json().status).toBe('in_progress');
+
+    const blocked = await app.inject({
+      method: 'PATCH',
+      url: `/api/tasks/${taskId}`,
+      payload: { status: 'blocked' },
+    });
+    expect(blocked.statusCode).toBe(200);
+    expect(blocked.json().status).toBe('blocked');
+
     await app.close();
   });
 
@@ -75,7 +111,7 @@ describe('task API', () => {
     const app = await buildApp();
     expect((await app.inject({ method: 'POST', url: '/api/tasks', payload: { title: '' } })).statusCode).toBe(400);
     expect((await app.inject({ method: 'PATCH', url: '/api/tasks/nope', payload: {} })).statusCode).toBe(400);
-    expect((await app.inject({ method: 'GET', url: '/api/tasks?status=blocked' })).statusCode).toBe(400);
+    expect((await app.inject({ method: 'GET', url: '/api/tasks?status=not_a_status' })).statusCode).toBe(400);
     await app.close();
   });
 

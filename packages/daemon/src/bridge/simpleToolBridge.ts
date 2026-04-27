@@ -29,7 +29,7 @@ export type ParsedBridgeCreateTask = {
 
 export type ParsedBridgeUpdateTask = {
   taskId: string;
-  status: 'todo' | 'in_progress' | 'in_review' | 'done';
+  status: 'todo' | 'in_progress' | 'in_review' | 'done' | 'blocked' | 'cancelled';
 };
 
 export type ParsedBridgeSetReminder = {
@@ -121,7 +121,7 @@ export function parseUpdateTaskLine(line: string): ParsedBridgeUpdateTask | null
   const jsonPart = line.slice(idx + UPDATE_TASK_BRIDGE_MARKER.length).trim();
   try {
     const parsed = JSON.parse(jsonPart);
-    const validStatuses = new Set(['todo', 'in_progress', 'in_review', 'done']);
+    const validStatuses = new Set(['todo', 'in_progress', 'in_review', 'done', 'blocked', 'cancelled']);
     if (typeof parsed?.taskId === 'string' && validStatuses.has(parsed.status)) {
       return { taskId: parsed.taskId, status: parsed.status };
     }
@@ -189,7 +189,7 @@ export function buildBridgeInstruction(): string {
     '- `crewden task progress <taskId> --detail "..."` to leave a heartbeat/progress event',
     '- `crewden task block <taskId> --reason "..." --needs "..."` when missing information blocks progress',
     '- `crewden task escalate <taskId> --reason "..."` when the user or channel needs visible escalation',
-    '- `crewden task update <taskId> --status in_progress|in_review|done` to report progress',
+    '- `crewden task update <taskId> --status in_progress|in_review|done|blocked|cancelled` to report progress',
     '- `crewden task handoff <taskId> --to agentId --notes "..." --next-step "..."` to transfer a task with execution context',
     '- `crewden review list` to view reviews assigned to you',
     '- `crewden review request <taskId> --reviewer agentId --evidence "test passed|screenshot URL" --check "criteria one|criteria two"` to submit evidence and request acceptance',
@@ -243,7 +243,7 @@ export function buildTaskInstruction(): string {
   return [
     'To create or update task board items, output exactly one line and no extra prose:',
     `${CREATE_TASK_BRIDGE_MARKER} {"title":"task title","assignee":"agentId or agentName","channel":"general"}`,
-    `${UPDATE_TASK_BRIDGE_MARKER} {"taskId":"task id","status":"todo|in_progress|in_review|done"}`,
+    `${UPDATE_TASK_BRIDGE_MARKER} {"taskId":"task id","status":"todo|in_progress|in_review|done|blocked|cancelled"}`,
     'Use channel "general" unless the user specified another channel.',
   ].join('\n');
 }

@@ -5,7 +5,7 @@ export const RuntimeIdSchema = z.enum(['claude', 'codex', 'gemini']);
 export const AgentStatusSchema = z.enum(['inactive', 'starting', 'running', 'working', 'idle', 'error']);
 
 export const AgentActivityTypeSchema = z.enum(['thinking', 'working', 'output', 'idle', 'sending', 'error']);
-export const TaskStatusSchema = z.enum(['todo', 'in_progress', 'in_review', 'done']);
+export const TaskStatusSchema = z.enum(['todo', 'in_progress', 'in_review', 'done', 'blocked', 'cancelled']);
 export const GoalBriefStatusSchema = z.enum(['draft', 'confirmed', 'cancelled', 'completed']);
 export const GoalAlignmentStatusSchema = z.enum(['needs_clarification', 'awaiting_confirmation', 'confirmed', 'cancelled']);
 export const GoalAlignmentRiskLevelSchema = z.enum(['low', 'medium', 'high']);
