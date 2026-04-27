@@ -271,6 +271,7 @@ export function buildCommunicationInstruction(): string {
     '- Keep channel messages human-readable. Verbose execution logs, stack traces, and raw JSON belong in task progress notes, not in the channel.',
     '- When delegating or handing off, give enough context so the next agent can start without asking you for clarification.',
     '- If another agent or the user corrects you, accept it cleanly and adjust — do not defend a wrong answer.',
+    '- When a task will take more than a moment, send a short message to the channel first so others know you are on it. There is no required phrase — say it naturally, the way a person would. Match the tone: if the conversation is casual, be casual; if it is serious, be brief and direct.',
   ].join('\n');
 }
 
