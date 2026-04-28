@@ -1,5 +1,5 @@
 import type { RuntimeDriver, AgentSpawnContext, RuntimeCommand, AgentOutputEvent } from './types.js';
-import { parseBridgeLine, buildBridgeInstruction, buildDmInstruction, parseDmLine, buildDelegateInstruction, parseDelegateLine, buildTaskInstruction, buildMemoryInstruction, buildCommunicationInstruction, parseCreateTaskLine, parseUpdateTaskLine, buildReminderInstruction, parseReminderLine, parseCancelReminderLine } from '../bridge/simpleToolBridge.js';
+import { parseBridgeLine, buildBridgeInstruction, buildDmInstruction, parseDmLine, buildDelegateInstruction, parseDelegateLine, buildTaskInstruction, buildMemoryInstruction, buildCommunicationInstruction, parseCreateTaskLine, parseUpdateTaskLine, buildReminderInstruction, parseReminderLine, parseCancelReminderLine, parseCliActionLine } from '../bridge/simpleToolBridge.js';
 import { mkdir, writeFile } from 'fs/promises';
 import { join } from 'path';
 
@@ -93,6 +93,8 @@ export const claudeDriver: RuntimeDriver = {
     if (reminder) return { type: 'set_reminder', channelId: reminder.channelId, message: reminder.message, triggerAt: reminder.triggerAt };
     const cancelReminder = parseCancelReminderLine(line);
     if (cancelReminder) return { type: 'cancel_reminder', reminderId: cancelReminder.reminderId };
+    const cliAction = parseCliActionLine(line);
+    if (cliAction) return { type: 'external_action', command: cliAction.command };
     try {
       const event = JSON.parse(line) as any;
       if (event.type === 'system' && event.subtype === 'init' && event.session_id) {

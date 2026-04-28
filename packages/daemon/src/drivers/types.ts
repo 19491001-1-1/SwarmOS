@@ -50,6 +50,7 @@ export type AgentOutputEvent =
   | { type: 'update_task'; taskId: string; status: TaskStatus }
   | { type: 'set_reminder'; channelId?: string; message: string; triggerAt: string }
   | { type: 'cancel_reminder'; reminderId: string }
+  | { type: 'external_action'; command?: string }
   | { type: 'activity'; detail: string }
   | { type: 'session_init'; sessionId: string }
   | { type: 'turn_end'; sessionId?: string };

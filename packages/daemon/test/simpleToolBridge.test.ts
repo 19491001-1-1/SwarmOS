@@ -13,12 +13,14 @@ import {
   UPDATE_TASK_BRIDGE_MARKER,
   SET_REMINDER_BRIDGE_MARKER,
   CANCEL_REMINDER_BRIDGE_MARKER,
+  CLI_ACTION_BRIDGE_MARKER,
   buildDmInstruction,
   buildDelegateInstruction,
   buildTaskInstruction,
   buildMemoryInstruction,
   parseReminderLine,
   parseCancelReminderLine,
+  parseCliActionLine,
 } from '../src/bridge/simpleToolBridge.js';
 
 describe('parseBridgeLine', () => {
@@ -118,6 +120,16 @@ describe('reminder bridge markers', () => {
 
   it('parses cancel reminder lines', () => {
     expect(parseCancelReminderLine(`${CANCEL_REMINDER_BRIDGE_MARKER} {"reminderId":"rem-1"}`)).toEqual({ reminderId: 'rem-1' });
+  });
+});
+
+describe('parseCliActionLine', () => {
+  it('extracts the optional command summary from a CLI action ack line', () => {
+    expect(parseCliActionLine(`${CLI_ACTION_BRIDGE_MARKER} {"command":"POST /messages/send"}`)).toEqual({ command: 'POST /messages/send' });
+  });
+
+  it('returns null for invalid CLI action ack JSON', () => {
+    expect(parseCliActionLine(`${CLI_ACTION_BRIDGE_MARKER} not-json`)).toBeNull();
   });
 });
 

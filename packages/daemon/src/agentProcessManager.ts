@@ -217,6 +217,7 @@ export class AgentProcessManager {
         CREWDEN_AGENT_ID: entry.agentId,
         CREWDEN_SERVER_URL: this.serverUrl,
         CREWDEN_AGENT_TOKEN_FILE: this.agentTokenFile(entry),
+        CREWDEN_RUNTIME_STDOUT_ACK: '1',
       },
       stdio: [cmd.stdin ? 'pipe' : 'ignore', 'pipe', 'pipe'],
     });
@@ -453,6 +454,12 @@ export class AgentProcessManager {
       this.appendTranscriptLater(entry, `${this.agentTranscriptName(entry)} -> reminder:cancel`, parsed.reminderId);
       this.onCancelReminder(entry.agentId, parsed.reminderId);
       this.onActivity(entry.agentId, 'sending', `reminder:${parsed.reminderId}`);
+      return true;
+    }
+    if (parsed?.type === 'external_action') {
+      const detail = parsed.command ? `cli:${parsed.command}` : 'cli action';
+      console.log(`[daemon] agent ${entry.agentId} external action acknowledged: ${detail}`);
+      this.onActivity(entry.agentId, 'sending', detail);
       return true;
     }
     if (parsed?.type === 'session_init') {

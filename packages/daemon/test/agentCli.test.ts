@@ -3,9 +3,10 @@ import { join } from 'path';
 import { tmpdir } from 'os';
 import { describe, expect, it, vi } from 'vitest';
 import { runAgentCli } from '../src/agentCli.js';
+import { CLI_ACTION_BRIDGE_MARKER } from '../src/bridge/simpleToolBridge.js';
 
 describe('agent-facing crewden CLI', () => {
-  async function run(argv: string[], fetchImpl: typeof fetch = okFetch({ ok: true })) {
+  async function run(argv: string[], fetchImpl: typeof fetch = okFetch({ ok: true }), envOverrides: Record<string, string> = {}) {
     const dir = await mkdtemp(join(tmpdir(), 'crewden-agent-cli-'));
     const tokenFile = join(dir, 'agent-token');
     await writeFile(tokenFile, 'token-1\n');
@@ -17,6 +18,7 @@ describe('agent-facing crewden CLI', () => {
         CREWDEN_AGENT_ID: 'agent-1',
         CREWDEN_SERVER_URL: 'http://hub.test',
         CREWDEN_AGENT_TOKEN_FILE: tokenFile,
+        ...envOverrides,
       },
       {
         stdout: { write: (chunk: string | Uint8Array) => { stdout += String(chunk); return true; } },
@@ -50,6 +52,32 @@ describe('agent-facing crewden CLI', () => {
       'http://hub.test/internal/agent/agent-1/messages/send',
       expect.objectContaining({ method: 'POST', body: JSON.stringify({ channel: 'general', content: 'hello' }) })
     );
+  });
+
+  it('emits a runtime ack marker after successful mutating commands when enabled', async () => {
+    const fetchImpl = okFetch({ id: 'msg-1' });
+    const result = await run(['message', 'send', '--channel', 'general', '--content', 'hello'], fetchImpl, { CREWDEN_RUNTIME_STDOUT_ACK: '1' });
+
+    expect(result.code).toBe(0);
+    expect(result.stdout).toContain('"id": "msg-1"');
+    expect(result.stdout).toContain(`${CLI_ACTION_BRIDGE_MARKER} {"command":"POST /messages/send"}`);
+  });
+
+  it('does not emit a runtime ack marker for read-only commands', async () => {
+    const fetchImpl = okFetch({ agent: { id: 'agent-1', name: 'bot' } });
+    const result = await run(['auth', 'whoami'], fetchImpl, { CREWDEN_RUNTIME_STDOUT_ACK: '1' });
+
+    expect(result.code).toBe(0);
+    expect(result.stdout).not.toContain(CLI_ACTION_BRIDGE_MARKER);
+  });
+
+  it('does not emit a runtime ack marker when a mutating command fails', async () => {
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ error: 'nope' }), { status: 500 })) as unknown as typeof fetch;
+    const result = await run(['message', 'send', '--channel', 'general', '--content', 'hello'], fetchImpl, { CREWDEN_RUNTIME_STDOUT_ACK: '1' });
+
+    expect(result.code).toBe(1);
+    expect(result.stdout).not.toContain(CLI_ACTION_BRIDGE_MARKER);
+    expect(result.stderr).toContain('request failed 500');
   });
 
   it('sends channel messages inside a thread', async () => {

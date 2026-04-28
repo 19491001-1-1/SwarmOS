@@ -3,11 +3,13 @@ import { readFile } from 'fs/promises';
 import { fileURLToPath } from 'url';
 import { runMcpBridgeFromCli } from './mcp/bridge.js';
 import { callInternalApi, type ParsedCommand } from './internalAgentApi.js';
+import { CLI_ACTION_BRIDGE_MARKER } from './bridge/simpleToolBridge.js';
 
 type CliEnv = {
   CREWDEN_AGENT_ID?: string;
   CREWDEN_SERVER_URL?: string;
   CREWDEN_AGENT_TOKEN_FILE?: string;
+  CREWDEN_RUNTIME_STDOUT_ACK?: string;
 };
 
 type CliIo = {
@@ -44,6 +46,9 @@ export async function runAgentCli(argv: string[], env: CliEnv = process.env, io:
     const command = parseCommand(argv);
     const result = await callInternalApi({ command, agentId, serverUrl, token, fetchImpl: io.fetch });
     io.stdout.write(formatOutput(selectResult(command, result)) + '\n');
+    if (shouldEmitRuntimeAck(command, env)) {
+      io.stdout.write(`${CLI_ACTION_BRIDGE_MARKER} ${JSON.stringify({ command: commandSummary(command) })}\n`);
+    }
     return 0;
   } catch (err) {
     io.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
@@ -320,6 +325,14 @@ function selectResult(command: ParsedCommand, result: unknown): unknown {
     return summary;
   }
   return result;
+}
+
+function shouldEmitRuntimeAck(command: ParsedCommand, env: CliEnv): boolean {
+  return env.CREWDEN_RUNTIME_STDOUT_ACK === '1' && command.method !== 'GET';
+}
+
+function commandSummary(command: ParsedCommand): string {
+  return `${command.method} ${command.path.split('?')[0]}`;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

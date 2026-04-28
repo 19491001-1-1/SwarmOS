@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { AgentProcessManager } from '../src/agentProcessManager.js';
-import { BRIDGE_MARKER, CANCEL_REMINDER_BRIDGE_MARKER, SET_REMINDER_BRIDGE_MARKER } from '../src/bridge/simpleToolBridge.js';
+import { BRIDGE_MARKER, CANCEL_REMINDER_BRIDGE_MARKER, CLI_ACTION_BRIDGE_MARKER, SET_REMINDER_BRIDGE_MARKER } from '../src/bridge/simpleToolBridge.js';
 import { EventEmitter } from 'events';
 import { appendFile, writeFile } from 'fs/promises';
 import { delimiter } from 'path';
@@ -464,6 +464,31 @@ describe('AgentProcessManager', () => {
       expect.stringContaining('bot: Plain fallback answer')
     );
     expect(activities.some((a) => a.type === 'output' && a.detail === 'Plain fallback answer')).toBe(true);
+  });
+
+  it('suppresses stdout fallback after an acknowledged CLI side effect', async () => {
+    const fakeProc = createFakeProc([
+      '{ "id": "msg-1" }',
+      `${CLI_ACTION_BRIDGE_MARKER} {"command":"POST /messages/send"}`,
+      '已回复到 #general，消息 ID：msg-1',
+    ]);
+    mockSpawn.mockReturnValue(fakeProc);
+
+    await manager.startAgent('agent-1', { runtime: 'claude', name: 'bot' }, 'general');
+    await manager.deliverMessage('agent-1', {
+      id: 'msg-1',
+      channelId: 'general',
+      channelName: 'general',
+      senderName: 'user',
+      content: 'Hello',
+      createdAt: new Date().toISOString(),
+    });
+
+    await new Promise((r) => setTimeout(r, 50));
+
+    expect(messages).toHaveLength(0);
+    expect(activities.some((a) => a.type === 'sending' && a.detail === 'cli:POST /messages/send')).toBe(true);
+    expect(activities.some((a) => a.type === 'output')).toBe(false);
   });
 
   it('stdout DM marker is reported as agent dm', async () => {

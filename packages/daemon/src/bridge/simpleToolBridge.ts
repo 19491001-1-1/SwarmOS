@@ -5,6 +5,7 @@ export const CREATE_TASK_BRIDGE_MARKER = '[[CREWDEN_CREATE_TASK]]';
 export const UPDATE_TASK_BRIDGE_MARKER = '[[CREWDEN_UPDATE_TASK]]';
 export const SET_REMINDER_BRIDGE_MARKER = '[[CREWDEN_SET_REMINDER]]';
 export const CANCEL_REMINDER_BRIDGE_MARKER = '[[CREWDEN_CANCEL_REMINDER]]';
+export const CLI_ACTION_BRIDGE_MARKER = '[[CREWDEN_ACTION_SENT]]';
 
 export type ParsedBridgeMessage = {
   content: string;
@@ -40,6 +41,10 @@ export type ParsedBridgeSetReminder = {
 
 export type ParsedBridgeCancelReminder = {
   reminderId: string;
+};
+
+export type ParsedBridgeCliAction = {
+  command?: string;
 };
 
 export function parseBridgeLine(line: string): ParsedBridgeMessage | null {
@@ -162,6 +167,22 @@ export function parseCancelReminderLine(line: string): ParsedBridgeCancelReminde
       return { reminderId: parsed.reminderId };
     }
     return null;
+  } catch {
+    return null;
+  }
+}
+
+export function parseCliActionLine(line: string): ParsedBridgeCliAction | null {
+  const idx = line.indexOf(CLI_ACTION_BRIDGE_MARKER);
+  if (idx === -1) return null;
+
+  const jsonPart = line.slice(idx + CLI_ACTION_BRIDGE_MARKER.length).trim();
+  if (!jsonPart) return {};
+  try {
+    const parsed = JSON.parse(jsonPart);
+    return {
+      command: typeof parsed?.command === 'string' ? parsed.command : undefined,
+    };
   } catch {
     return null;
   }
