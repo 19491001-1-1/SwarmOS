@@ -1964,7 +1964,7 @@ export class CrewdenHub extends DurableObject<Env> {
       agentId,
       config: this.toAgentRuntimeConfig(agent),
       launchId: crypto.randomUUID(),
-      wakeMessage: this.openTaskSummaryDelivery(agent),
+      inboxSummary: this.buildOpenTaskSummary(agent),
     });
     if (!sent) return json({ error: 'Machine not connected' }, 503);
 
@@ -2792,6 +2792,7 @@ export class CrewdenHub extends DurableObject<Env> {
     const target = this.findAgentByNameOrId(task.assigneeId);
     if (!target) return;
     const message = toTaskDelivery(task);
+    const inboxSummary = this.buildOpenTaskSummary(target);
 
     if (['starting', 'running', 'working', 'idle'].includes(target.status) && target.machineId) {
       this.sendToDaemon(target.machineId, {
@@ -2801,6 +2802,7 @@ export class CrewdenHub extends DurableObject<Env> {
         channelId: message.channelId,
         config: this.toAgentRuntimeConfig(target),
         message,
+        inboxSummary,
       });
       return;
     }
@@ -2814,6 +2816,7 @@ export class CrewdenHub extends DurableObject<Env> {
       config: this.toAgentRuntimeConfig(target),
       launchId: crypto.randomUUID(),
       wakeMessage: message,
+      inboxSummary,
     });
     if (!sent) return;
     const updated = this.updateAgent(target.id, { machineId, status: 'starting' });
@@ -2856,25 +2859,34 @@ export class CrewdenHub extends DurableObject<Env> {
     return false;
   }
 
-  private openTaskSummaryDelivery(agent: Agent) {
-    const tasks = this.listTasks({ assigneeId: agent.id }).filter((task) => task.status !== 'done').slice(0, 20);
-    if (tasks.length === 0) return undefined;
-    return {
-      id: `tasks:${agent.id}:${Date.now()}`,
-      channelId: `tasks:${agent.id}`,
-      channelName: 'Assigned tasks',
-      senderName: 'task-board',
-      content: [
+  private buildOpenTaskSummary(agent: Agent): string | undefined {
+    const tasks = this.listTasks();
+    const assignedTasks = tasks
+      .filter((task) => task.status !== 'done' && task.assigneeId === agent.id)
+      .slice(0, 20);
+    const claimableTasks = tasks
+      .filter((task) => task.status !== 'done' && !task.assigneeId && matchesAgentCapability(agent, task))
+      .slice(0, Math.max(0, 20 - assignedTasks.length));
+    if (assignedTasks.length === 0 && claimableTasks.length === 0) return undefined;
+    const sections: string[] = [];
+    if (assignedTasks.length > 0) {
+      sections.push(
         'Open tasks assigned to you:',
-        ...tasks.map((task) => {
-          const goal = task.context?.goal ? ` goal: ${task.context.goal}` : '';
-          return `- ${task.id} [${task.status}] #${task.channelId}: ${task.title}${goal}`;
-        }),
-        '',
-        'Use `crewden task read <taskId> --context`, `crewden task update <taskId> --status in_progress|in_review|done|blocked|cancelled`, and `crewden task handoff <taskId> --to agentName --notes "..."` to manage them.',
-      ].join('\n'),
-      createdAt: new Date().toISOString(),
-    };
+        ...assignedTasks.map(formatTaskSummaryLine)
+      );
+    }
+    if (claimableTasks.length > 0) {
+      if (sections.length > 0) sections.push('');
+      sections.push(
+        'Claimable unassigned tasks matching your role/capability:',
+        ...claimableTasks.map(formatTaskSummaryLine)
+      );
+    }
+    return [
+      ...sections,
+      '',
+      'Use `crewden task read <taskId> --context`, `crewden task claim <taskId>`, `crewden task update <taskId> --status in_progress|in_review|done|blocked|cancelled`, and `crewden task handoff <taskId> --to agentName --notes "..."` to manage them.',
+    ].join('\n');
   }
 
   private deliverDirectMessage(target: Agent, dm: DirectMessage): void {
@@ -2968,6 +2980,7 @@ export class CrewdenHub extends DurableObject<Env> {
         agentId: agent.id,
         config: this.toAgentRuntimeConfig(agent),
         launchId: crypto.randomUUID(),
+        inboxSummary: this.buildOpenTaskSummary(agent),
       });
       if (!sent) continue;
       const updated = this.updateAgent(agent.id, { machineId, status: 'starting' });
@@ -3245,6 +3258,11 @@ function matchesAgentCapability(agent: Agent, task: Task): boolean {
     ...(agent.organization?.responsibilities ?? []),
   ].filter(Boolean).map((item) => item!.toLowerCase());
   return capabilities.some((capability) => capability.length >= 3 && (haystack.includes(capability) || capability.split(/\W+/).some((part) => part.length >= 4 && haystack.includes(part))));
+}
+
+function formatTaskSummaryLine(task: Task): string {
+  const goal = task.context?.goal ? ` goal: ${task.context.goal}` : '';
+  return `- ${task.id} [${task.status}] #${task.channelId}: ${task.title}${goal}`;
 }
 
 function compareInboxItems(a: AgentInboxItem, b: AgentInboxItem): number {

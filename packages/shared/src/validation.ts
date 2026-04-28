@@ -686,6 +686,7 @@ export const ServerToDaemonSchema = z.discriminatedUnion('type', [
     config: AgentRuntimeConfigSchema,
     launchId: z.string(),
     wakeMessage: AgentDeliverySchema.optional(),
+    inboxSummary: z.string().optional(),
   }),
   z.object({ type: z.literal('agent:stop'), agentId: z.string() }),
   z.object({
@@ -695,6 +696,7 @@ export const ServerToDaemonSchema = z.discriminatedUnion('type', [
     message: AgentDeliverySchema,
     config: AgentRuntimeConfigSchema.optional(),
     channelId: z.string().optional(),
+    inboxSummary: z.string().optional(),
   }),
   z.object({ type: z.literal('agent:reset-workspace'), agentId: z.string() }),
   z.object({

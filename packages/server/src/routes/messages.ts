@@ -5,6 +5,7 @@ import { daemonRegistry } from '../daemonRegistry.js';
 import { eventBus } from '../events.js';
 import { CreateMessageRequestSchema, type Agent, type Mention } from '@crewden/shared';
 import { toAgentDelivery, toRuntimeConfig } from '@crewden/hub-core';
+import { buildOpenTaskSummary } from '../taskDelivery.js';
 
 export async function messageRoutes(app: FastifyInstance) {
   app.post<{ Params: { id: string } }>('/api/channels/:id/messages', async (req, reply) => {
@@ -59,6 +60,7 @@ export async function messageRoutes(app: FastifyInstance) {
           message: toAgentDelivery(message, channel),
           channelId: channel.id,
           config: toRuntimeConfig(agent),
+          inboxSummary: await buildOpenTaskSummary(agent),
         });
       }
     }

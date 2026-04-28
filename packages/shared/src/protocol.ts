@@ -315,9 +315,9 @@ export type DaemonToServer =
 
 export type ServerToDaemon =
   | { type: 'ping' }
-  | { type: 'agent:start'; agentId: string; config: AgentRuntimeConfig; launchId: string; wakeMessage?: AgentDelivery }
+  | { type: 'agent:start'; agentId: string; config: AgentRuntimeConfig; launchId: string; wakeMessage?: AgentDelivery; inboxSummary?: string }
   | { type: 'agent:stop'; agentId: string }
-  | { type: 'agent:deliver'; agentId: string; seq: number; message: AgentDelivery; config?: AgentRuntimeConfig; channelId?: string }
+  | { type: 'agent:deliver'; agentId: string; seq: number; message: AgentDelivery; config?: AgentRuntimeConfig; channelId?: string; inboxSummary?: string }
   | { type: 'agent:reset-workspace'; agentId: string }
   | { type: 'workspace:read'; agentId: string; requestId: string; relPath: string }
   | { type: 'machine:runtime_models:detect'; runtime: RuntimeId; requestId: string };

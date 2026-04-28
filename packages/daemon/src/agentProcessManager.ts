@@ -40,6 +40,17 @@ function shQuote(value: string): string {
   return `'${value.replace(/'/g, `'\\''`)}'`;
 }
 
+function toInboxSummaryDelivery(agentId: string): AgentDelivery {
+  return {
+    id: `inbox:${agentId}:${Date.now()}`,
+    channelId: `inbox:${agentId}`,
+    channelName: 'Task inbox',
+    senderName: 'task-board',
+    content: 'Agent wake requested. Review the current task inbox summary before choosing your next action.',
+    createdAt: new Date().toISOString(),
+  };
+}
+
 export type AgentMessageCallback = (agentId: string, channelId: string, content: string, inReplyToMessageId?: string) => void;
 export type AgentStatusCallback = (agentId: string, status: string) => void;
 export type AgentActivityCallback = (agentId: string, type: AgentActivity['type'], detail?: string) => void;
@@ -62,11 +73,13 @@ interface AgentEntry {
   idleConfig: AgentRuntimeConfig;
   activeConfig?: AgentRuntimeConfig;
   driver: RuntimeDriver;
-  inbox: AgentDelivery[];
+  inbox: QueuedDelivery[];
   retryAttempts: Map<string, number>;
   sessionId?: string;
   activeDeliveryId?: string;
 }
+
+type QueuedDelivery = AgentDelivery & { inboxSummary?: string };
 
 export class AgentProcessManager {
   private agents = new Map<string, AgentEntry>();
@@ -111,7 +124,7 @@ export class AgentProcessManager {
     this.serverUrl = serverUrl;
   }
 
-  async startAgent(agentId: string, config: AgentRuntimeConfig, channelId: string, wakeMessage?: AgentDelivery): Promise<void> {
+  async startAgent(agentId: string, config: AgentRuntimeConfig, channelId: string, wakeMessage?: AgentDelivery, inboxSummary?: string): Promise<void> {
     const driver = DRIVERS[config.runtime];
     if (!driver) throw new Error(`Unknown runtime: ${config.runtime}`);
 
@@ -123,7 +136,11 @@ export class AgentProcessManager {
       existing.driver = driver;
       await this.ensureAgentTools(config, existing.workspaceDir);
       await this.prepareRuntimeWorkspace(existing, config);
-      if (wakeMessage) await this.enqueueMessage(existing, wakeMessage);
+      if (wakeMessage) {
+        await this.enqueueMessage(existing, wakeMessage, inboxSummary);
+      } else if (inboxSummary) {
+        await this.enqueueMessage(existing, toInboxSummaryDelivery(agentId), inboxSummary);
+      }
       this.onStatus(agentId, existing.proc ? 'working' : 'idle');
       this.runNext(existing);
       return;
@@ -148,12 +165,16 @@ export class AgentProcessManager {
     });
     const entry = this.agents.get(agentId)!;
     await this.prepareRuntimeWorkspace(entry, config);
-    if (wakeMessage) await this.enqueueMessage(entry, wakeMessage);
+    if (wakeMessage) {
+      await this.enqueueMessage(entry, wakeMessage, inboxSummary);
+    } else if (inboxSummary) {
+      await this.enqueueMessage(entry, toInboxSummaryDelivery(agentId), inboxSummary);
+    }
     this.onStatus(agentId, 'idle');
     this.runNext(entry);
   }
 
-  async deliverMessage(agentId: string, delivery: AgentDelivery, config?: AgentRuntimeConfig, channelId?: string): Promise<void> {
+  async deliverMessage(agentId: string, delivery: AgentDelivery, config?: AgentRuntimeConfig, channelId?: string, inboxSummary?: string): Promise<void> {
     let entry = this.agents.get(agentId);
 
     if (!entry) {
@@ -173,7 +194,7 @@ export class AgentProcessManager {
       await this.prepareRuntimeWorkspace(entry, config);
     }
 
-    await this.enqueueMessage(entry, delivery);
+    await this.enqueueMessage(entry, delivery, inboxSummary);
     this.onActivity(agentId, 'working', 'Message received');
     if (entry.proc) {
       if (!entry.activeDeliveryId && entry.driver.capabilities.supportsStdinDelivery) {
@@ -185,8 +206,8 @@ export class AgentProcessManager {
     this.runNext(entry);
   }
 
-  private async enqueueMessage(entry: AgentEntry, delivery: AgentDelivery): Promise<void> {
-    entry.inbox.push(delivery);
+  private async enqueueMessage(entry: AgentEntry, delivery: AgentDelivery, inboxSummary?: string): Promise<void> {
+    entry.inbox.push({ ...delivery, inboxSummary });
     await this.appendTranscript(entry, delivery.senderName, delivery.content, delivery.createdAt);
   }
 
@@ -360,7 +381,7 @@ export class AgentProcessManager {
     }
   }
 
-  private buildSpawnContext(entry: AgentEntry, delivery: AgentDelivery): AgentSpawnContext {
+  private buildSpawnContext(entry: AgentEntry, delivery: QueuedDelivery): AgentSpawnContext {
     const queuedCount = entry.inbox.length;
     return {
       agentId: entry.agentId,
@@ -380,11 +401,14 @@ export class AgentProcessManager {
     };
   }
 
-  private buildWakePrompt(entry: AgentEntry, delivery: AgentDelivery, queuedCount: number): string {
+  private buildWakePrompt(entry: AgentEntry, delivery: QueuedDelivery, queuedCount: number): string {
     const parts = [
       this.buildUnreadSummary(entry, queuedCount),
       this.formatDelivery(delivery),
     ];
+    if (delivery.inboxSummary) {
+      parts.push(['Current task inbox summary:', delivery.inboxSummary].join('\n'));
+    }
     if (delivery.threadRootId) {
       parts.push(`This delivery is inside thread ${delivery.threadRootId}. Keep your reply in that thread. If using the crewden CLI, include \`--thread-root-id ${delivery.threadRootId}\`.`);
     }

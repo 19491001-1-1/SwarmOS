@@ -234,6 +234,24 @@ describe('AgentProcessManager', () => {
     expect(fakeProc.stdin.write).toHaveBeenCalledWith(expect.stringContaining('crewden message check'));
   });
 
+  it('injects inbox summary into wake prompt', async () => {
+    const fakeProc = createFakeProc([]);
+    mockSpawn.mockReturnValue(fakeProc);
+
+    await manager.deliverMessage('agent-1', {
+      id: 'msg-1',
+      channelId: 'general',
+      channelName: 'general',
+      senderName: 'user',
+      content: 'Hello',
+      createdAt: new Date().toISOString(),
+    }, { runtime: 'claude', name: 'bot' }, 'general', 'Claimable unassigned tasks matching your role/capability:\n- task-1 [todo] #general: backend fix');
+
+    expect(fakeProc.stdin.write).toHaveBeenCalledWith(expect.stringContaining('Current task inbox summary:'));
+    expect(fakeProc.stdin.write).toHaveBeenCalledWith(expect.stringContaining('Claimable unassigned tasks matching your role/capability:'));
+    expect(fakeProc.stdin.write).toHaveBeenCalledWith(expect.stringContaining('task-1'));
+  });
+
   it('deliverMessage auto-registers an unknown agent when config is provided', async () => {
     const fakeProc = createFakeProc([]);
     mockSpawn.mockReturnValue(fakeProc);

@@ -226,6 +226,46 @@ describe('task API', () => {
     await app.close();
   });
 
+  it('sends claimable tasks in inbox summary with assigned task delivery', async () => {
+    const app = await buildApp();
+    const store = getStore();
+    const fakeSocket = { readyState: 1, send: vi.fn() };
+    daemonRegistry.register('machine-1', fakeSocket as any);
+    await store.createAgent({
+      id: 'agent-1',
+      name: 'engineer',
+      description: 'implements backend fixes',
+      runtime: 'claude',
+      status: 'idle',
+      machineId: 'machine-1',
+      createdAt: new Date().toISOString(),
+    });
+    await app.inject({
+      method: 'POST',
+      url: '/api/tasks',
+      payload: { channelId: 'general', title: 'backend pull discovery cleanup', creatorName: 'user' },
+    });
+    fakeSocket.send.mockClear();
+
+    const assigned = await app.inject({
+      method: 'POST',
+      url: '/api/tasks',
+      payload: { channelId: 'general', title: 'assigned delivery task', creatorName: 'user', assigneeId: 'agent-1' },
+    });
+
+    expect(assigned.statusCode).toBe(201);
+    expect(fakeSocket.send).toHaveBeenCalledTimes(1);
+    const sent = JSON.parse(fakeSocket.send.mock.calls[0][0]);
+    expect(sent).toMatchObject({ type: 'agent:deliver', agentId: 'agent-1' });
+    expect(sent.inboxSummary).toContain('Open tasks assigned to you:');
+    expect(sent.inboxSummary).toContain('assigned delivery task');
+    expect(sent.inboxSummary).toContain('Claimable unassigned tasks matching your role/capability:');
+    expect(sent.inboxSummary).toContain('backend pull discovery cleanup');
+
+    daemonRegistry.unregister('machine-1');
+    await app.close();
+  });
+
   it('unblocks dependency when blocker is done', async () => {
     const app = await buildApp();
     const store = getStore();

@@ -114,7 +114,7 @@ export class DaemonClient {
 
     if (msg.type === 'agent:start') {
       const channelId = msg.wakeMessage?.channelId ?? 'general';
-      this.processManager.startAgent(msg.agentId, msg.config, channelId, msg.wakeMessage).then(() => {
+      this.processManager.startAgent(msg.agentId, msg.config, channelId, msg.wakeMessage, msg.inboxSummary).then(() => {
         this.sendMessage({ type: 'agent:status', agentId: msg.agentId, status: 'running', launchId: msg.launchId });
       });
       return;
@@ -127,7 +127,7 @@ export class DaemonClient {
 
     if (msg.type === 'agent:deliver') {
       const doDeliver = async () => {
-        await this.processManager.deliverMessage(msg.agentId, msg.message, msg.config, msg.channelId);
+        await this.processManager.deliverMessage(msg.agentId, msg.message, msg.config, msg.channelId, msg.inboxSummary);
         this.sendMessage({ type: 'agent:deliver:ack', agentId: msg.agentId, seq: msg.seq });
       };
       doDeliver().catch((err) => {

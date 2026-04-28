@@ -41,7 +41,8 @@ import { getStore } from '../db.js';
 import { eventBus } from '../events.js';
 import { daemonRegistry } from '../daemonRegistry.js';
 import { delegateAgent } from '../delegation.js';
-import { notifyTaskAssignee } from '../taskDelivery.js';
+import { buildOpenTaskSummary, notifyTaskAssignee } from '../taskDelivery.js';
+import { matchesAgentCapability } from '../taskMatching.js';
 import { archiveGoal } from './knowledge.js';
 import { validateAgentRuntimePatch } from '../agentRuntimePatch.js';
 
@@ -182,7 +183,7 @@ export async function internalAgentRoutes(app: FastifyInstance) {
       content: parsed.data.content,
     });
     eventBus.emit({ type: 'dm:new', dm });
-    deliverDirectMessage(target, dm);
+    await deliverDirectMessage(target, dm);
     return reply.status(201).send(dm);
   });
 
@@ -949,27 +950,6 @@ async function buildInbox(agent: Agent, limit: number): Promise<AgentInboxItem[]
   return items.sort(compareInboxItems).slice(0, limit);
 }
 
-function matchesAgentCapability(agent: Agent, task: Task): boolean {
-  const haystack = [
-    task.title,
-    task.context?.goal,
-    task.context?.goalObjective,
-    task.context?.background,
-    ...(task.context?.acceptanceCriteria ?? []),
-    ...(task.context?.artifacts ?? []),
-  ].filter(Boolean).join(' ').toLowerCase();
-  const capabilities = [
-    agent.name,
-    agent.displayName,
-    agent.description,
-    ...(agent.organization?.roles ?? []),
-    ...(agent.organization?.capabilities ?? []),
-    ...(agent.organization?.responsibilities ?? []),
-  ].filter(Boolean).map((item) => item!.toLowerCase());
-  if (capabilities.length === 0) return false;
-  return capabilities.some((capability) => capability.length >= 3 && (haystack.includes(capability) || capability.split(/\W+/).some((part) => part.length >= 4 && haystack.includes(part))));
-}
-
 function compareInboxItems(a: AgentInboxItem, b: AgentInboxItem): number {
   const rank = { urgent: 0, high: 1, normal: 2, low: 3 };
   return rank[a.priority] - rank[b.priority] || new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
@@ -1010,7 +990,7 @@ async function createTaskClaimAcknowledgement(task: Task, agent: Agent): Promise
   }
 }
 
-function deliverDirectMessage(target: Agent, dm: DirectMessage): void {
+async function deliverDirectMessage(target: Agent, dm: DirectMessage): Promise<void> {
   if (!target.machineId || target.status === 'inactive') return;
   daemonRegistry.send(target.machineId, {
     type: 'agent:deliver',
@@ -1026,5 +1006,6 @@ function deliverDirectMessage(target: Agent, dm: DirectMessage): void {
       content: dm.content,
       createdAt: dm.createdAt,
     },
+    inboxSummary: await buildOpenTaskSummary(target),
   });
 }

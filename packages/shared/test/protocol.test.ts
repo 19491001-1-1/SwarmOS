@@ -173,6 +173,7 @@ describe('ServerToDaemon protocol', () => {
         agentToken: 'token-1',
       },
       launchId: 'launch-1',
+      inboxSummary: 'Open tasks assigned to you:\n- task-1 [todo] #general: write tests',
     };
     const result = ServerToDaemonSchema.safeParse(msg);
     expect(result.success).toBe(true);
@@ -192,6 +193,7 @@ describe('ServerToDaemon protocol', () => {
         threadRootId: 'root-1',
         createdAt: new Date().toISOString(),
       },
+      inboxSummary: 'Claimable unassigned tasks matching your role/capability:\n- task-2 [todo] #general: fix bug',
     };
     const result = ServerToDaemonSchema.safeParse(msg);
     expect(result.success).toBe(true);

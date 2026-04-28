@@ -594,11 +594,16 @@ describe('daemon WebSocket', () => {
     const store = getStore();
     await store.createAgent({
       id: 'agent-1',
-      name: 'bot',
+      name: 'engineer',
       runtime: 'claude',
       status: 'inactive',
       autoStart: true,
       createdAt: new Date().toISOString(),
+    });
+    await app.inject({
+      method: 'POST',
+      url: '/api/tasks',
+      payload: { channelId: 'general', title: 'engineer claimable task', creatorName: 'user' },
     });
 
     const ws = await connectDaemon('dev-machine-key');
@@ -615,7 +620,10 @@ describe('daemon WebSocket', () => {
       capabilities: [],
     });
 
-    expect((await startMessage).agentId).toBe('agent-1');
+    const start = await startMessage;
+    expect(start.agentId).toBe('agent-1');
+    expect(start.inboxSummary).toContain('Claimable unassigned tasks matching your role/capability:');
+    expect(start.inboxSummary).toContain('engineer claimable task');
     expect(await store.getAgent('agent-1')).toMatchObject({
       machineId: 'machine-1',
       status: 'starting',

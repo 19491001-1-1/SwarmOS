@@ -176,7 +176,7 @@ export async function agentRoutes(app: FastifyInstance) {
       content: parsed.data.content,
     });
     eventBus.emit({ type: 'dm:new', dm });
-    deliverDirectMessage(target, dm);
+    await deliverDirectMessage(target, dm);
     return reply.status(201).send(dm);
   });
 
@@ -216,12 +216,13 @@ export async function agentRoutes(app: FastifyInstance) {
     if (!machineId) return reply.status(503).send({ error: 'No connected machine available for agent runtime' });
 
     const launchId = nanoid();
+    const inboxSummary = await buildOpenTaskSummary(agent);
     const sent = daemonRegistry.send(machineId, {
       type: 'agent:start',
       agentId: agent.id,
       config: await toAgentRuntimeConfig(agent),
       launchId,
-      wakeMessage: openTaskSummaryDelivery(agent.id, await buildOpenTaskSummary(agent)),
+      inboxSummary,
     });
 
     if (!sent) return reply.status(503).send({ error: 'Machine not connected' });
@@ -244,23 +245,11 @@ export async function agentRoutes(app: FastifyInstance) {
   });
 }
 
-function openTaskSummaryDelivery(agentId: string, summary?: string) {
-  if (!summary) return undefined;
-  return {
-    id: `tasks:${agentId}:${Date.now()}`,
-    channelId: `tasks:${agentId}`,
-    channelName: 'Assigned tasks',
-    senderName: 'task-board',
-    content: summary,
-    createdAt: new Date().toISOString(),
-  };
-}
-
 function isUnsafeWorkspacePath(value: string): boolean {
   return value.startsWith('/') || value.split(/[\\/]+/).some((part) => part === '..');
 }
 
-function deliverDirectMessage(target: Agent, dm: DirectMessage): void {
+async function deliverDirectMessage(target: Agent, dm: DirectMessage): Promise<void> {
   if (!target.machineId || target.status === 'inactive') return;
   daemonRegistry.send(target.machineId, {
     type: 'agent:deliver',
@@ -276,5 +265,6 @@ function deliverDirectMessage(target: Agent, dm: DirectMessage): void {
       content: dm.content,
       createdAt: dm.createdAt,
     },
+    inboxSummary: await buildOpenTaskSummary(target),
   });
 }

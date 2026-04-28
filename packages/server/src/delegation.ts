@@ -5,6 +5,7 @@ import { getStore } from './db.js';
 import { daemonRegistry } from './daemonRegistry.js';
 import { eventBus } from './events.js';
 import { toAgentRuntimeConfig } from './runtimeConfig.js';
+import { buildOpenTaskSummary } from './taskDelivery.js';
 
 const ACTIVE_STATUSES = new Set(['starting', 'running', 'working', 'idle']);
 
@@ -68,7 +69,7 @@ export async function delegateAgent(input: {
   eventBus.emit({ type: 'dm:new', dm });
 
   if (ACTIVE_STATUSES.has(target.status) && target.machineId) {
-    const sent = deliverDelegation(target, dm);
+    const sent = await deliverDelegation(target, dm);
     delegation = await updateDelegation(delegation.id, sent ? 'delivered' : 'failed', sent ? undefined : 'Machine not connected');
     return delegation;
   }
@@ -94,6 +95,7 @@ export async function delegateAgent(input: {
     config: await toAgentRuntimeConfig(target),
     launchId: nanoid(),
     wakeMessage: toDelegationDelivery(dm),
+    inboxSummary: await buildOpenTaskSummary(target),
   });
   if (!sent) {
     delegation = await updateDelegation(delegation.id, 'failed', 'Machine not connected');
@@ -106,7 +108,7 @@ export async function delegateAgent(input: {
   return delegation;
 }
 
-function deliverDelegation(target: Agent, dm: DirectMessage): boolean {
+async function deliverDelegation(target: Agent, dm: DirectMessage): Promise<boolean> {
   if (!target.machineId) return false;
   return daemonRegistry.send(target.machineId, {
     type: 'agent:deliver',
@@ -115,6 +117,7 @@ function deliverDelegation(target: Agent, dm: DirectMessage): boolean {
     channelId: `dm:${dm.fromAgentId}:${dm.toAgentId}`,
     config: toRuntimeConfig(target),
     message: toDelegationDelivery(dm),
+    inboxSummary: await buildOpenTaskSummary(target),
   });
 }
 

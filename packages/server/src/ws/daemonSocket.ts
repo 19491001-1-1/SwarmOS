@@ -9,7 +9,7 @@ import { eventBus } from '../events.js';
 import { findDuplicateMachineIds, findExistingMachineId, toRuntimeConfig } from '@crewden/hub-core';
 import { delegateAgent } from '../delegation.js';
 import { toAgentRuntimeConfig } from '../runtimeConfig.js';
-import { notifyTaskAssignee } from '../taskDelivery.js';
+import { buildOpenTaskSummary, notifyTaskAssignee } from '../taskDelivery.js';
 
 const VALID_KEYS = new Set(['dev-machine-key']);
 const VOLATILE_AGENT_STATUSES = new Set(['starting', 'running', 'working', 'idle']);
@@ -137,6 +137,7 @@ export async function daemonSocketHandler(app: FastifyInstance) {
                 content: dm.content,
                 createdAt: dm.createdAt,
               },
+              inboxSummary: await buildOpenTaskSummary(target),
             });
           }
           return;
@@ -272,11 +273,13 @@ async function reconcileReadyAgents(machineId: string, runtimes: string[], runni
     }
 
     const launchId = nanoid();
+    const inboxSummary = await buildOpenTaskSummary(agent);
     const sent = daemonRegistry.send(machineId, {
       type: 'agent:start',
       agentId: agent.id,
       config: await toAgentRuntimeConfig(agent),
       launchId,
+      inboxSummary,
     });
     if (!sent) continue;
     const updated = await store.updateAgent(agent.id, { machineId, status: 'starting' });

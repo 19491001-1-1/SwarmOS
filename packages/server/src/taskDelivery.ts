@@ -5,6 +5,7 @@ import { daemonRegistry } from './daemonRegistry.js';
 import { getStore } from './db.js';
 import { eventBus } from './events.js';
 import { toAgentRuntimeConfig } from './runtimeConfig.js';
+import { matchesAgentCapability } from './taskMatching.js';
 
 const ACTIVE_STATUSES = new Set(['starting', 'running', 'working', 'idle']);
 
@@ -16,6 +17,7 @@ export async function notifyTaskAssignee(task: Task): Promise<void> {
   if (!target) return;
 
   const message = toTaskDelivery(task);
+  const inboxSummary = await buildOpenTaskSummary(target);
   if (ACTIVE_STATUSES.has(target.status) && target.machineId) {
     daemonRegistry.send(target.machineId, {
       type: 'agent:deliver',
@@ -24,6 +26,7 @@ export async function notifyTaskAssignee(task: Task): Promise<void> {
       channelId: message.channelId,
       config: toRuntimeConfig(target),
       message,
+      inboxSummary,
     });
     return;
   }
@@ -42,6 +45,7 @@ export async function notifyTaskAssignee(task: Task): Promise<void> {
     config: await toAgentRuntimeConfig(target),
     launchId: nanoid(),
     wakeMessage: message,
+    inboxSummary,
   });
   if (!sent) return;
   const updated = await store.updateAgent(target.id, { machineId, status: 'starting' });
@@ -69,19 +73,38 @@ async function hasOpenDependencies(task: Task): Promise<boolean> {
 }
 
 export async function buildOpenTaskSummary(agent: Agent): Promise<string | undefined> {
-  const tasks = (await getStore().listTasks({ assigneeId: agent.id }))
-    .filter((task) => task.status !== 'done')
+  const tasks = await getStore().listTasks();
+  const assignedTasks = tasks
+    .filter((task) => task.status !== 'done' && task.assigneeId === agent.id)
     .slice(0, 20);
-  if (tasks.length === 0) return undefined;
+  const claimableTasks = tasks
+    .filter((task) => task.status !== 'done' && !task.assigneeId && matchesAgentCapability(agent, task))
+    .slice(0, Math.max(0, 20 - assignedTasks.length));
+  if (assignedTasks.length === 0 && claimableTasks.length === 0) return undefined;
+  const sections: string[] = [];
+  if (assignedTasks.length > 0) {
+    sections.push(
+      'Open tasks assigned to you:',
+      ...assignedTasks.map(formatTaskSummaryLine)
+    );
+  }
+  if (claimableTasks.length > 0) {
+    if (sections.length > 0) sections.push('');
+    sections.push(
+      'Claimable unassigned tasks matching your role/capability:',
+      ...claimableTasks.map(formatTaskSummaryLine)
+    );
+  }
   return [
-    'Open tasks assigned to you:',
-    ...tasks.map((task) => {
-      const goal = task.context?.goal ? ` goal: ${task.context.goal}` : '';
-      return `- ${task.id} [${task.status}] #${task.channelId}: ${task.title}${goal}`;
-    }),
+    ...sections,
     '',
-    'Use `crewden task read <taskId> --context`, `crewden task update <taskId> --status in_progress|in_review|done|blocked|cancelled`, and `crewden task handoff <taskId> --to agentName --notes "..."` to manage them.',
+    'Use `crewden task read <taskId> --context`, `crewden task claim <taskId>`, `crewden task update <taskId> --status in_progress|in_review|done|blocked|cancelled`, and `crewden task handoff <taskId> --to agentName --notes "..."` to manage them.',
   ].join('\n');
+}
+
+function formatTaskSummaryLine(task: Task): string {
+  const goal = task.context?.goal ? ` goal: ${task.context.goal}` : '';
+  return `- ${task.id} [${task.status}] #${task.channelId}: ${task.title}${goal}`;
 }
 
 export function toTaskDelivery(task: Task) {
