@@ -509,6 +509,29 @@ describe('AgentProcessManager', () => {
     expect(activities.some((a) => a.type === 'output')).toBe(false);
   });
 
+  it('suppresses assistant text after stream-json MCP send_message tool use', async () => {
+    const toolUseEvent = JSON.stringify({ type: 'assistant', message: { content: [{ type: 'tool_use', name: 'mcp__crewden__send_message', input: { channelId: 'general', content: '已回复' } }] } });
+    const textEvent = JSON.stringify({ type: 'assistant', message: { content: [{ type: 'text', text: '消息已发送，请查看频道。' }] } });
+    const resultEvent = JSON.stringify({ type: 'result', session_id: 'sess-1' });
+    const fakeProc = createFakeProc([toolUseEvent, textEvent, resultEvent]);
+    mockSpawn.mockReturnValue(fakeProc);
+
+    await manager.startAgent('agent-1', { runtime: 'claude', name: 'bot' }, 'general');
+    await manager.deliverMessage('agent-1', {
+      id: 'msg-1',
+      channelId: 'general',
+      channelName: 'general',
+      senderName: 'user',
+      content: 'Hello',
+      createdAt: new Date().toISOString(),
+    });
+
+    await new Promise((r) => setTimeout(r, 50));
+
+    expect(messages).toHaveLength(0);
+    expect(activities.some((a) => a.type === 'sending' && a.detail === 'mcp:mcp__crewden__send_message')).toBe(true);
+  });
+
   it('stdout DM marker is reported as agent dm', async () => {
     const fakeProc = createFakeProc(['[[CREWDEN_SEND_DM]] {"to":"agent-2","content":"secret"}']);
     mockSpawn.mockReturnValue(fakeProc);

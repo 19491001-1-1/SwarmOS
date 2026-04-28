@@ -1,5 +1,12 @@
 import type { RuntimeDriver, AgentSpawnContext, RuntimeCommand, AgentOutputEvent } from './types.js';
 import { parseBridgeLine, buildBridgeInstruction, buildDmInstruction, parseDmLine, buildDelegateInstruction, parseDelegateLine, buildTaskInstruction, buildMemoryInstruction, buildCommunicationInstruction, parseCreateTaskLine, parseUpdateTaskLine, buildReminderInstruction, parseReminderLine, parseCancelReminderLine, parseCliActionLine } from '../bridge/simpleToolBridge.js';
+
+// MCP bridge tools that already deliver a message via HTTP; subsequent agent text must not be re-forwarded.
+const MCP_SEND_TOOLS = new Set([
+  'mcp__crewden__send_message',
+  'mcp__crewden__send_dm',
+  'mcp__crewden__delegate_agent',
+]);
 import { mkdir, writeFile } from 'fs/promises';
 import { join } from 'path';
 
@@ -108,7 +115,11 @@ export const claudeDriver: RuntimeDriver = {
           .trim();
         if (text) return { type: 'message', content: text };
         const toolUse = event.message.content.find((block: any) => block?.type === 'tool_use');
-        if (toolUse) return { type: 'activity', detail: `tool:${toolUse.name ?? 'unknown_tool'}` };
+        if (toolUse) {
+          const name: string = toolUse.name ?? '';
+          if (MCP_SEND_TOOLS.has(name)) return { type: 'mcp_bridge_send', tool: name };
+          return { type: 'activity', detail: `tool:${name || 'unknown_tool'}` };
+        }
       }
       if (event.type === 'result') {
         return { type: 'turn_end', sessionId: event.session_id ? String(event.session_id) : undefined };

@@ -77,6 +77,7 @@ interface AgentEntry {
   retryAttempts: Map<string, number>;
   sessionId?: string;
   activeDeliveryId?: string;
+  mcpBridgeSent?: boolean;
 }
 
 type QueuedDelivery = AgentDelivery & { inboxSummary?: string };
@@ -430,7 +431,17 @@ export class AgentProcessManager {
 
   private handleOutputLine(entry: AgentEntry, line: string): boolean {
     const parsed = entry.driver.parseOutput?.(line);
+    if (parsed?.type === 'mcp_bridge_send') {
+      console.log(`[daemon] agent ${entry.agentId} mcp bridge send: ${parsed.tool}`);
+      entry.mcpBridgeSent = true;
+      this.onActivity(entry.agentId, 'sending', `mcp:${parsed.tool}`);
+      return true;
+    }
     if (parsed?.type === 'message') {
+      if (entry.mcpBridgeSent) {
+        console.log(`[daemon] agent ${entry.agentId} text suppressed (mcp bridge already sent)`);
+        return true;
+      }
       console.log(`[daemon] agent ${entry.agentId} reply: ${parsed.content}`);
       this.appendTranscriptLater(entry, this.agentTranscriptName(entry), parsed.content);
       const activeDelivery = entry.inbox.find((delivery) => delivery.id === entry.activeDeliveryId) ?? entry.inbox[0];
@@ -493,6 +504,7 @@ export class AgentProcessManager {
       return true;
     }
     if (parsed?.type === 'turn_end') {
+      entry.mcpBridgeSent = false;
       if (parsed.sessionId) {
         entry.sessionId = parsed.sessionId;
         this.onSession(entry.agentId, parsed.sessionId);
