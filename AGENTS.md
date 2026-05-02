@@ -2,6 +2,22 @@
 
 These rules are mandatory for coding agents working in this repository.
 
+## Project Boundary
+
+`crewden` is an external open source project hosted on GitHub. Keep it separate
+from internal company projects, including sibling workspaces such as
+`sailor_agent_workspace`.
+
+- Do not copy private company code, internal architecture details, credentials,
+  private endpoints, customer data, or other non-public information into this
+  repository.
+- Do not commit internal deployment details, internal URLs, company-specific
+  business context, or internal handoff notes here unless the user explicitly
+  confirms the information is safe for the open source project.
+- When a task touches both this repository and an internal project, keep commits,
+  documentation, knowledge entries, and verification evidence separated by
+  project.
+
 ## First Read
 
 Before making non-trivial changes, read the current coding-agent handoff notes:
