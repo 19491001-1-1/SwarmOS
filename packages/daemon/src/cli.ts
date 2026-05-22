@@ -1,3 +1,4 @@
+/** SwarmOS daemon — agent process manager, Claude/Codex/Gemini drivers, MCP bridge, risk enforcement, file locks */
 import { DaemonClient } from './daemonClient.js';
 import { DAEMON_VERSION } from './daemonClient.js';
 import { loadNearestDotenv } from './env.js';
