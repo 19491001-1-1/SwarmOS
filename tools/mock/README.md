@@ -1,3 +1,4 @@
+<!-- SwarmOS integration test tooling — mock server, mock daemon, E2E runner -->
 # Mock Server / Daemon
 
 This folder contains two simple mock tools to help parallel development and integration testing:
