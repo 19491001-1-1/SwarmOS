@@ -1,3 +1,51 @@
+import {
+  SwarmInitRequestSchema,
+  SwarmInitResponseSchema,
+  DaemonActionRequestSchema,
+  DaemonActionResultSchema,
+  ThoughtLogEventSchema,
+  ApprovalRequestSchema,
+  ApprovalDecisionSchema,
+  ApprovalRecordSchema,
+  LockStatusSchema,
+  TimeoutErrorPayloadSchema,
+} from './protocol.js';
+
+export function validateSwarmInitRequest(data: unknown) {
+  return SwarmInitRequestSchema.parse(data);
+}
+
+export function validateSwarmInitResponse(data: unknown) {
+  return SwarmInitResponseSchema.parse(data);
+}
+
+export function validateDaemonActionRequest(data: unknown) {
+  return DaemonActionRequestSchema.parse(data);
+}
+
+export function validateDaemonActionResult(data: unknown) {
+  return DaemonActionResultSchema.parse(data);
+}
+
+export function validateThoughtLogEvent(data: unknown) {
+  return ThoughtLogEventSchema.parse(data);
+}
+
+export function validateApprovalRequest(data: unknown) {
+  return ApprovalRequestSchema.parse(data);
+}
+
+export function validateApprovalDecision(data: unknown) {
+  return ApprovalDecisionSchema.parse(data);
+}
+
+export function validateLockStatus(data: unknown) {
+  return LockStatusSchema.parse(data);
+}
+
+export function validateTimeoutErrorPayload(data: unknown) {
+  return TimeoutErrorPayloadSchema.parse(data);
+}
 import { z } from 'zod';
 
 export const RuntimeIdSchema = z.enum(['claude', 'codex', 'gemini']);
@@ -32,6 +80,13 @@ export const AgentRuntimeConfigSchema = z.object({
   systemPrompt: z.string().optional(),
   envVars: z.record(z.string()).optional(),
   agentToken: z.string().optional(),
+  autoWork: z
+    .object({
+      enabled: z.boolean().optional(),
+      intervalMs: z.number().int().optional(),
+      maxClaimableTasksPerRun: z.number().int().optional(),
+    })
+    .optional(),
 });
 
 export const AgentOrganizationSchema = z.object({
@@ -39,6 +94,9 @@ export const AgentOrganizationSchema = z.object({
   roles: z.array(z.string()).optional(),
   capabilities: z.array(z.string()).optional(),
   responsibilities: z.array(z.string()).optional(),
+  workingStyle: z.string().optional(),
+  handoffPreference: z.string().optional(),
+  examples: z.array(z.string()).optional(),
   managerId: z.string().optional(),
   backupAgentIds: z.array(z.string()).optional(),
   availability: z.enum(['available', 'unavailable', 'overloaded']).optional(),
@@ -313,6 +371,27 @@ export const DaemonToServerSchema = z.discriminatedUnion('type', [
     models: z.array(z.string()).optional(),
     default: z.string().optional(),
     error: z.string().optional(),
+  }),
+  z.object({
+    type: z.literal('lock:update'),
+    path: z.string(),
+    state: z.enum(['locked', 'released']),
+    agentId: z.string(),
+    since: z.string().optional(),
+  }),
+  z.object({
+    type: z.literal('daemon:action:update'),
+    agentId: z.string(),
+    action: z.object({
+      action_id: z.string(),
+      status: z.string(),
+      stdout: z.string().optional(),
+      stderr: z.string().optional(),
+      error_type: z.string().optional(),
+      timestamp: z.string().optional(),
+      lock_owner: z.string().optional(),
+      approval_id: z.string().optional(),
+    }),
   }),
 ]);
 
@@ -681,6 +760,14 @@ export type InternalGoalAlignmentPatchRequest = z.infer<typeof InternalGoalAlign
 export const ServerToDaemonSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('ping') }),
   z.object({
+    type: z.literal('approval:requested'),
+    approval: ApprovalRecordSchema,
+  }),
+  z.object({
+    type: z.literal('approval:resolved'),
+    approval: ApprovalRecordSchema,
+  }),
+  z.object({
     type: z.literal('agent:start'),
     agentId: z.string(),
     config: AgentRuntimeConfigSchema,
@@ -709,5 +796,10 @@ export const ServerToDaemonSchema = z.discriminatedUnion('type', [
     type: z.literal('machine:runtime_models:detect'),
     runtime: RuntimeIdSchema,
     requestId: z.string(),
+  }),
+  z.object({
+    type: z.literal('action:execute'),
+    agentId: z.string(),
+    action: DaemonActionRequestSchema,
   }),
 ]);

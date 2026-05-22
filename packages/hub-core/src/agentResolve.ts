@@ -30,6 +30,9 @@ export function resolveAgentReference(query: string, agents: Agent[]): AgentReso
       ...(org?.roles ?? []),
       ...(org?.capabilities ?? []),
       ...(org?.responsibilities ?? []),
+      org?.workingStyle,
+      org?.handoffPreference,
+      ...(org?.examples ?? []),
     ].filter(Boolean).map((field) => normalize(field!));
     return fields.some((field) => field.includes(normalized) || normalized.includes(field));
   });

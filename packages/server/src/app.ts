@@ -6,6 +6,9 @@ import { messageRoutes } from './routes/messages.js';
 import { agentRoutes } from './routes/agents.js';
 import { machineRoutes } from './routes/machines.js';
 import { internalAgentRoutes } from './routes/internalAgent.js';
+import { swarmRoutes } from './routes/swarm.js';
+import { approvalRoutes } from './routes/approvals.js';
+import { actionRoutes } from './routes/actions.js';
 import { taskRoutes } from './routes/tasks.js';
 import { goalRoutes } from './routes/goals.js';
 import { goalAlignmentRoutes } from './routes/goalAlignments.js';
@@ -54,6 +57,9 @@ export async function buildApp(opts: { logger?: boolean } = {}) {
   await app.register(goalAlignmentRoutes);
   await app.register(knowledgeRoutes);
   await app.register(internalAgentRoutes);
+  await app.register(swarmRoutes);
+  await app.register(approvalRoutes);
+  await app.register(actionRoutes);
   await app.register(daemonSocketHandler);
   await app.register(browserSocketHandler);
 

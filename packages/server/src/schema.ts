@@ -156,6 +156,20 @@ export const agents = sqliteTable('agents', {
   createdAt: text('created_at').notNull(),
 });
 
+export const approvals = sqliteTable('approvals', {
+  id: text('id').primaryKey(),
+  actionId: text('action_id'),
+  swarmId: text('swarm_id'),
+  agentId: text('agent_id'),
+  reason: text('reason'),
+  riskLevel: text('risk_level'),
+  status: text('status').notNull(),
+  reviewer: text('reviewer'),
+  comment: text('comment'),
+  createdAt: text('created_at').notNull(),
+  decidedAt: text('decided_at'),
+});
+
 export const machines = sqliteTable('machines', {
   id: text('id').primaryKey(),
   hostname: text('hostname').notNull(),

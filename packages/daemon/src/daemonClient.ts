@@ -3,9 +3,12 @@ import os from 'os';
 import { join } from 'path';
 import type { AgentActivity, DaemonToServer, ServerToDaemon } from '@crewden/shared';
 import { APP_VERSION, ServerToDaemonSchema } from '@crewden/shared';
+import { handleServerApprovalMessage } from './approvalWatcher.js';
 import { detectRuntimes } from './runtimeDetector.js';
 import { AgentProcessManager } from './agentProcessManager.js';
 import { getMachineId } from './machineIdentity.js';
+import { lockManager } from './locks.js';
+import { executeAction } from './actions.js';
 
 export const DAEMON_VERSION = process.env.CREWDEN_VERSION?.trim() || APP_VERSION;
 
@@ -40,6 +43,17 @@ export class DaemonClient {
       (agentId, sessionId) => this.sendMessage({ type: 'agent:session', agentId, sessionId }),
       options.serverUrl
     );
+
+    // Forward lock state changes to the server
+    lockManager.onChange((path, state, agentId) => {
+      this.sendMessage({
+        type: 'lock:update',
+        path,
+        state,
+        agentId,
+        since: new Date().toISOString(),
+      });
+    });
   }
 
   private getWsUrl(): string {
@@ -102,13 +116,40 @@ export class DaemonClient {
       runtimes: runtimeIds,
       runtimeVersions,
       runningAgents: this.processManager.listRunningAgentIds(),
-      capabilities: ['agent:start', 'agent:stop', 'agent:deliver', 'workspace:read', 'reminders'],
+      capabilities: ['agent:start', 'agent:stop', 'agent:deliver', 'workspace:read', 'reminders', 'action:execute'],
     });
   }
 
   private handleMessage(msg: ServerToDaemon): void {
     if (msg.type === 'ping') {
       this.sendMessage({ type: 'pong' });
+      return;
+    }
+
+    if (msg.type === 'approval:resolved') {
+      void (async () => {
+        const result = await handleServerApprovalMessage(msg);
+        const approval = msg.approval;
+        if (!result || !approval?.agentId) return;
+        // Send back action execution result after approval decision
+        const r = result as any;
+        const status = r.status ?? (approval.status === 'approved' ? 'approved' : 'rejected');
+        this.sendRawMessage({
+          type: 'daemon:action:update',
+          agentId: approval.agentId,
+          action: {
+            action_id: r.action_id ?? approval.id,
+            status: status,
+            stdout: r.stdout,
+            stderr: r.stderr,
+            error_type: r.error_type,
+            timestamp: new Date().toISOString(),
+            approval_id: approval.id,
+          },
+        });
+      })().catch((err) => {
+        console.error('[daemon] approval resume error:', err instanceof Error ? err.message : String(err));
+      });
       return;
     }
 
@@ -149,9 +190,61 @@ export class DaemonClient {
         });
       return;
     }
+
+    if (msg.type === 'action:execute') {
+      // Report "running" state before execution
+      this.sendRawMessage({
+        type: 'daemon:action:update',
+        agentId: msg.agentId,
+        action: {
+          action_id: msg.action.action_id,
+          status: 'running',
+          timestamp: new Date().toISOString(),
+        },
+      });
+      this.processManager.emitActivity(msg.agentId, 'working', `action:${msg.action.tool} executing (${msg.action.action_id})`);
+      executeAction(msg.action).then((result: any) => {
+        this.sendRawMessage({
+          type: 'daemon:action:update',
+          agentId: msg.agentId,
+          action: {
+            action_id: result.action_id,
+            status: result.status,
+            stdout: result.stdout,
+            stderr: result.stderr,
+            error_type: result.error_type,
+            timestamp: result.timestamp,
+            lock_owner: result.lock_owner,
+            approval_id: result.approval_id,
+          },
+        });
+        this.processManager.emitActivity(msg.agentId, 'output', `action:${msg.action.tool} ${result.status} (${msg.action.action_id})`);
+      }).catch((err: any) => {
+        this.sendRawMessage({
+          type: 'daemon:action:update',
+          agentId: msg.agentId,
+          action: {
+            action_id: msg.action.action_id,
+            status: 'error',
+            error_type: 'DaemonError',
+            stderr: err instanceof Error ? err.message : 'Unknown daemon error',
+            timestamp: new Date().toISOString(),
+          },
+        });
+        this.processManager.emitActivity(msg.agentId, 'error', `action:${msg.action.tool} failed (${msg.action.action_id})`);
+      });
+      return;
+    }
   }
 
   private sendMessage(msg: DaemonToServer): void {
+    if (this.ws?.readyState === WebSocket.OPEN) {
+      this.ws.send(JSON.stringify(msg));
+    }
+  }
+
+  /** send a raw JSON message that is not strictly typed as DaemonToServer */
+  private sendRawMessage(msg: Record<string, unknown>): void {
     if (this.ws?.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify(msg));
     }

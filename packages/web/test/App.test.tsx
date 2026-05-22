@@ -777,6 +777,7 @@ vi.mock('../src/api.js', () => ({
   getAgents: vi.fn(async () => []),
   getMachines: vi.fn(async () => []),
   getAgentActivities: vi.fn(async () => []),
+  getApprovals: vi.fn(async () => []),
   patchAgent: vi.fn(),
   deleteAgent: vi.fn(),
   getHubVersion: vi.fn(async () => ({ component: 'hub', version: 'test-version' })),
@@ -798,4 +799,5 @@ vi.mock('../src/api.js', () => ({
   createChannel: vi.fn(),
   deleteChannel: vi.fn(),
   searchMessages: vi.fn(async () => ({ messages: [] })),
+  initSwarm: vi.fn(async () => ({ swarm_id: 'sw_test', status: 'initialized' })),
 }));

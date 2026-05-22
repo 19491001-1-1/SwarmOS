@@ -10,6 +10,7 @@ import { findDuplicateMachineIds, findExistingMachineId, toRuntimeConfig } from 
 import { delegateAgent } from '../delegation.js';
 import { toAgentRuntimeConfig } from '../runtimeConfig.js';
 import { buildOpenTaskSummary, notifyTaskAssignee } from '../taskDelivery.js';
+import { handleDaemonActionUpdate, onLockReleased } from '../actionOrchestrator.js';
 
 const VALID_KEYS = new Set(['dev-machine-key']);
 const VOLATILE_AGENT_STATUSES = new Set(['starting', 'running', 'working', 'idle']);
@@ -212,6 +213,44 @@ export async function daemonSocketHandler(app: FastifyInstance) {
         }
 
         if (msg.type === 'agent:deliver:ack') {
+          return;
+        }
+
+        if (msg.type === 'lock:update') {
+          eventBus.emit({ type: 'lock:update', path: msg.path, state: msg.state, agentId: msg.agentId, since: msg.since });
+          // When a lock is released, retry queued actions waiting for it
+          if (msg.state === 'released') {
+            onLockReleased(msg.path).catch((err) => app.log.warn('lock release retry failed: %s', String(err)));
+          }
+          return;
+        }
+
+        if (msg.type === 'daemon:action:update') {
+          const updateMsg = msg as any;
+          eventBus.emit({ type: 'daemon:action:update', agentId: updateMsg.agentId, action: updateMsg.action });
+
+          // Delegate to action orchestrator for retry/approval handling
+          handleDaemonActionUpdate(updateMsg.agentId, updateMsg.action, machineId!).catch((err) =>
+            app.log.warn('action orchestrator error: %s', String(err)),
+          );
+
+          // Also emit as thought_log for observability
+          const actionStatus = updateMsg.action.status as string;
+          const logSeverity = actionStatus === 'error' || actionStatus === 'timed_out' ? 'error' as const
+            : actionStatus === 'waiting_lock' || actionStatus === 'risk_detected' || actionStatus === 'awaiting_approval' ? 'warn' as const
+            : 'info' as const;
+          eventBus.emit({
+            type: 'thought_log',
+            event: {
+              event_id: `thought:${updateMsg.action.action_id}`,
+              agent_id: updateMsg.agentId,
+              timestamp: updateMsg.action.timestamp ?? new Date().toISOString(),
+              type: 'thought_log',
+              message: `action ${updateMsg.action.action_id} → ${actionStatus}`,
+              detail: { action_id: updateMsg.action.action_id, status: actionStatus, stdout: updateMsg.action.stdout, stderr: updateMsg.action.stderr, error_type: updateMsg.action.error_type },
+              severity: logSeverity,
+            },
+          });
           return;
         }
 

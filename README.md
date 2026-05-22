@@ -2,6 +2,15 @@
 
 A minimal self-hosted agent workspace: web chat + server + local daemon + long-running CLI agents. Supports Claude Code, Codex CLI, and Gemini CLI.
 
+## Repository Layout
+
+This repository is now organized as a single SwarmOS project root.
+
+- Main code: `packages/`, `tools/`, `scripts/`
+- Product and engineering docs: `docs/`
+
+See `docs/guides/project-structure.md` for details.
+
 ## Architecture
 
 ```
@@ -77,12 +86,12 @@ pnpm --filter @crewden/web dev
 
 Push to `main` automatically deploys via GitHub Actions. Required secrets in repo Settings:
 
-| Secret | Purpose |
-|--------|---------|
-| `CLOUDFLARE_API_TOKEN` | Wrangler auth |
-| `CLOUDFLARE_ACCOUNT_ID` | Your account |
-| `DAEMON_API_KEY` | Worker secret for daemon connections |
-| `WEB_AUTH_TOKEN` | Worker secret for browser/REST auth (optional but required for public hub) |
+| Secret                  | Purpose                                                                    |
+| ----------------------- | -------------------------------------------------------------------------- |
+| `CLOUDFLARE_API_TOKEN`  | Wrangler auth                                                              |
+| `CLOUDFLARE_ACCOUNT_ID` | Your account                                                               |
+| `DAEMON_API_KEY`        | Worker secret for daemon connections                                       |
+| `WEB_AUTH_TOKEN`        | Worker secret for browser/REST auth (optional but required for public hub) |
 
 To trigger manually:
 
@@ -91,7 +100,7 @@ gh workflow run deploy-cloudflare-hub.yml
 gh workflow run deploy-cloudflare-pages.yml
 ```
 
-See `docs/cloudflare-central-hub.md` for the full workflow and production notes.
+See `docs/specs/cloudflare-central-hub.md` for the full workflow and production notes.
 
 ## Versioning
 

@@ -1,6 +1,8 @@
+import { useState, useEffect, useCallback } from 'react';
+
 type Locale = 'en' | 'zh';
 
-const dictionaries = {
+const dictionaries: Record<Locale, Record<string, string>> = {
   en: {
     'nav.workspace': 'Workspace',
     'nav.search': 'Search',
@@ -30,6 +32,7 @@ const dictionaries = {
     'presence.offline': 'Offline',
     'presence.you': 'You',
     'agent.autoStartOn': 'Auto-start on',
+    'locale.switch': '中',
   },
   zh: {
     'nav.workspace': '工作区',
@@ -60,15 +63,55 @@ const dictionaries = {
     'presence.offline': '离线',
     'presence.you': '你',
     'agent.autoStartOn': '自动启动已开启',
+    'locale.switch': 'EN',
   },
-} satisfies Record<Locale, Record<string, string>>;
+};
 
-function currentLocale(): Locale {
+const STORAGE_KEY = 'crewden_locale';
+
+function loadLocale(): Locale {
+  try {
+    const stored = localStorage.getItem(STORAGE_KEY);
+    if (stored === 'en' || stored === 'zh') return stored;
+  } catch { /* localStorage unavailable */ }
   return 'en';
 }
 
-export function t(key: keyof typeof dictionaries.en, values: Record<string, string | number> = {}): string {
-  let text = dictionaries[currentLocale()][key] ?? dictionaries.en[key] ?? key;
+let currentLocale: Locale = loadLocale();
+const listeners = new Set<() => void>();
+
+function notify() {
+  listeners.forEach((fn) => fn());
+}
+
+export function getLocale(): Locale {
+  return currentLocale;
+}
+
+export function setLocale(locale: Locale) {
+  if (locale === currentLocale) return;
+  currentLocale = locale;
+  try { localStorage.setItem(STORAGE_KEY, locale); } catch { /* ignore */ }
+  notify();
+}
+
+export function useLocale() {
+  const [locale, setState] = useState<Locale>(currentLocale);
+  useEffect(() => {
+    const handler = () => setState(currentLocale);
+    listeners.add(handler);
+    return () => { listeners.delete(handler); };
+  }, []);
+  const toggle = useCallback(() => {
+    setLocale(currentLocale === 'en' ? 'zh' : 'en');
+  }, []);
+  return { locale, toggle };
+}
+
+type Key = keyof typeof dictionaries.en;
+
+export function t(key: Key, values: Record<string, string | number> = {}): string {
+  let text = dictionaries[currentLocale][key] ?? dictionaries.en[key] ?? key;
   for (const [name, value] of Object.entries(values)) {
     text = text.split(`{${name}}`).join(String(value));
   }

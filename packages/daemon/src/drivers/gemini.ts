@@ -1,7 +1,17 @@
 import type { RuntimeDriver, AgentSpawnContext, RuntimeCommand, AgentOutputEvent } from './types.js';
 import { parseBridgeLine, buildBridgeInstruction, buildDmInstruction, parseDmLine, buildDelegateInstruction, parseDelegateLine, buildTaskInstruction, buildMemoryInstruction, buildCommunicationInstruction, parseCreateTaskLine, parseUpdateTaskLine, buildReminderInstruction, parseReminderLine, parseCancelReminderLine, parseCliActionLine } from '../bridge/simpleToolBridge.js';
 import { mkdir, writeFile } from 'fs/promises';
-import { join } from 'path';
+import { dirname, join, sep } from 'path';
+import { fileURLToPath } from 'url';
+
+function getAgentCliPath(): string {
+  const driverDir = dirname(fileURLToPath(import.meta.url));
+  const srcDir = dirname(driverDir);
+  const packageDir = dirname(srcDir);
+  return driverDir.endsWith(`${sep}drivers`)
+    ? join(packageDir, 'dist', 'agentCli.js')
+    : join(driverDir, 'agentCli.js');
+}
 
 export const geminiDriver: RuntimeDriver = {
   id: 'gemini',
@@ -19,8 +29,9 @@ export const geminiDriver: RuntimeDriver = {
     await writeFile(join(geminiDir, 'settings.json'), JSON.stringify({
       mcpServers: {
         chat: {
-          command: join(ctx.workspaceDir, '.crewden', 'crewden'),
+          command: process.execPath,
           args: [
+            getAgentCliPath(),
             'mcp-bridge',
             '--agent-id', ctx.agentId,
             '--server-url', ctx.serverUrl,

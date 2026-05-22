@@ -9,10 +9,12 @@ import { ThreadPanel } from './components/ThreadPanel.js';
 import { GoalDraftPanel } from './components/GoalDraftPanel.js';
 import { GoalAlignmentPanel } from './components/GoalAlignmentPanel.js';
 import { KnowledgePanel } from './components/KnowledgePanel.js';
+import { ObservabilityPanel } from './components/ObservabilityPanel.js';
+import { SwarmInitPanel } from './components/SwarmInitPanel.js';
 import { MobileTopBar } from './components/MobileTopBar.js';
 import { LoginView } from './components/LoginView.js';
-import type { Channel, Message, MessageThread, Agent, Machine, AgentActivity, VersionInfo, Task, Reminder, SearchMessageResult, GoalBrief, GoalAlignment } from './api.js';
-import { AuthError, WEB_COMMIT_SHA, WEB_VERSION, buildWsUrl, getChannels, getMessages, getMessageThread, sendMessage, getAgents, getMachines, getAgentActivities, getHubVersion, getTasks, messageToTask, startGoalAlignment, getAgentReminders, createChannel, deleteChannel, searchMessages, setAuthFailureHandler, verifyAuthToken } from './api.js';
+import type { Channel, Message, MessageThread, Agent, Machine, AgentActivity, VersionInfo, Task, Reminder, SearchMessageResult, GoalBrief, GoalAlignment, ApprovalRecord, LockEvent } from './api.js';
+import { AuthError, WEB_COMMIT_SHA, WEB_VERSION, buildWsUrl, getChannels, getMessages, getMessageThread, sendMessage, getAgents, getMachines, getAgentActivities, getHubVersion, getTasks, messageToTask, startGoalAlignment, getAgentReminders, createChannel, deleteChannel, searchMessages, setAuthFailureHandler, verifyAuthToken, getApprovals, initSwarm } from './api.js';
 import { clearStoredAuthToken, getEffectiveAuthToken, markSignedOut, setStoredAuthToken } from './auth.js';
 import { notifyBrowser, requestPermission } from './notifications.js';
 
@@ -23,7 +25,7 @@ type StoredPage = {
   selectedView: MainView;
   selectedChannel: string;
   selectedAgentId?: string;
-  rightPanel?: 'agents';
+  rightPanel?: 'agents' | 'observability' | 'swarm';
 };
 
 export function App() {
@@ -41,10 +43,12 @@ export function App() {
   const [hubVersion, setHubVersion] = useState<VersionInfo | undefined>();
   const [activitiesByAgent, setActivitiesByAgent] = useState<Record<string, AgentActivity[]>>({});
   const [remindersByAgent, setRemindersByAgent] = useState<Record<string, Reminder[]>>({});
+  const [approvals, setApprovals] = useState<ApprovalRecord[]>([]);
+  const [lockEvents, setLockEvents] = useState<LockEvent[]>([]);
   const [selectedView, setSelectedView] = useState<MainView>(initialPage.selectedView);
   const [selectedChannel, setSelectedChannel] = useState(initialPage.selectedChannel);
   const [selectedAgentId, setSelectedAgentId] = useState<string | undefined>(initialPage.selectedAgentId);
-  const [rightPanel, setRightPanel] = useState<'agents' | undefined>(initialPage.rightPanel);
+  const [rightPanel, setRightPanel] = useState<'agents' | 'observability' | 'swarm' | undefined>(initialPage.rightPanel);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [thread, setThread] = useState<MessageThread | undefined>();
   const [goalDraft, setGoalDraft] = useState<GoalBrief | undefined>();
@@ -66,6 +70,7 @@ export function App() {
     setHubVersion(undefined);
     setActivitiesByAgent({});
     setRemindersByAgent({});
+    setApprovals([]);
     setSelectedView('channel');
     setSelectedChannel('general');
     setSelectedAgentId(undefined);
@@ -155,6 +160,11 @@ export function App() {
     setTasks(data);
   }, []);
 
+  const loadApprovals = useCallback(async () => {
+    const data = await getApprovals();
+    setApprovals(data);
+  }, []);
+
   const upsertMessage = useCallback((message: Message) => {
     setMessagesByChannel((prev) => {
       const current = prev[message.channelId] ?? [];
@@ -184,9 +194,10 @@ export function App() {
     loadAgents();
     loadMachines();
     loadTasks();
+    loadApprovals();
     getHubVersion().then(setHubVersion).catch(() => undefined);
     requestPermission().catch(() => undefined);
-  }, [isAuthenticated, loadAgents, loadChannels, loadMachines, loadTasks]);
+  }, [isAuthenticated, loadAgents, loadApprovals, loadChannels, loadMachines, loadTasks]);
 
   useEffect(() => {
     if (!isAuthenticated) return;
@@ -247,6 +258,7 @@ export function App() {
       loadAgents();
       loadMachines();
       loadTasks();
+      loadApprovals();
       loadMessages(selectedChannelRef.current);
     };
 
@@ -314,6 +326,13 @@ export function App() {
             if (current.some((activity) => activity.id === msg.activity.id)) return prev;
             return { ...prev, [msg.agentId]: [msg.activity, ...current].slice(0, 200) };
           });
+        } else if (msg.type === 'approval:requested' || msg.type === 'approval:resolved') {
+          setApprovals((prev) => {
+            const current = msg.approval;
+            return prev.some((approval) => approval.id === current.id)
+              ? prev.map((approval) => (approval.id === current.id ? current : approval))
+              : [current, ...prev];
+          });
         } else if (msg.type === 'machine:update') {
           setMachines((prev) => {
             const exists = prev.find((m) => m.id === msg.machine.id);
@@ -355,6 +374,51 @@ export function App() {
                 : [...current, msg.reminder],
             };
           });
+        } else if (msg.type === 'lock:update') {
+          setLockEvents((prev) => [{ type: msg.state, path: msg.path, agentId: msg.agentId, since: msg.since }, ...prev].slice(0, 50));
+        } else if (msg.type === 'thought_log') {
+          // thought_log events are displayed via activity system
+          // Add them as virtual activities for the observability panel
+          setActivitiesByAgent((prev) => {
+            const agentId = msg.event.agent_id ?? 'unknown';
+            const current = prev[agentId] ?? [];
+            const virtualActivity = {
+              id: msg.event.event_id,
+              agentId,
+              type: (msg.event.severity === 'error' ? 'error' : msg.event.severity === 'warn' ? 'working' : 'thinking') as any,
+              detail: msg.event.message,
+              createdAt: msg.event.timestamp ?? new Date().toISOString(),
+            };
+            if (current.some((a) => a.id === virtualActivity.id)) return prev;
+            return { ...prev, [agentId]: [virtualActivity, ...current].slice(0, 200) };
+          });
+        } else if (msg.type === 'daemon:action:update') {
+          // Add action update as activity for the agent
+          setActivitiesByAgent((prev) => {
+            const agentId = msg.agentId;
+            const current = prev[agentId] ?? [];
+            const status = msg.action.status;
+            const activityType = status === 'success' ? 'output'
+              : status === 'error' || status === 'timed_out' ? 'error'
+              : status === 'waiting_lock' || status === 'risk_detected' || status === 'awaiting_approval' ? 'working'
+              : 'thinking';
+            const virtualActivity = {
+              id: `action:${msg.action.action_id}:${status}`,
+              agentId,
+              type: activityType as any,
+              detail: `action ${msg.action.action_id} → ${status}${msg.action.stdout ? ': ' + msg.action.stdout.slice(0, 120) : ''}`,
+              createdAt: msg.action.timestamp ?? new Date().toISOString(),
+            };
+            if (current.some((a) => a.id === virtualActivity.id)) return prev;
+            return { ...prev, [agentId]: [virtualActivity, ...current].slice(0, 200) };
+          });
+          // Also update lock events if this is a lock-related status
+          if (msg.action.status === 'waiting_lock') {
+            setLockEvents((prev) => [{ type: 'locked' as const, path: msg.action.lock_owner ?? 'unknown', agentId: msg.agentId, since: msg.action.timestamp }, ...prev].slice(0, 50));
+          }
+          if (msg.action.status === 'success' || msg.action.status === 'error' || msg.action.status === 'timed_out') {
+            setLockEvents((prev) => [{ type: 'released' as const, path: msg.agentId, agentId: msg.agentId, since: msg.action.timestamp }, ...prev].slice(0, 50));
+          }
         }
       };
 
@@ -515,7 +579,7 @@ export function App() {
   };
 
   return (
-    <div className="app-shell" style={{ display: 'flex', height: '100vh', fontFamily: "'Courier New', monospace", background: '#fafaf5' }}>
+    <div className="app-shell app-shell-root">
       <MobileTopBar
         title={currentTitle}
         subtitle={thread ? 'Thread' : selectedView === 'tasks' ? `${tasks.filter((task) => task.status !== 'done').length} open` : selectedView === 'knowledge' ? 'Memory layer' : 'Workspace'}
@@ -557,7 +621,7 @@ export function App() {
         onNavigate={() => setSidebarOpen(false)}
         onSignOut={handleSignOut}
       />
-      <div className="main-pane" style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, minHeight: 0 }}>
+      <div className="main-pane app-main-pane">
         {selectedView === 'tasks' ? (
           <TaskBoard
             tasks={tasks}
@@ -649,15 +713,52 @@ export function App() {
         />
       ) : rightPanel === 'agents' ? (
         <AgentPanel agents={agents} machines={machines} onAgentsChange={loadAgents} onClose={() => setRightPanel(undefined)} />
+      ) : rightPanel === 'observability' ? (
+        <ObservabilityPanel
+          agents={agents}
+          activitiesByAgent={activitiesByAgent}
+          approvals={approvals}
+          lockEvents={lockEvents}
+          onApprovalsUpdated={setApprovals}
+          onOpenAgent={handleOpenAgent}
+          onClose={() => setRightPanel(undefined)}
+        />
+      ) : rightPanel === 'swarm' ? (
+        <SwarmInitPanel
+          agents={agents}
+          onSwarmInit={async (channelId, agentList) => {
+            const result = await initSwarm(channelId, agentList);
+            return result;
+          }}
+          onClose={() => setRightPanel(undefined)}
+        />
       ) : (
-        <button
-          className="right-rail-trigger"
-          onClick={() => setRightPanel('agents')}
-          title="Open agents"
-          aria-label="Open agents"
-        >
-          AGENTS
-        </button>
+        <div className="right-rail-trigger-group">
+          <button
+            onClick={() => setRightPanel('agents')}
+            title="Open agents"
+            aria-label="Open agents"
+            className="right-rail-trigger-button"
+          >
+            AGENTS
+          </button>
+          <button
+            onClick={() => setRightPanel('observability')}
+            title="Open observability"
+            aria-label="Open observability"
+            className="right-rail-trigger-button right-rail-trigger-button-observability"
+          >
+            OBSERVE
+          </button>
+          <button
+            onClick={() => setRightPanel('swarm')}
+            title="Initialize a swarm"
+            aria-label="Initialize a swarm"
+            className="right-rail-trigger-button right-rail-trigger-button-swarm"
+          >
+            SWARM INIT
+          </button>
+        </div>
       )}
       {searchOpen ? (
         <SearchOverlay
@@ -694,15 +795,15 @@ function SearchOverlay({ onClose, onSelect }: { onClose: () => void; onSelect: (
   }, [query]);
 
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.35)', display: 'grid', placeItems: 'start center', paddingTop: 80, zIndex: 10 }}>
-      <div style={{ width: 'min(720px, calc(100vw - 32px))', maxHeight: 'calc(100vh - 120px)', overflow: 'auto', background: '#fafaf5', border: '3px solid #000', fontFamily: "'Courier New', monospace" }}>
-        <input autoFocus value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search messages" style={{ width: '100%', boxSizing: 'border-box', border: 'none', borderBottom: '3px solid #000', padding: 14, fontSize: 18, fontFamily: "'Courier New', monospace", fontWeight: 700 }} />
-        <div style={{ padding: 10, display: 'grid', gap: 8 }}>
-          {results.length === 0 ? <div style={{ border: '2px dashed #999', padding: 18, textAlign: 'center', fontSize: 12 }}>[ NO RESULTS ]</div> : null}
+    <div className="search-overlay">
+      <div className="search-modal">
+        <input autoFocus value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search messages" className="search-input" />
+        <div className="search-results">
+          {results.length === 0 ? <div className="search-empty">[ NO RESULTS ]</div> : null}
           {results.map((result) => (
-            <button key={result.id} onClick={() => onSelect(result)} style={{ border: '2px solid #000', background: '#fff', padding: 10, textAlign: 'left', fontFamily: "'Courier New', monospace", cursor: 'pointer' }}>
-              <div style={{ fontSize: 11, fontWeight: 700, marginBottom: 6 }}>#{result.channelName} / {new Date(result.createdAt).toLocaleString()}</div>
-              <div style={{ fontSize: 13, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{highlightText(result.content, query)}</div>
+            <button key={result.id} onClick={() => onSelect(result)} className="search-result-item">
+              <div className="search-result-meta">#{result.channelName} / {new Date(result.createdAt).toLocaleString()}</div>
+              <div className="search-result-content">{highlightText(result.content, query)}</div>
             </button>
           ))}
         </div>
@@ -719,7 +820,7 @@ function highlightText(text: string, query: string) {
   return (
     <>
       {text.slice(0, index)}
-      <mark style={{ background: '#FFD700', color: '#000' }}>{text.slice(index, index + trimmed.length)}</mark>
+      <mark className="search-highlight">{text.slice(index, index + trimmed.length)}</mark>
       {text.slice(index + trimmed.length)}
     </>
   );
@@ -739,6 +840,7 @@ function readLastPage(): StoredPage {
   if (stored === '/tasks') return { ...fallback, selectedView: 'tasks' };
   if (stored === '/knowledge') return { ...fallback, selectedView: 'knowledge' };
   if (stored === '/agents') return { ...fallback, rightPanel: 'agents' };
+  if (stored === '/observability') return { ...fallback, rightPanel: 'observability' };
 
   const channel = stored.match(/^\/channels\/([^/]+)$/);
   if (channel?.[1]) {
@@ -759,6 +861,7 @@ function writeLastPage(page: StoredPage) {
 
 function pageToPath({ selectedView, selectedChannel, selectedAgentId, rightPanel }: StoredPage) {
   if (rightPanel === 'agents') return '/agents';
+  if (rightPanel === 'observability') return '/observability';
   if (selectedAgentId) return `/agents/${encodeURIComponent(selectedAgentId)}`;
   if (selectedView === 'tasks') return '/tasks';
   if (selectedView === 'knowledge') return '/knowledge';

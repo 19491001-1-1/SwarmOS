@@ -70,14 +70,21 @@ export async function ensureNotes(root: string): Promise<string> {
 export async function safeResolveAgentPath(agentId: string, relPath: string, baseDir?: string): Promise<string> {
   const root = getAgentWorkspaceRoot(agentId, baseDir);
   const safePath = normalize(relPath || '.');
-  if (isAbsolute(relPath) || safePath === '..' || safePath.startsWith(`..${sep}`) || safePath.includes(`${sep}..${sep}`)) {
+  const isAbs = isAbsolute(relPath);
+  const isDotDot = safePath === '..';
+  const startsWithDotDot = safePath.startsWith(`..${sep}`);
+  const includesDotDot = safePath.includes(`${sep}..${sep}`);
+  
+  if (isAbs || isDotDot || startsWithDotDot || includesDotDot) {
     throw Object.assign(new Error('Path traversal is not allowed'), { status: 403 });
   }
 
-  const rootReal = await realpath(root);
-  const candidate = resolve(rootReal, safePath);
+    const rootReal = await realpath(root);
+    const rootRealResolved = resolve(rootReal);
+    const candidate = resolve(rootRealResolved, safePath);
   const parentReal = await realpathParent(candidate, rootReal);
-  if (parentReal !== rootReal && !parentReal.startsWith(`${rootReal}${sep}`)) {
+  
+    if (parentReal !== rootRealResolved && !parentReal.startsWith(`${rootRealResolved}${sep}`)) {
     throw Object.assign(new Error('Path traversal is not allowed'), { status: 403 });
   }
 
@@ -122,6 +129,7 @@ export async function readAgentWorkspace(agentId: string, relPath: string, baseD
     const content = buffer.subarray(0, MAX_WORKSPACE_TEXT_BYTES).toString('utf8');
     return { type: 'file', path, content, truncated };
   } catch (err) {
+    console.error('[test-debug] readAgentWorkspace error:', err);
     const code = (err as { code?: string }).code;
     const status = (err as { status?: number }).status;
     if (status) return { type: 'error', error: err instanceof Error ? err.message : 'Workspace read failed', status };

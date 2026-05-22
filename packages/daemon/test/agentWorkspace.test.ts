@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { mkdtemp, readFile, symlink, writeFile } from 'fs/promises';
-import { join } from 'path';
+import { join, normalize } from 'path';
 import { tmpdir } from 'os';
 import {
   ensureAgentWorkspace,
@@ -32,7 +32,7 @@ describe('agent workspace', () => {
     const previous = process.env.CREWDEN_AGENTS_DIR;
     process.env.CREWDEN_AGENTS_DIR = '/tmp/custom-crewden-agents';
     try {
-      expect(getAgentWorkspaceRoot('agent-1')).toBe('/tmp/custom-crewden-agents/agent-1');
+      expect(getAgentWorkspaceRoot('agent-1')).toBe(normalize('/tmp/custom-crewden-agents/agent-1'));
     } finally {
       if (previous === undefined) delete process.env.CREWDEN_AGENTS_DIR;
       else process.env.CREWDEN_AGENTS_DIR = previous;
@@ -48,7 +48,11 @@ describe('agent workspace', () => {
 
     const outside = await tempRoot();
     await writeFile(join(outside, 'secret.txt'), 'secret');
-    await symlink(outside, join(info.root, 'outside-link'));
+    if (process.platform === 'win32') {
+      await symlink(outside, join(info.root, 'outside-link'), 'junction');
+    } else {
+      await symlink(outside, join(info.root, 'outside-link'));
+    }
     await expect(safeResolveAgentPath('agent-1', 'outside-link/secret.txt', root)).rejects.toThrow('Path traversal');
   });
 

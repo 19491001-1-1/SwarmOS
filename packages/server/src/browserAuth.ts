@@ -1,11 +1,20 @@
 import type { FastifyReply, FastifyRequest } from 'fastify';
 
+const DEV_BROWSER_AUTH_TOKEN = '2026';
+
+function getExpectedBrowserAuthToken(): string {
+  const configured = process.env.WEB_AUTH_TOKEN?.trim();
+  if (configured) return configured;
+  if (process.env.NODE_ENV === 'production' || process.env.NODE_ENV === 'test') return '';
+  return DEV_BROWSER_AUTH_TOKEN;
+}
+
 export function browserAuthConfigured(): boolean {
-  return !!process.env.WEB_AUTH_TOKEN?.trim();
+  return !!getExpectedBrowserAuthToken();
 }
 
 export function validateBrowserToken(token: string | undefined): boolean {
-  const expected = process.env.WEB_AUTH_TOKEN?.trim();
+  const expected = getExpectedBrowserAuthToken();
   if (!expected) return true;
   if (!token?.trim()) return false;
   return timingSafeEqualStr(token.trim(), expected);

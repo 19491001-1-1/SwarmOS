@@ -1,7 +1,8 @@
 const STORAGE_KEY = 'crewden.webAuthToken';
 const SIGNED_OUT_KEY = 'crewden.webAuthSignedOut';
+const DEV_WEB_AUTH_TOKEN = '2026';
 
-export const BUILT_IN_WEB_AUTH_TOKEN = (import.meta.env.VITE_WEB_AUTH_TOKEN ?? '').trim();
+export const BUILT_IN_WEB_AUTH_TOKEN = (import.meta.env.VITE_WEB_AUTH_TOKEN ?? (import.meta.env.DEV ? DEV_WEB_AUTH_TOKEN : '')).trim();
 
 export function getStoredAuthToken(): string {
   if (typeof window === 'undefined') return '';

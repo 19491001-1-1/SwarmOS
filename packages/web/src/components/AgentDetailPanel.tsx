@@ -91,6 +91,9 @@ function Profile({ agent, machines, tasks, onAgentUpdated, onAgentDeleted }: {
   const [model, setModel] = useState(agent.model ?? '');
   const [systemPrompt, setSystemPrompt] = useState(agent.systemPrompt ?? '');
   const [envVarsText, setEnvVarsText] = useState(formatEnvVars(agent.envVars));
+  const [workingStyle, setWorkingStyle] = useState(agent.organization?.workingStyle ?? '');
+  const [handoffPreference, setHandoffPreference] = useState(agent.organization?.handoffPreference ?? '');
+  const [examplesText, setExamplesText] = useState((agent.organization?.examples ?? []).join('\n'));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | undefined>();
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -104,6 +107,9 @@ function Profile({ agent, machines, tasks, onAgentUpdated, onAgentDeleted }: {
     setModel(agent.model ?? '');
     setSystemPrompt(agent.systemPrompt ?? '');
     setEnvVarsText(formatEnvVars(agent.envVars));
+    setWorkingStyle(agent.organization?.workingStyle ?? '');
+    setHandoffPreference(agent.organization?.handoffPreference ?? '');
+    setExamplesText((agent.organization?.examples ?? []).join('\n'));
     setError(undefined);
     setDeleteError(undefined);
     setDeleteOpen(false);
@@ -120,6 +126,12 @@ function Profile({ agent, machines, tasks, onAgentUpdated, onAgentDeleted }: {
         model: model.trim() || undefined,
         systemPrompt: systemPrompt.trim() || undefined,
         envVars: parseEnvVars(envVarsText),
+        organization: {
+          ...(agent.organization ?? {}),
+          workingStyle: workingStyle.trim() || undefined,
+          handoffPreference: handoffPreference.trim() || undefined,
+          examples: examplesText.split(/\r?\n|,/).map((s: string) => s.trim()).filter(Boolean),
+        },
       });
       onAgentUpdated(updated);
     } catch (err) {
@@ -166,6 +178,9 @@ function Profile({ agent, machines, tasks, onAgentUpdated, onAgentDeleted }: {
       <Field label="DESCRIPTION" value={description} onChange={setDescription} multiline />
       <Field label="MODEL" value={model} onChange={setModel} />
       <Field label="SYSTEM" value={systemPrompt} onChange={setSystemPrompt} multiline />
+      <Field label="WORKING STYLE" value={workingStyle} onChange={setWorkingStyle} />
+      <Field label="HANDOFF PREFERENCE" value={handoffPreference} onChange={setHandoffPreference} />
+      <Field label="EXAMPLES" value={examplesText} onChange={setExamplesText} multiline />
       <Field label="ENV" value={envVarsText} onChange={setEnvVarsText} multiline />
       <ReadonlyRows rows={[
         ['MACHINE', machineLabel],

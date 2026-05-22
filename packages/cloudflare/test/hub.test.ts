@@ -1,8 +1,35 @@
-import { describe, it, expect } from 'vitest';
+import { afterEach, describe, it, expect } from 'vitest';
 import { SELF } from 'cloudflare:test';
 
 const WEB_TOKEN = 'test-web-token';
 const DAEMON_KEY = 'test-daemon-key';
+
+const openSockets = new Set<WebSocket>();
+
+function trackSocket<T extends WebSocket>(ws: T): T {
+  openSockets.add(ws);
+  ws.addEventListener('close', () => openSockets.delete(ws), { once: true });
+  return ws;
+}
+
+async function closeTrackedSockets(): Promise<void> {
+  const sockets = Array.from(openSockets);
+  openSockets.clear();
+  for (const ws of sockets) {
+    if (ws.readyState !== WebSocket.CLOSED) {
+      try {
+        ws.close();
+      } catch {
+        // ignore close errors during cleanup
+      }
+    }
+  }
+}
+
+afterEach(async () => {
+  await closeTrackedSockets();
+  await new Promise((resolve) => setTimeout(resolve, 50));
+});
 
 function authHeaders(extra?: Record<string, string>): Record<string, string> {
   return { Authorization: `Bearer ${WEB_TOKEN}`, ...(extra ?? {}) };
@@ -17,7 +44,7 @@ async function connectDaemon(): Promise<WebSocket> {
   expect(ws).toBeTruthy();
   if (!ws) throw new Error('missing websocket');
   ws.accept();
-  return ws;
+  return trackSocket(ws);
 }
 
 function waitForMessage(ws: WebSocket, type: string): Promise<any> {
@@ -728,6 +755,7 @@ describe('input validation', () => {
     expect(ws).toBeTruthy();
     if (!ws) return;
     ws.accept();
+    trackSocket(ws);
     ws.send(JSON.stringify({
       type: 'ready',
       machineId: 'delegate-machine',
@@ -876,6 +904,7 @@ describe('daemon connection', () => {
     expect(ws).toBeTruthy();
     if (!ws) return;
     ws.accept();
+    trackSocket(ws);
 
     ws.send(
       JSON.stringify({
@@ -914,7 +943,10 @@ describe('browser websocket auth', () => {
       headers: { Upgrade: 'websocket' },
     });
     expect(res.status).toBe(101);
-    res.webSocket?.accept();
-    res.webSocket?.close();
+    if (res.webSocket) {
+      res.webSocket.accept();
+      trackSocket(res.webSocket);
+      res.webSocket.close();
+    }
   });
 });

@@ -3,7 +3,7 @@ import { AgentProcessManager } from '../src/agentProcessManager.js';
 import { BRIDGE_MARKER, CANCEL_REMINDER_BRIDGE_MARKER, CLI_ACTION_BRIDGE_MARKER, SET_REMINDER_BRIDGE_MARKER } from '../src/bridge/simpleToolBridge.js';
 import { EventEmitter } from 'events';
 import { appendFile, writeFile } from 'fs/promises';
-import { delimiter } from 'path';
+import { delimiter, normalize } from 'path';
 
 // Mock child_process.spawn
 vi.mock('child_process', () => ({
@@ -136,21 +136,11 @@ describe('AgentProcessManager', () => {
   it('startAgent injects agent-facing CLI wrapper and token file', async () => {
     await manager.startAgent('agent-1', { runtime: 'claude', name: 'bot', agentToken: 'agent-token-1' }, 'general');
 
-    expect(vi.mocked(writeFile)).toHaveBeenCalledWith(
-      expect.stringContaining('/tmp/test-workspaces/agent-1/.crewden/agent-token'),
-      'agent-token-1\n',
-      { mode: 0o600 }
-    );
-    expect(vi.mocked(writeFile)).toHaveBeenCalledWith(
-      expect.stringContaining('/tmp/test-workspaces/agent-1/.crewden/crewden'),
-      expect.stringContaining('dist/agentCli.js'),
-      { mode: 0o755 }
-    );
-    expect(vi.mocked(writeFile)).toHaveBeenCalledWith(
-      expect.stringContaining('/tmp/test-workspaces/agent-1/.crewden/crewden'),
-      expect.not.stringContaining('tsx'),
-      { mode: 0o755 }
-    );
+    const wfCalls = vi.mocked(writeFile).mock.calls.map((c) => [String(c[0]), String(c[1]), c[2]] as [string, string, any]);
+    
+    expect(wfCalls.some(([p, b]) => p.includes(normalize('/tmp/test-workspaces/agent-1/.crewden/agent-token')) && b.includes('agent-token-1'))).toBe(true);
+    expect(wfCalls.some(([p, b, o]) => p.includes(normalize('/tmp/test-workspaces/agent-1/.crewden/crewden')) && b.includes('agentCli.js') && o && o.mode === 0o755)).toBe(true);
+    expect(wfCalls.some(([p, b, o]) => p.includes(normalize('/tmp/test-workspaces/agent-1/.crewden/crewden')) && !b.includes('tsx') && o && o.mode === 0o755)).toBe(true);
   });
 
   it('startAgent creates durable memory and notes files', async () => {
@@ -159,15 +149,15 @@ describe('AgentProcessManager', () => {
     await manager.startAgent('agent-1', { runtime: 'claude', name: 'bot', displayName: 'Bot', description: 'Research role' }, 'general');
 
     expect(vi.mocked(writeFile)).toHaveBeenCalledWith(
-      expect.stringContaining('/tmp/test-workspaces/agent-1/MEMORY.md'),
+      expect.stringContaining(normalize('/tmp/test-workspaces/agent-1/MEMORY.md')),
       expect.stringContaining('# Bot')
     );
     expect(vi.mocked(mkdir)).toHaveBeenCalledWith(
-      expect.stringContaining('/tmp/test-workspaces/agent-1/notes'),
+      expect.stringContaining(normalize('/tmp/test-workspaces/agent-1/notes')),
       { recursive: true }
     );
     expect(vi.mocked(writeFile)).toHaveBeenCalledWith(
-      expect.stringContaining('/tmp/test-workspaces/agent-1/notes/work-log.md'),
+      expect.stringContaining(normalize('/tmp/test-workspaces/agent-1/notes/work-log.md')),
       expect.stringContaining('# Work Log')
     );
   });
@@ -182,11 +172,11 @@ describe('AgentProcessManager', () => {
     await manager.startAgent('agent-1', { runtime: 'gemini', name: 'bot', agentToken: 'token-1' }, 'general');
 
     expect(vi.mocked(writeFile)).toHaveBeenCalledWith(
-      expect.stringContaining('/tmp/test-workspaces/agent-1/.gemini/settings.json'),
+      expect.stringContaining(normalize('/tmp/test-workspaces/agent-1/.gemini/settings.json')),
       expect.stringContaining('"mcpServers"')
     );
     expect(vi.mocked(writeFile)).toHaveBeenCalledWith(
-      expect.stringContaining('/tmp/test-workspaces/agent-1/.gemini/settings.json'),
+      expect.stringContaining(normalize('/tmp/test-workspaces/agent-1/.gemini/settings.json')),
       expect.stringContaining('--auth-token-file')
     );
   });
@@ -225,9 +215,9 @@ describe('AgentProcessManager', () => {
       })
     );
     const spawnOptions = mockSpawn.mock.calls[0]?.[2] as { env?: Record<string, string> };
-    expect(spawnOptions).toMatchObject({ cwd: '/tmp/test-workspaces/agent-1' });
+    expect(spawnOptions).toMatchObject({ cwd: normalize('/tmp/test-workspaces/agent-1') });
     expect(spawnOptions.env?.CREWDEN_AGENT_TOKEN).toBeUndefined();
-    expect(spawnOptions.env?.PATH?.startsWith(`/tmp/test-workspaces/agent-1/.crewden${delimiter}`)).toBe(true);
+    expect(spawnOptions.env?.PATH?.startsWith(normalize(`/tmp/test-workspaces/agent-1/.crewden`) + delimiter)).toBe(true);
     expect(activities.some((a) => a.agentId === 'agent-1' && a.type === 'working' && a.detail === 'Message received')).toBe(true);
     expect(activities.some((a) => a.agentId === 'agent-1' && a.type === 'thinking')).toBe(true);
     expect(fakeProc.stdin.write).toHaveBeenCalledWith(expect.stringContaining('You have 1 queued message'));

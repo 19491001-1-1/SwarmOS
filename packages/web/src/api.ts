@@ -9,9 +9,10 @@ export type Mention = { type: 'agent' | 'user'; id: string; label: string };
 export type Message = { id: string; channelId: string; senderName: string; content: string; agentId?: string; threadRootId?: string; replyCount?: number; latestReplyAt?: string; mentions?: Mention[]; createdAt: string };
 export type MessageThread = { root: Message; replies: Message[] };
 export type SearchMessageResult = Message & { channelName: string };
-export type AgentOrganization = { department?: string; roles?: string[]; capabilities?: string[]; responsibilities?: string[]; managerId?: string; backupAgentIds?: string[]; availability?: 'available' | 'unavailable' | 'overloaded' };
+export type AgentOrganization = { department?: string; roles?: string[]; capabilities?: string[]; responsibilities?: string[]; workingStyle?: string; handoffPreference?: string; examples?: string[]; managerId?: string; backupAgentIds?: string[]; availability?: 'available' | 'unavailable' | 'overloaded' };
 export type Agent = { id: string; name: string; displayName?: string; description?: string; runtime: string; model?: string; systemPrompt?: string; envVars?: Record<string, string>; organization?: AgentOrganization; status: string; machineId?: string; autoStart?: boolean; createdAt: string };
 export type AgentActivity = { id: string; agentId: string; type: 'thinking' | 'working' | 'output' | 'idle' | 'sending' | 'error'; detail?: string; createdAt: string };
+export type ApprovalRecord = { id: string; actionId?: string; swarmId?: string; agentId?: string; reason?: string; riskLevel?: 'low' | 'medium' | 'high'; status: 'pending' | 'approved' | 'rejected'; reviewer?: string; comment?: string; createdAt: string; decidedAt?: string };
 export type DirectMessage = { id: string; fromAgentId: string; toAgentId: string; content: string; createdAt: string };
 export type DirectMessageThread = { otherAgentId: string; lastMessage: DirectMessage };
 export type WorkspaceFile = { name: string; type: 'file' | 'dir'; size?: number; modifiedAt?: string };
@@ -40,6 +41,7 @@ export type KnowledgeKind = 'decision' | 'project_archive' | 'user_preference' |
 export type KnowledgeStatus = 'active' | 'stale' | 'conflict' | 'archived';
 export type KnowledgeEntry = { id: string; kind: KnowledgeKind; title: string; summary: string; body: string; tags: string[]; sourceRefs: string[]; ownerAgentId?: string; reviewerAgentId?: string; status: KnowledgeStatus; createdAt: string; updatedAt: string };
 export type KnowledgeSearchResult = { entry: KnowledgeEntry; score?: number; reason?: string };
+export type LockEvent = { type: 'locked' | 'released'; path: string; agentId: string; since?: string };
 
 export class AuthError extends Error {
   constructor(message = 'Unauthorized') {
@@ -153,6 +155,31 @@ export async function getAgents(): Promise<Agent[]> {
 
 export async function getAgentActivities(agentId: string): Promise<AgentActivity[]> {
   const r = await apiFetch(`${API_BASE}/api/agents/${agentId}/activities`, { headers: authHeaders() });
+  return r.json();
+}
+
+export async function getApprovals(): Promise<ApprovalRecord[]> {
+  const r = await apiFetch(`${API_BASE}/api/v1/approvals`, { headers: authHeaders() });
+  return r.json();
+}
+
+export async function initSwarm(channelId: string, agents: Array<{ agent_id: string; role?: string; allowed_tools?: string[] }>): Promise<{ swarm_id: string; status: string }> {
+  const r = await apiFetch(`${API_BASE}/api/v1/swarm/init`, {
+    method: 'POST',
+    headers: authHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ protocol_version: 'v1.0.0', channel_id: channelId, agents }),
+  });
+  if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error ?? 'Swarm init failed');
+  return r.json();
+}
+
+export async function decideApproval(approvalId: string, approved: boolean, reviewer?: string, comment?: string): Promise<ApprovalRecord> {
+  const r = await apiFetch(`${API_BASE}/api/v1/approvals/${encodeURIComponent(approvalId)}/decision`, {
+    method: 'POST',
+    headers: authHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ approved, reviewer, comment }),
+  });
+  if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error ?? 'Approval decision failed');
   return r.json();
 }
 

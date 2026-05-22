@@ -5,9 +5,9 @@ import { nanoid } from 'nanoid';
 import { drizzle, type LibSQLDatabase } from 'drizzle-orm/libsql';
 import { createClient, type Client } from '@libsql/client';
 import { asc, desc, eq, inArray, or } from 'drizzle-orm';
-import type { Channel, Message, MessageThread, Machine, Agent, RuntimeId, AgentStatus, AgentActivity, DirectMessage, DirectMessageThread, AgentDelegation, AgentTokenInfo, Task, TaskStatus, GoalBrief, GoalBriefStatus, GoalAlignment, GoalAlignmentStatus, Reminder, ReminderStatus, SearchMessageResult, KnowledgeEntry, KnowledgeKind, KnowledgeSearchResult, KnowledgeStatus } from '@crewden/shared';
+import type { Channel, Message, MessageThread, Machine, Agent, RuntimeId, AgentStatus, AgentActivity, DirectMessage, DirectMessageThread, AgentDelegation, AgentTokenInfo, Task, TaskStatus, GoalBrief, GoalBriefStatus, GoalAlignment, GoalAlignmentStatus, Reminder, ReminderStatus, SearchMessageResult, KnowledgeEntry, KnowledgeKind, KnowledgeSearchResult, KnowledgeStatus, ApprovalRecord } from '@crewden/shared';
 import { resolveAgentReference } from '@crewden/hub-core';
-import { activities, agentDelegations, agentTokens, agents, auditLogs, channels, directMessages, goalAlignments, goals, knowledgeEntries, machines, messages, reminders, tasks } from './schema.js';
+import { activities, agentDelegations, agentTokens, approvals, agents, auditLogs, channels, directMessages, goalAlignments, goals, knowledgeEntries, machines, messages, reminders, tasks } from './schema.js';
 
 type Database = LibSQLDatabase<typeof import('./schema.js')>;
 
@@ -47,7 +47,7 @@ async function ensureDbDirectory(path: string): Promise<void> {
 function createDatabase(): Database {
   const path = getDbPath();
   client = createClient({ url: getDbUrl(path) });
-  db = drizzle(client, { schema: { activities, agentDelegations, agentTokens, agents, auditLogs, channels, directMessages, goalAlignments, goals, knowledgeEntries, machines, messages, reminders, tasks } });
+  db = drizzle(client, { schema: { activities, agentDelegations, agentTokens, approvals, agents, auditLogs, channels, directMessages, goalAlignments, goals, knowledgeEntries, machines, messages, reminders, tasks } });
   return db;
 }
 
@@ -257,6 +257,31 @@ export async function initDb(): Promise<void> {
         runtime_versions TEXT NOT NULL,
         status TEXT NOT NULL,
         connected_at TEXT NOT NULL
+      )
+    `);
+
+    await database.run(`
+      CREATE TABLE IF NOT EXISTS swarms (
+        id TEXT PRIMARY KEY,
+        channel_id TEXT NOT NULL,
+        agents_json TEXT NOT NULL,
+        created_at TEXT NOT NULL
+      )
+    `);
+
+    await database.run(`
+      CREATE TABLE IF NOT EXISTS approvals (
+        id TEXT PRIMARY KEY,
+        action_id TEXT,
+        swarm_id TEXT,
+        agent_id TEXT,
+        reason TEXT,
+        risk_level TEXT,
+        status TEXT NOT NULL,
+        reviewer TEXT,
+        comment TEXT,
+        created_at TEXT NOT NULL,
+        decided_at TEXT
       )
     `);
 
@@ -636,6 +661,86 @@ export class SqliteStore {
       error: created.error ?? null,
     });
     return created;
+  }
+
+  async createApproval(approval: { id: string; actionId?: string; swarmId?: string; agentId?: string; reason?: string; riskLevel?: ApprovalRecord['riskLevel']; status: ApprovalRecord['status']; createdAt: string; reviewer?: string | null; comment?: string | null; decidedAt?: string | null }): Promise<ApprovalRecord> {
+    await initDb();
+    await getDb().insert(approvals).values({
+      id: approval.id,
+      actionId: approval.actionId ?? null,
+      swarmId: approval.swarmId ?? null,
+      agentId: approval.agentId ?? null,
+      reason: approval.reason ?? null,
+      riskLevel: approval.riskLevel ?? null,
+      status: approval.status,
+      reviewer: approval.reviewer ?? null,
+      comment: approval.comment ?? null,
+      createdAt: approval.createdAt,
+      decidedAt: approval.decidedAt ?? null,
+    });
+    return {
+      id: approval.id,
+      actionId: approval.actionId ?? undefined,
+      swarmId: approval.swarmId ?? undefined,
+      agentId: approval.agentId ?? undefined,
+      reason: approval.reason ?? undefined,
+      riskLevel: approval.riskLevel ?? undefined,
+      status: approval.status,
+      reviewer: approval.reviewer ?? undefined,
+      comment: approval.comment ?? undefined,
+      createdAt: approval.createdAt,
+      decidedAt: approval.decidedAt ?? undefined,
+    };
+  }
+
+  async getApproval(id: string): Promise<ApprovalRecord | undefined> {
+    await initDb();
+    const [row] = await getDb().select().from(approvals).where(eq(approvals.id, id)).limit(1);
+    if (!row) return undefined;
+    return {
+      id: row.id,
+      actionId: row.actionId ?? undefined,
+      swarmId: row.swarmId ?? undefined,
+      agentId: row.agentId ?? undefined,
+      reason: row.reason ?? undefined,
+      riskLevel: row.riskLevel as ApprovalRecord['riskLevel'] | undefined,
+      status: row.status as ApprovalRecord['status'],
+      reviewer: row.reviewer ?? undefined,
+      comment: row.comment ?? undefined,
+      createdAt: row.createdAt,
+      decidedAt: row.decidedAt ?? undefined,
+    };
+  }
+
+  async listApprovals(): Promise<ApprovalRecord[]> {
+    await initDb();
+    const rows = await getDb().select().from(approvals).orderBy(desc(approvals.createdAt));
+    return rows.map((row) => ({
+      id: row.id,
+      actionId: row.actionId ?? undefined,
+      swarmId: row.swarmId ?? undefined,
+      agentId: row.agentId ?? undefined,
+      reason: row.reason ?? undefined,
+      riskLevel: row.riskLevel as ApprovalRecord['riskLevel'] | undefined,
+      status: row.status as ApprovalRecord['status'],
+      reviewer: row.reviewer ?? undefined,
+      comment: row.comment ?? undefined,
+      createdAt: row.createdAt,
+      decidedAt: row.decidedAt ?? undefined,
+    }));
+  }
+
+  async decideApproval(id: string, decision: { approved: boolean; reviewer?: string; comment?: string }): Promise<ApprovalRecord | undefined> {
+    await initDb();
+    const now = new Date().toISOString();
+    const status: ApprovalRecord['status'] = decision.approved ? 'approved' : 'rejected';
+    await getDb().update(approvals).set({
+      status,
+      reviewer: decision.reviewer ?? null,
+      comment: decision.comment ?? null,
+      decidedAt: now,
+    }).where(eq(approvals.id, id));
+    return this.getApproval(id);
   }
 
   async updateAgentDelegation(id: string, patch: Partial<Pick<AgentDelegation, 'status' | 'error'>>): Promise<AgentDelegation | undefined> {

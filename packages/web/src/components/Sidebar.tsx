@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import type { Channel, Agent, AgentActivity, Machine, VersionInfo } from '../api.js';
 import { PresenceAvatar, presenceLabel } from './PresenceAvatar.js';
-import { t } from '../i18n.js';
+import { t, useLocale } from '../i18n.js';
 
 type Props = {
   channels: Channel[];
@@ -62,6 +62,7 @@ const S = {
 };
 
 export function Sidebar({ channels, agents, activitiesByAgent = {}, machines, selectedView, selectedChannel, selectedAgentId, webVersion, hubVersion, taskCount, onSelectTasks, onSelectKnowledge, onOpenSearch, onSelectChannel, onCreateChannel, onDeleteChannel, onSelectAgent, onOpenAgents, className, onNavigate, onSignOut }: Props) {
+  const { locale, toggle: toggleLocale } = useLocale();
   const [creating, setCreating] = useState(false);
   const [channelName, setChannelName] = useState('');
   const [channelError, setChannelError] = useState('');
@@ -92,6 +93,9 @@ export function Sidebar({ channels, agents, activitiesByAgent = {}, machines, se
               OUT
             </button>
           ) : null}
+          <button type="button" onClick={toggleLocale} title={`Switch to ${locale === 'en' ? '中文' : 'English'}`} style={localeButtonStyle}>
+            {t('locale.switch')}
+          </button>
         </span>
       </div>
 
@@ -287,6 +291,17 @@ const miniButtonStyle: React.CSSProperties = {
 };
 
 const signOutButtonStyle: React.CSSProperties = {
+  border: '1.5px solid #000',
+  background: '#fff',
+  color: '#000',
+  fontFamily: "'Courier New', monospace",
+  fontSize: 9,
+  fontWeight: 700,
+  cursor: 'pointer',
+  padding: '1px 4px',
+};
+
+const localeButtonStyle: React.CSSProperties = {
   border: '1.5px solid #000',
   background: '#fff',
   color: '#000',

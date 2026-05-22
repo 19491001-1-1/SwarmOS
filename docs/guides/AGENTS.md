@@ -20,11 +20,7 @@ from internal company projects, including sibling workspaces such as
 
 ## First Read
 
-Before making non-trivial changes, read the current coding-agent handoff notes:
-
-```text
-docs/for_coding_agent/
-```
+Before making non-trivial changes, read the current coding-agent handoff notes in `docs/guides/coding-agent/`.
 
 Treat these notes as project memory for recent operational context, current deployment habits, and product lessons. If a turn produces durable knowledge that future coding agents need, add or update a document in this directory.
 
@@ -110,8 +106,8 @@ Every substantial development session should leave usable context for the next c
 Use these locations consistently:
 
 - Long-term rules and mandatory workflow constraints belong in `AGENTS.md`.
-- Cross-session handoff summaries, runbooks, and reusable operational lessons belong in `docs/for_coding_agent/`.
-- Product/version execution plans belong in `docs/v*.md`.
+- Cross-session handoff summaries, runbooks, and reusable operational lessons belong in `docs/guides/coding-agent/`.
+- Product/version execution plans belong in `docs/archive/` (historical) or `docs/specs/` (active).
 - Agent-local working context belongs in agent workspace `MEMORY.md` and `notes/`.
 - Project-level reusable decisions, runbooks, lessons, user preferences, and archives should also be written through the Knowledge layer when available.
 

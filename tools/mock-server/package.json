@@ -1,0 +1,14 @@
+{
+  "name": "crewden-mock-server",
+  "version": "0.1.0",
+  "private": true,
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "fastify": "^4.0.0",
+    "fastify-websocket": "^3.0.0",
+    "fastify-formbody": "^6.0.0"
+  }
+}

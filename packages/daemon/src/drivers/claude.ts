@@ -8,7 +8,17 @@ const MCP_SEND_TOOLS = new Set([
   'mcp__crewden__delegate_agent',
 ]);
 import { mkdir, writeFile } from 'fs/promises';
-import { join } from 'path';
+import { dirname, join, sep } from 'path';
+import { fileURLToPath } from 'url';
+
+function getAgentCliPath(): string {
+  const driverDir = dirname(fileURLToPath(import.meta.url));
+  const srcDir = dirname(driverDir);
+  const packageDir = dirname(srcDir);
+  return driverDir.endsWith(`${sep}drivers`)
+    ? join(packageDir, 'dist', 'agentCli.js')
+    : join(driverDir, 'agentCli.js');
+}
 
 export const claudeDriver: RuntimeDriver = {
   id: 'claude',
@@ -26,8 +36,9 @@ export const claudeDriver: RuntimeDriver = {
     await writeFile(join(claudeDir, 'crewden-mcp.json'), JSON.stringify({
       mcpServers: {
         crewden: {
-          command: join(ctx.workspaceDir, '.crewden', 'crewden'),
+          command: process.execPath,
           args: [
+            getAgentCliPath(),
             'mcp-bridge',
             '--agent-id', ctx.agentId,
             '--server-url', ctx.serverUrl,
@@ -36,10 +47,11 @@ export const claudeDriver: RuntimeDriver = {
         },
       },
     }, null, 2));
-  },
 
-  buildCommand(ctx: AgentSpawnContext): RuntimeCommand {
-    const systemPrompt = [
+    // Write bridge instructions to CLAUDE.md so they are read from file
+    // instead of passed via --append-system-prompt (which exceeds the Windows
+    // command-line length limit of 8191 chars).
+    const instructions = [
       ctx.config.systemPrompt ?? '',
       buildBridgeInstruction(),
       buildDmInstruction(),
@@ -48,18 +60,25 @@ export const claudeDriver: RuntimeDriver = {
       buildReminderInstruction(),
       buildMemoryInstruction(),
       buildCommunicationInstruction(),
-    ]
-      .filter(Boolean)
-      .join('\n\n');
+    ].filter(Boolean).join('\n\n');
+    if (instructions) {
+      await writeFile(join(claudeDir, 'CLAUDE.md'), instructions);
+    }
+  },
 
+  buildCommand(ctx: AgentSpawnContext): RuntimeCommand {
+    // Bridge instructions are written to .claude/CLAUDE.md in prepareWorkspace
+    // to avoid exceeding the Windows command-line length limit (8191 chars).
     const args = [
       '--dangerously-skip-permissions',
       '--verbose',
       '--output-format', 'stream-json',
       '--input-format', 'stream-json',
       '--mcp-config', join(ctx.workspaceDir, '.claude', 'crewden-mcp.json'),
-      '--append-system-prompt', systemPrompt,
     ];
+    if (ctx.config.systemPrompt) {
+      args.push('--append-system-prompt', ctx.config.systemPrompt);
+    }
     if (ctx.config.model) {
       args.push('--model', ctx.config.model);
     }

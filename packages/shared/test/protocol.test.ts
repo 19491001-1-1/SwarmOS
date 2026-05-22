@@ -1,8 +1,18 @@
 import { describe, it, expect } from 'vitest';
+import { SwarmInitRequestSchema, ExampleSwarmInitRequest } from '../src/protocol';
+
+describe('shared protocol contracts', () => {
+  it('ExampleSwarmInitRequest should validate against SwarmInitRequestSchema', () => {
+    const parsed = SwarmInitRequestSchema.safeParse(ExampleSwarmInitRequest);
+    expect(parsed.success).toBe(true);
+  });
+});
+import { describe, it, expect } from 'vitest';
 import {
   DaemonToServerSchema,
   ServerToDaemonSchema,
   RuntimeIdSchema,
+  AgentRuntimeConfigSchema,
   CreateAgentRequestSchema,
   PatchAgentRequestSchema,
   CreateChannelRequestSchema,
@@ -295,6 +305,19 @@ describe('CreateAgentRequestSchema', () => {
   it('rejects invalid runtime', () => {
     expect(CreateAgentRequestSchema.safeParse({ name: 'a', runtime: 'gpt4' }).success).toBe(false);
   });
+
+  it('accepts organization fields (workingStyle, handoffPreference, examples)', () => {
+    const result = CreateAgentRequestSchema.safeParse({
+      name: 'role-agent',
+      runtime: 'claude',
+      organization: {
+        workingStyle: 'async',
+        handoffPreference: 'brief summary',
+        examples: ['review PRs', 'triage issues']
+      }
+    });
+    expect(result.success).toBe(true);
+  });
 });
 
 describe('CreateChannelRequestSchema', () => {
@@ -502,5 +525,16 @@ describe('version info', () => {
       commit: 'abc123',
       build: '42',
     });
+  });
+});
+
+describe('AgentRuntimeConfigSchema', () => {
+  it('accepts autoWork config', () => {
+    const parsed = AgentRuntimeConfigSchema.safeParse({
+      runtime: 'claude',
+      name: 'agent-a',
+      autoWork: { enabled: true, intervalMs: 60000, maxClaimableTasksPerRun: 2 },
+    });
+    expect(parsed.success).toBe(true);
   });
 });

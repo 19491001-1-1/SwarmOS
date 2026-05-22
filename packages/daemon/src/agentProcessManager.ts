@@ -8,6 +8,7 @@ import { claudeDriver } from './drivers/claude.js';
 import { codexDriver } from './drivers/codex.js';
 import { geminiDriver } from './drivers/gemini.js';
 import { ensureAgentWorkspace, readAgentWorkspace } from './workspace/agentWorkspace.js';
+import { callInternalApi } from './internalAgentApi.js';
 
 const DRIVERS: Record<string, RuntimeDriver> = {
   claude: claudeDriver,
@@ -83,6 +84,7 @@ interface AgentEntry {
 type QueuedDelivery = AgentDelivery & { inboxSummary?: string };
 
 export class AgentProcessManager {
+  private autoWorkTimer: NodeJS.Timeout | null = null;
   private agents = new Map<string, AgentEntry>();
   private workspaceBase: string;
   private onMessage: AgentMessageCallback;
@@ -123,6 +125,57 @@ export class AgentProcessManager {
     this.onCancelReminder = onCancelReminder;
     this.onSession = onSession;
     this.serverUrl = serverUrl;
+    if (!process.env.CREWDEN_DISABLE_AUTO_WORK && process.env.NODE_ENV !== 'test') {
+      this.startAutoWorkLoop();
+    }
+  }
+
+  /** Public wrapper so external code (e.g. daemonClient) can emit activity updates */
+  emitActivity(agentId: string, type: AgentActivity['type'], detail?: string): void {
+    this.onActivity(agentId, type, detail);
+  }
+
+  private startAutoWorkLoop(): void {
+    if (this.autoWorkTimer) return;
+    const intervalMs = Number(process.env.CREWDEN_AUTO_WORK_POLL_MS) || 30000;
+    this.autoWorkTimer = setInterval(() => void this.runAutoWorkCheck(), intervalMs);
+  }
+
+  private stopAutoWorkLoop(): void {
+    if (!this.autoWorkTimer) return;
+    clearInterval(this.autoWorkTimer);
+    this.autoWorkTimer = null;
+  }
+
+  private async runAutoWorkCheck(): Promise<void> {
+    try {
+      for (const entry of this.agents.values()) {
+        const cfg = entry.idleConfig;
+        if (!cfg?.autoWork?.enabled) continue;
+        if (entry.proc || entry.inbox.length > 0) continue;
+        const token = cfg.agentToken;
+        if (!token) continue;
+        let res: any;
+        try {
+          res = await callInternalApi({ command: { method: 'GET', path: '/work' }, agentId: entry.agentId, serverUrl: this.serverUrl, token, fetchImpl: fetch });
+        } catch (err) {
+          continue;
+        }
+        const inbox = Array.isArray(res?.inbox) ? res.inbox : [];
+        const claimable = inbox.find((i: any) => i.kind === 'claimable_task' && i.taskId);
+        if (claimable) {
+          try {
+            await callInternalApi({ command: { method: 'POST', path: `/tasks/${claimable.taskId}/claim`, body: {} }, agentId: entry.agentId, serverUrl: this.serverUrl, token, fetchImpl: fetch });
+            // Wake the agent with an inbox summary so it starts processing
+            await this.deliverMessage(entry.agentId, toInboxSummaryDelivery(entry.agentId), entry.idleConfig, entry.channelId, await Promise.resolve(''));
+          } catch (err) {
+            // ignore claim errors
+          }
+        }
+      }
+    } catch (err) {
+      console.error('[daemon] autoWork check error:', err instanceof Error ? err.message : String(err));
+    }
   }
 
   async startAgent(agentId: string, config: AgentRuntimeConfig, channelId: string, wakeMessage?: AgentDelivery, inboxSummary?: string): Promise<void> {
@@ -242,6 +295,7 @@ export class AgentProcessManager {
         CREWDEN_RUNTIME_STDOUT_ACK: '1',
       },
       stdio: [cmd.stdin ? 'pipe' : 'ignore', 'pipe', 'pipe'],
+      shell: process.platform === 'win32',
     });
 
     entry.proc = proc;

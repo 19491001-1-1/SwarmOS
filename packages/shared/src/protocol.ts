@@ -1,3 +1,157 @@
+import { z } from "zod";
+
+// Protocol meta
+export const ProtocolMeta = z.object({
+  protocol_version: z.string(),
+});
+
+// Agent config used in swarm/init
+export const AgentConfigSchema = z.object({
+  agent_id: z.string(),
+  role: z.string().optional(),
+  model: z.string().optional(),
+  system_prompt: z.string().optional(),
+  allowed_tools: z.array(z.string()).optional(),
+});
+
+export const SwarmInitRequestSchema = z.object({
+  protocol_version: z.string(),
+  channel_id: z.string(),
+  agents: z.array(AgentConfigSchema),
+});
+
+export const SwarmInitResponseSchema = z.object({
+  protocol_version: z.string(),
+  swarm_id: z.string(),
+  channel_id: z.string(),
+  agent_count: z.number().int(),
+  status: z.enum(["initialized", "running", "failed", "partial"]),
+});
+
+// Thought log event
+export const ThoughtLogEventSchema = z.object({
+  event_id: z.string(),
+  swarm_id: z.string().optional(),
+  agent_id: z.string().optional(),
+  timestamp: z.string().optional(),
+  type: z.literal("thought_log"),
+  message: z.string(),
+  detail: z.any().optional(),
+  severity: z.enum(["debug", "info", "warn", "error"]).optional(),
+});
+
+// Approval models
+export const ApprovalRequestSchema = z.object({
+  approval_id: z.string(),
+  action_id: z.string().optional(),
+  swarm_id: z.string().optional(),
+  agent_id: z.string().optional(),
+  reason: z.string().optional(),
+  risk_level: z.enum(["low", "medium", "high"]).optional(),
+  created_at: z.string().optional(),
+});
+
+export const ApprovalDecisionSchema = z.object({
+  approval_id: z.string(),
+  approved: z.boolean(),
+  reviewer: z.string().optional(),
+  comment: z.string().optional(),
+  decided_at: z.string().optional(),
+});
+
+export const ApprovalRecordSchema = z.object({
+  id: z.string(),
+  actionId: z.string().optional(),
+  swarmId: z.string().optional(),
+  agentId: z.string().optional(),
+  reason: z.string().optional(),
+  riskLevel: z.enum(["low", "medium", "high"]).optional(),
+  status: z.enum(["pending", "approved", "rejected"]),
+  reviewer: z.string().optional(),
+  comment: z.string().optional(),
+  createdAt: z.string(),
+  decidedAt: z.string().optional(),
+});
+
+// Action / daemon models
+export const DaemonActionRequestSchema = z.object({
+  action_id: z.string(),
+  agent_id: z.string(),
+  tool: z.string(),
+  target_path: z.string().optional(),
+  params: z.record(z.any()).optional(),
+  created_at: z.string().optional(),
+});
+
+export const ActionStatus = z.enum([
+  "planned",
+  "waiting_lock",
+  "risk_detected",
+  "awaiting_approval",
+  "approved",
+  "rejected",
+  "running",
+  "timed_out",
+  "success",
+  "error",
+  "cancelled",
+]);
+
+export const DaemonActionResultSchema = z.object({
+  action_id: z.string(),
+  status: ActionStatus,
+  stdout: z.string().optional(),
+  stderr: z.string().optional(),
+  error_type: z.string().optional(),
+  timestamp: z.string().optional(),
+  lock_owner: z.string().optional(),
+  approval_id: z.string().optional(),
+});
+
+export const LockStatusSchema = z.object({
+  path: z.string(),
+  state: z.enum(["unlocked", "locked", "released"]),
+  owner: z.string().optional(),
+  since: z.string().optional(),
+});
+
+export const TimeoutErrorPayloadSchema = z.object({
+  action_id: z.string(),
+  timeout_seconds: z.number().int(),
+  killed: z.boolean(),
+  stdout: z.string().optional(),
+  stderr: z.string().optional(),
+});
+
+export const RiskLevel = z.enum(["low", "medium", "high"]);
+
+// Exports for types
+export type AgentConfig = z.infer<typeof AgentConfigSchema>;
+export type SwarmInitRequest = z.infer<typeof SwarmInitRequestSchema>;
+export type SwarmInitResponse = z.infer<typeof SwarmInitResponseSchema>;
+export type ThoughtLogEvent = z.infer<typeof ThoughtLogEventSchema>;
+export type ApprovalRequest = z.infer<typeof ApprovalRequestSchema>;
+export type ApprovalDecision = z.infer<typeof ApprovalDecisionSchema>;
+export type ApprovalRecord = z.infer<typeof ApprovalRecordSchema>;
+export type DaemonActionRequest = z.infer<typeof DaemonActionRequestSchema>;
+export type DaemonActionResult = z.infer<typeof DaemonActionResultSchema>;
+export type LockStatus = z.infer<typeof LockStatusSchema>;
+export type TimeoutErrorPayload = z.infer<typeof TimeoutErrorPayloadSchema>;
+
+// Example messages
+export const ExampleSwarmInitRequest = {
+  protocol_version: "v1.0.0",
+  channel_id: "c_9901",
+  agents: [
+    {
+      agent_id: "coder_main",
+      role: "Senior Developer",
+      model: "local-exec",
+      system_prompt: "你负责处理具体的代码修改...",
+      allowed_tools: ["file_read", "file_write", "exec_cmd"],
+    },
+  ],
+};
 import type { VersionInfo } from './version.js';
 
 export type RuntimeId = 'claude' | 'codex' | 'gemini';
@@ -21,6 +175,11 @@ export type AgentRuntimeConfig = {
   systemPrompt?: string;
   envVars?: Record<string, string>;
   agentToken?: string;
+  autoWork?: {
+    enabled?: boolean;
+    intervalMs?: number;
+    maxClaimableTasksPerRun?: number;
+  };
 };
 
 export type DirectMessage = {
@@ -286,6 +445,17 @@ export type WorkspaceError = {
   status?: number;
 };
 
+export type DaemonActionUpdate = {
+  action_id: string;
+  status: DaemonActionResult['status'];
+  stdout?: string;
+  stderr?: string;
+  error_type?: string;
+  timestamp?: string;
+  lock_owner?: string;
+  approval_id?: string;
+};
+
 export type DaemonToServer =
   | {
       type: 'ready';
@@ -311,16 +481,21 @@ export type DaemonToServer =
   | { type: 'agent:message'; agentId: string; channelId: string; content: string; inReplyToMessageId?: string }
   | { type: 'agent:deliver:ack'; agentId: string; seq: number }
   | { type: 'workspace:result'; requestId: string; result: WorkspaceEntry | WorkspaceError }
-  | { type: 'machine:runtime_models:result'; requestId: string; models?: string[]; default?: string; error?: string };
+  | { type: 'machine:runtime_models:result'; requestId: string; models?: string[]; default?: string; error?: string }
+  | { type: 'lock:update'; path: string; state: 'locked' | 'released'; agentId: string; since?: string }
+  | { type: 'daemon:action:update'; agentId: string; action: DaemonActionUpdate };
 
 export type ServerToDaemon =
   | { type: 'ping' }
+  | { type: 'approval:requested'; approval: ApprovalRecord }
+  | { type: 'approval:resolved'; approval: ApprovalRecord }
   | { type: 'agent:start'; agentId: string; config: AgentRuntimeConfig; launchId: string; wakeMessage?: AgentDelivery; inboxSummary?: string }
   | { type: 'agent:stop'; agentId: string }
   | { type: 'agent:deliver'; agentId: string; seq: number; message: AgentDelivery; config?: AgentRuntimeConfig; channelId?: string; inboxSummary?: string }
   | { type: 'agent:reset-workspace'; agentId: string }
   | { type: 'workspace:read'; agentId: string; requestId: string; relPath: string }
-  | { type: 'machine:runtime_models:detect'; runtime: RuntimeId; requestId: string };
+  | { type: 'machine:runtime_models:detect'; runtime: RuntimeId; requestId: string }
+  | { type: 'action:execute'; agentId: string; action: DaemonActionRequest };
 
 export type Message = {
   id: string;
@@ -381,6 +556,9 @@ export type Agent = {
     roles?: string[];
     capabilities?: string[];
     responsibilities?: string[];
+    workingStyle?: string;
+    handoffPreference?: string;
+    examples?: string[];
     managerId?: string;
     backupAgentIds?: string[];
     availability?: 'available' | 'unavailable' | 'overloaded';
@@ -402,9 +580,14 @@ export type BrowserEvent =
   | { type: 'agent:activity'; agentId: string; activity: AgentActivity }
   | { type: 'dm:new'; dm: DirectMessage }
   | { type: 'agent:delegation'; delegation: AgentDelegation }
+  | { type: 'approval:requested'; approval: ApprovalRecord }
+  | { type: 'approval:resolved'; approval: ApprovalRecord }
   | { type: 'goal:update'; goal: GoalBrief }
   | { type: 'goal-alignment:update'; alignment: GoalAlignment }
   | { type: 'knowledge:update'; entry: KnowledgeEntry }
   | { type: 'task:update'; task: Task }
   | { type: 'reminder:update'; reminder: Reminder }
-  | { type: 'machine:update'; machine: Machine };
+  | { type: 'machine:update'; machine: Machine }
+  | { type: 'lock:update'; path: string; state: 'locked' | 'released'; agentId: string; since?: string }
+  | { type: 'thought_log'; event: ThoughtLogEvent }
+  | { type: 'daemon:action:update'; agentId: string; action: DaemonActionUpdate };

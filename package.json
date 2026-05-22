@@ -3,7 +3,7 @@
   "private": true,
   "version": "1.5.1",
   "scripts": {
-    "start": "bash start.sh",
+    "start": "bash scripts/start.sh",
     "dev": "pnpm --parallel --filter @crewden/server --filter @crewden/web dev",
     "daemon": "pnpm --filter @crewden/daemon start",
     "deploy:web:pages": "bash scripts/deploy-cloudflare-pages.sh",
@@ -16,5 +16,6 @@
     "tsx": "^4.11.0",
     "vitest": "^1.6.0",
     "@types/node": "^20.12.0"
-  }
+  },
+  "packageManager": "pnpm@9.15.4+sha512.b2dc20e2fc72b3e18848459b37359a32064663e5627a51e4c74b2c29dd8e8e0491483c3abb40789cfd578bf362fb6ba8261b05f0387d76792ed6e23ea3b1b6a0"
 }

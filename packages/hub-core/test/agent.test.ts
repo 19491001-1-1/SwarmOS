@@ -48,6 +48,7 @@ describe('toRuntimeConfig', () => {
       displayName: 'Bot',
       description: 'Helpful bot',
       systemPrompt: 'Be concise',
+      autoWork: { enabled: false },
     });
   });
 });

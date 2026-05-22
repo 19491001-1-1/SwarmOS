@@ -8,6 +8,7 @@ export function toRuntimeConfig(agent: Agent): AgentRuntimeConfig {
     displayName: agent.displayName,
     description: agent.description,
     systemPrompt: agent.systemPrompt,
+    autoWork: { enabled: !!agent.autoStart },
   };
 }
 
