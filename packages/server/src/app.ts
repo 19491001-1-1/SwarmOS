@@ -1,3 +1,4 @@
+/** SwarmOS server — Fastify HTTP API + WebSocket, action orchestrator, risk policy, SQLite store */
 import Fastify from 'fastify';
 import fastifyWebsocket from '@fastify/websocket';
 import fastifyCors from '@fastify/cors';
