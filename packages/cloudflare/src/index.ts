@@ -1,3 +1,4 @@
+/** SwarmOS Cloudflare Worker — public-facing central hub for multi-machine SwarmOS deployments */
 import { DurableObject } from 'cloudflare:workers';
 import type {
   Agent,
