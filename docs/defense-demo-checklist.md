@@ -1,3 +1,4 @@
+<!-- SwarmOS project docs — PRD, specs, guides, defense demo checklist -->
 # 功能清单
 
 ## 一、动态智能体工厂（Swarm/Init）
