@@ -1,3 +1,4 @@
+/** SwarmOS shared protocol layer — Zod schemas for type-safe cross-package contracts */
 import { z } from "zod";
 
 // Protocol meta
